@@ -176,11 +176,11 @@ class _DownloadLogsScreenState extends ConsumerState<DownloadLogsScreen> {
                             ],
                           ),
                         ),
-                        DataCell(Text(_formatBytes(log.size))),
+                        DataCell(Text(_formatBytes(log.sizeBytes))),
                         DataCell(_ProtocolBadge(protocol: log.protocol)),
                         DataCell(_StatusBadge(status: log.status)),
                         DataCell(Text(
-                          isInProgress ? 'In progress' : '${log.duration}s',
+                          isInProgress ? 'In progress' : '${log.durationSeconds}s',
                         )),
                         DataCell(Text('${log.startTime.day}/${log.startTime.month}/${log.startTime.year} ${log.startTime.hour}:${log.startTime.minute.toString().padLeft(2, '0')}')),
                       ]);

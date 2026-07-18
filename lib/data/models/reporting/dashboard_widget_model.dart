@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'package:json_annotation/json_annotation.dart';
-import '../../domain/entities/reporting/dashboard_widget_entity.dart';
+import '../../../domain/entities/reporting/dashboard_widget_entity.dart';
 
 part 'dashboard_widget_model.g.dart';
 

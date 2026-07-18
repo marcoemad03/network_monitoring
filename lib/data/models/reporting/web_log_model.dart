@@ -1,5 +1,5 @@
 import 'package:json_annotation/json_annotation.dart';
-import '../../domain/entities/reporting/web_log_entity.dart';
+import '../../../domain/entities/reporting/web_log_entity.dart';
 
 part 'web_log_model.g.dart';
 

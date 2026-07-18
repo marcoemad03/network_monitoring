@@ -55,13 +55,13 @@ class _WebLogsScreenState extends ConsumerState<WebLogsScreen> {
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
               child: Row(
                 children: [
-                  _StatCard(title: 'Total', value: '${stats.total}', color: Colors.blue),
+                  _StatCard(title: 'Total', value: '${stats?.totalCount ?? 0}', color: Colors.blue),
                   const SizedBox(width: 12),
-                  _StatCard(title: 'Blocked', value: '${stats.blocked}', color: Colors.red),
+                  _StatCard(title: 'Blocked', value: '${stats?.blockedCount ?? 0}', color: Colors.red),
                   const SizedBox(width: 12),
-                  _StatCard(title: 'Unique Domains', value: '${stats.uniqueDomains}', color: Colors.teal),
+                  _StatCard(title: 'Unique Domains', value: '${stats?.uniqueDomains ?? 0}', color: Colors.teal),
                   const SizedBox(width: 12),
-                  _StatCard(title: 'Bandwidth', value: _formatBytes(stats.totalBandwidth), color: Colors.purple),
+                  _StatCard(title: 'Bandwidth', value: _formatBytes(stats?.totalBytes ?? 0), color: Colors.purple),
                 ],
               ),
             ),
@@ -182,11 +182,6 @@ class _WebLogsScreenState extends ConsumerState<WebLogsScreen> {
                 return SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: DataTable(
-                    rowsPerPage: rowsPerPage(logs.length, _rowsPerPage),
-                    onRowsPerPageChanged: (v) {
-                      if (v != null) setState(() => _rowsPerPage = v);
-                    },
-                    sortAscending: true,
                     columns: const [
                       DataColumn(label: Text('Timestamp')),
                       DataColumn(label: Text('URL')),
@@ -201,11 +196,11 @@ class _WebLogsScreenState extends ConsumerState<WebLogsScreen> {
                       return DataRow(cells: [
                         DataCell(Text('${log.timestamp.day}/${log.timestamp.month}/${log.timestamp.year} ${log.timestamp.hour}:${log.timestamp.minute.toString().padLeft(2, '0')}')),
                         DataCell(Text(log.url.length > 40 ? '${log.url.substring(0, 40)}...' : log.url)),
-                        DataCell(Text(log.domain)),
-                        DataCell(_CategoryBadge(label: log.category)),
+                        DataCell(Text(log.domain ?? '')),
+                        DataCell(_CategoryBadge(label: log.category ?? '')),
                         DataCell(_StatusBadge(code: log.statusCode)),
-                        DataCell(Text(_formatBytes(log.bytes))),
-                        DataCell(Text('${log.duration}ms')),
+                        DataCell(Text(_formatBytes(log.bytesSent + log.bytesReceived))),
+                        DataCell(Text('${log.durationSeconds}s')),
                         DataCell(
                           log.isBlocked
                               ? const Icon(Icons.block, color: Colors.red, size: 18)
@@ -221,10 +216,6 @@ class _WebLogsScreenState extends ConsumerState<WebLogsScreen> {
         ],
       ),
     );
-  }
-
-  int rowsPerPage(int total, int pageSize) {
-    return pageSize > total ? total : pageSize;
   }
 
   Future<void> _pickDate(bool isFrom) async {

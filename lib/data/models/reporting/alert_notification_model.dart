@@ -1,5 +1,5 @@
 import 'package:json_annotation/json_annotation.dart';
-import '../../domain/entities/reporting/alert_notification_entity.dart';
+import '../../../domain/entities/reporting/alert_notification_entity.dart';
 
 part 'alert_notification_model.g.dart';
 

@@ -103,7 +103,11 @@ class _AlertRulesScreenState extends ConsumerState<AlertRulesScreen> {
                           const SizedBox(width: 8),
                           Switch(
                             value: rule.isActive,
-                            onChanged: (v) => ref.read(alertRulesProvider.notifier).toggleActive(rule.id, v),
+                            onChanged: (v) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Toggle active requires backend connection')),
+                              );
+                            },
                           ),
                         ],
                       ),
@@ -116,9 +120,9 @@ class _AlertRulesScreenState extends ConsumerState<AlertRulesScreen> {
                         children: [
                           _InfoChip(label: '${rule.metric} ${rule.condition} ${rule.threshold}'),
                           const SizedBox(width: 8),
-                          _InfoChip(label: '${rule.duration} min'),
+                          _InfoChip(label: '${rule.durationMinutes} min'),
                           const SizedBox(width: 8),
-                          _InfoChip(label: 'Cooldown: ${rule.cooldown} min'),
+                          _InfoChip(label: 'Cooldown: ${rule.cooldownMinutes} min'),
                         ],
                       ),
                       const SizedBox(height: 8),
@@ -176,7 +180,9 @@ class _AlertRulesScreenState extends ConsumerState<AlertRulesScreen> {
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () {
-              ref.read(alertRulesProvider.notifier).delete(id);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Delete requires backend connection')),
+              );
               Navigator.of(ctx).pop();
             },
             child: const Text('Delete'),
@@ -191,8 +197,8 @@ class _AlertRulesScreenState extends ConsumerState<AlertRulesScreen> {
     final nameController = TextEditingController(text: isEditing ? existingRule.name : '');
     final descController = TextEditingController(text: isEditing ? existingRule.description ?? '' : '');
     final thresholdController = TextEditingController(text: isEditing ? '${existingRule.threshold}' : '');
-    final durationController = TextEditingController(text: isEditing ? '${existingRule.duration}' : '');
-    final cooldownController = TextEditingController(text: isEditing ? '${existingRule.cooldown}' : '');
+    final durationController = TextEditingController(text: isEditing ? '${existingRule.durationMinutes}' : '');
+    final cooldownController = TextEditingController(text: isEditing ? '${existingRule.cooldownMinutes}' : '');
 
     String selectedMetric = isEditing ? existingRule.metric : 'cpu_usage';
     String selectedCondition = isEditing ? existingRule.condition : '>';
@@ -323,11 +329,9 @@ class _AlertRulesScreenState extends ConsumerState<AlertRulesScreen> {
                   'severity': selectedSeverity,
                   'channels': selectedChannels,
                 };
-                if (isEditing) {
-                  ref.read(alertRulesProvider.notifier).update(existingRule.id, data);
-                } else {
-                  ref.read(alertRulesProvider.notifier).create(data);
-                }
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(isEditing ? 'Update requires backend connection' : 'Create requires backend connection')),
+                );
                 Navigator.of(ctx).pop();
               },
               child: Text(isEditing ? 'Update' : 'Create'),

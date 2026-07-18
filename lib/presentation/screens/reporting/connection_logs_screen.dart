@@ -25,7 +25,7 @@ class _ConnectionLogsScreenState extends ConsumerState<ConnectionLogsScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final statsAsync = ref.watch(connectionStatsProvider);
+    final statsAsync = ref.watch(activeConnectionCountProvider);
     final logsAsync = ref.watch(connectionLogsProvider);
 
     return Scaffold(
@@ -36,7 +36,7 @@ class _ConnectionLogsScreenState extends ConsumerState<ConnectionLogsScreen> {
             icon: const Icon(Icons.refresh),
             onPressed: () {
               ref.invalidate(connectionLogsProvider);
-              ref.invalidate(connectionStatsProvider);
+              ref.invalidate(activeConnectionCountProvider);
             },
           ),
         ],
@@ -44,21 +44,24 @@ class _ConnectionLogsScreenState extends ConsumerState<ConnectionLogsScreen> {
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          statsAsync.when(
-            loading: () => const Padding(
-              padding: EdgeInsets.all(16),
-              child: LinearProgressIndicator(),
-            ),
-            error: (_, __) => const SizedBox.shrink(),
-            data: (stats) => Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-              child: Row(
-                children: [
-                  _StatCard(title: 'Total Connections', value: '${stats.total}', color: Colors.blue),
-                  const SizedBox(width: 12),
-                  _StatCard(title: 'Active', value: '${stats.active}', color: Colors.green),
-                ],
-              ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+            child: Row(
+              children: [
+                Expanded(
+                  child: logsAsync.when(
+                    loading: () => const LinearProgressIndicator(),
+                    error: (_, __) => const Text('--'),
+                    data: (logs) => Row(
+                      children: [
+                        _StatCard(title: 'Total Connections', value: '${logs.length}', color: Colors.blue),
+                        const SizedBox(width: 12),
+                        _StatCard(title: 'Active', value: '${logs.where((l) => l.isActive).length}', color: Colors.green),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
           Padding(
@@ -192,9 +195,9 @@ class _ConnectionLogsScreenState extends ConsumerState<ConnectionLogsScreen> {
                           DataCell(Text('${log.startTime.day}/${log.startTime.month}/${log.startTime.year} ${log.startTime.hour}:${log.startTime.minute.toString().padLeft(2, '0')}')),
                           DataCell(Text(log.sourceIp)),
                           DataCell(Text(log.destIp)),
-                          DataCell(_ProtocolBadge(protocol: log.protocol)),
-                          DataCell(Text(log.isActive ? 'Active' : '${log.duration}s')),
-                          DataCell(Text(_formatBytes(log.bytes))),
+                          DataCell(_ProtocolBadge(protocol: log.protocol ?? '')),
+                          DataCell(Text(log.isActive ? 'Active' : '${log.durationSeconds}s')),
+                          DataCell(Text(_formatBytes(log.bytesSent + log.bytesReceived))),
                           DataCell(
                             isActive
                                 ? Container(

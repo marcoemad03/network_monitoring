@@ -88,8 +88,8 @@ class _SummaryTab extends ConsumerWidget {
                 _AnalyticsCard(title: 'Total Web Logs', value: '${summary.totalWebLogs}', icon: Icons.language, color: Colors.blue),
                 _AnalyticsCard(title: 'Total Connections', value: '${summary.totalConnections}', icon: Icons.swap_vertical_circle, color: Colors.teal),
                 _AnalyticsCard(title: 'Total Downloads', value: '${summary.totalDownloads}', icon: Icons.download, color: Colors.purple),
-                _AnalyticsCard(title: 'Total Bandwidth', value: _formatBytes(summary.totalBandwidth), icon: Icons.speed, color: Colors.orange),
-                _AnalyticsCard(title: 'Active Alerts', value: '${summary.activeAlerts}', icon: Icons.notifications_active, color: Colors.red),
+                _AnalyticsCard(title: 'Total Bandwidth', value: _formatBytes(summary?.totalBandwidthBytes ?? 0), icon: Icons.speed, color: Colors.orange),
+                _AnalyticsCard(title: 'Unread Notifications', value: '${summary?.unreadNotifications ?? 0}', icon: Icons.notifications_active, color: Colors.red),
               ],
             ),
             const SizedBox(height: 24),
@@ -103,8 +103,9 @@ class _SummaryTab extends ConsumerWidget {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: data.asMap().entries.map((entry) {
-                    final maxVal = data.fold<int>(0, (a, b) => a > b.bytes ? a : b.bytes);
-                    final heightFraction = maxVal > 0 ? entry.value.bytes / maxVal : 0.0;
+                    final maxVal = data.fold<int>(0, (a, b) => a > b.bytesSent + b.bytesReceived ? a : b.bytesSent + b.bytesReceived);
+                    final val = entry.value.bytesSent + entry.value.bytesReceived;
+                    final heightFraction = maxVal > 0 ? val / maxVal : 0.0;
                     return Expanded(
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 2),
@@ -112,7 +113,7 @@ class _SummaryTab extends ConsumerWidget {
                           mainAxisAlignment: MainAxisAlignment.end,
                           children: [
                             Text(
-                              _formatBytes(entry.value.bytes),
+                              _formatBytes(val),
                               style: theme.textTheme.labelSmall,
                             ),
                             const SizedBox(height: 4),
@@ -125,7 +126,7 @@ class _SummaryTab extends ConsumerWidget {
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              entry.value.label,
+                              '${entry.value.timestamp.hour}:${entry.value.timestamp.minute.toString().padLeft(2, '0')}',
                               style: theme.textTheme.labelSmall,
                               textAlign: TextAlign.center,
                             ),
@@ -146,8 +147,8 @@ class _SummaryTab extends ConsumerWidget {
               data: (consumers) => Column(
                 children: consumers.map((c) => ListTile(
                   leading: CircleAvatar(child: Text('${consumers.indexOf(c) + 1}')),
-                  title: Text(c.name),
-                  trailing: Text(_formatBytes(c.bytes)),
+                  title: Text(c.deviceName),
+                  trailing: Text(_formatBytes(c.totalBytes)),
                 )).toList(),
               ),
             ),
@@ -224,7 +225,7 @@ class _ReportsTabState extends ConsumerState<_ReportsTab> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final reportsAsync = ref.watch(cachedReportsProvider);
+    final reportsAsync = ref.watch(reportsListProvider);
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -297,7 +298,9 @@ class _ReportsTabState extends ConsumerState<_ReportsTab> {
                   const SizedBox(height: 16),
                   FilledButton.icon(
                     onPressed: () {
-                      ref.read(cachedReportsProvider.notifier).generate(_selectedType, _periodFrom, _periodTo);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Report generation requires backend connection')),
+                      );
                     },
                     icon: const Icon(Icons.play_arrow),
                     label: const Text('Generate Report'),
@@ -326,13 +329,21 @@ class _ReportsTabState extends ConsumerState<_ReportsTab> {
                   margin: const EdgeInsets.only(bottom: 8),
                   child: ListTile(
                     leading: const Icon(Icons.description_outlined),
-                    title: Text(r.type),
-                    subtitle: Text('${r.period} - ${r.generatedAt.day}/${r.generatedAt.month}/${r.generatedAt.year}'),
+                    title: Text(r.reportType),
+                    subtitle: Text('${r.periodStart.day}/${r.periodStart.month}/${r.periodStart.year} - ${r.generatedAt.day}/${r.generatedAt.month}/${r.generatedAt.year}'),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        IconButton(icon: const Icon(Icons.download), onPressed: () => ref.read(cachedReportsProvider.notifier).download(r.id)),
-                        IconButton(icon: const Icon(Icons.file_copy_outlined), onPressed: () => ref.read(cachedReportsProvider.notifier).export(r.id)),
+                        IconButton(icon: const Icon(Icons.download), onPressed: () {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Download requires backend connection')),
+                          );
+                        }),
+                        IconButton(icon: const Icon(Icons.file_copy_outlined), onPressed: () {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Export requires backend connection')),
+                          );
+                        }),
                       ],
                     ),
                   ),
@@ -350,7 +361,7 @@ class _ExportsTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
-    final exportsAsync = ref.watch(exportsProvider);
+    final exportsAsync = ref.watch(exportsListProvider);
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -358,7 +369,11 @@ class _ExportsTab extends ConsumerWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           FilledButton.icon(
-            onPressed: () => ref.read(exportsProvider.notifier).createNew(),
+            onPressed: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('New export requires backend connection')),
+              );
+            },
             icon: const Icon(Icons.add),
             label: const Text('New Export'),
           ),
@@ -395,18 +410,22 @@ class _ExportsTab extends ConsumerWidget {
                   margin: const EdgeInsets.only(bottom: 8),
                   child: ListTile(
                     leading: Icon(_exportIcon(e.format)),
-                    title: Text('${e.type} - ${e.format}'),
+                    title: Text('${e.reportType} - ${e.format}'),
                     subtitle: Row(
                       children: [
                         _StatusBadge(status: e.status),
                         const SizedBox(width: 8),
-                        Text('${e.date.day}/${e.date.month}/${e.date.year}'),
+                        Text(e.generatedAt != null ? '${e.generatedAt!.day}/${e.generatedAt!.month}/${e.generatedAt!.year}' : ''),
                       ],
                     ),
                     trailing: e.status == 'completed'
                         ? IconButton(
                             icon: const Icon(Icons.download),
-                            onPressed: () => ref.read(exportsProvider.notifier).downloadExport(e.id),
+                            onPressed: () {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Download requires backend connection')),
+                              );
+                            },
                           )
                         : null,
                   ),
@@ -488,7 +507,7 @@ class _TopListsTab extends ConsumerWidget {
                 _TopListContent(provider: topWebsitesProvider, label: 'websites'),
                 _TopListContent(provider: topUsersProvider, label: 'users'),
                 _TopListContent(provider: departmentReportsProvider, label: 'departments'),
-                _TopListContent(provider: topBandwidthProvider, label: 'bandwidth entries'),
+                _TopListContent(provider: topBandwidthConsumersProvider, label: 'bandwidth entries'),
               ],
             ),
           ),
@@ -543,11 +562,11 @@ class _TopListContent extends ConsumerWidget {
               margin: const EdgeInsets.only(bottom: 8),
               child: ListTile(
                 leading: CircleAvatar(
-                  backgroundColor: Colors.primary.withValues(alpha: 0.1),
+                  backgroundColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
                   child: Text('${index + 1}', style: TextStyle(color: Theme.of(context).colorScheme.primary)),
                 ),
-                title: Text(item.name),
-                trailing: Text(_formatValue(item.value)),
+                title: Text(item.toString()),
+                trailing: const Text(''),
               ),
             );
           },

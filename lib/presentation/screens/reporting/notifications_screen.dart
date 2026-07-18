@@ -15,8 +15,8 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final notificationsAsync = ref.watch(alertNotificationsProvider);
-    final unreadCount = ref.watch(unreadNotificationsCountProvider);
+    final notificationsAsync = ref.watch(notificationsProvider);
+    final unreadCount = ref.watch(unreadCountProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -32,7 +32,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
             ),
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: () => ref.invalidate(alertNotificationsProvider),
+                    onPressed: () => ref.invalidate(notificationsProvider),
           ),
         ],
       ),
@@ -74,7 +74,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                     Text('Failed to load notifications'),
                     const SizedBox(height: 8),
                     OutlinedButton(
-                      onPressed: () => ref.invalidate(alertNotificationsProvider),
+            onPressed: () => ref.invalidate(notificationsProvider),
                       child: const Text('Retry'),
                     ),
                   ],
@@ -83,7 +83,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
               data: (notifications) {
                 final filtered = notifications.where((n) {
                   if (_filter == 'unread') return !n.isRead;
-                  if (_filter == 'acknowledged') return n.isAcknowledged;
+                  if (_filter == 'acknowledged') return n.acknowledgedAt != null;
                   return true;
                 }).toList();
 
@@ -114,7 +114,9 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                         borderRadius: BorderRadius.circular(12),
                         onTap: () {
                           if (!notification.isRead) {
-                            ref.read(alertNotificationsProvider.notifier).markAsRead(notification.id);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Mark as read requires backend connection')),
+                            );
                           }
                         },
                         child: Padding(
@@ -165,13 +167,15 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                                   ],
                                 ),
                               ),
-                              if (!notification.isAcknowledged)
+                              if (notification.acknowledgedAt == null)
                                 TextButton(
                                   style: TextButton.styleFrom(
                                     visualDensity: VisualDensity.compact,
                                   ),
                                   onPressed: () {
-                                    ref.read(alertNotificationsProvider.notifier).acknowledge(notification.id);
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(content: Text('Acknowledge requires backend connection')),
+                                    );
                                   },
                                   child: const Text('Ack'),
                                 ),

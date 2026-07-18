@@ -1,5 +1,5 @@
 import 'package:json_annotation/json_annotation.dart';
-import '../../domain/entities/reporting/report_export_entity.dart';
+import '../../../domain/entities/reporting/report_export_entity.dart';
 
 part 'report_export_model.g.dart';
 

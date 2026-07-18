@@ -90,7 +90,7 @@ class _DashboardWidgetsScreenState extends ConsumerState<DashboardWidgetsScreen>
                             Row(
                               children: [
                                 _WidgetInfoChip(
-                                  label: widget.type,
+                                  label: widget.widgetType,
                                   icon: Icons.category_outlined,
                                 ),
                                 const SizedBox(width: 8),
@@ -142,11 +142,15 @@ class _DashboardWidgetsScreenState extends ConsumerState<DashboardWidgetsScreen>
   }
 
   void _moveWidget(int from, int to) {
-    ref.read(dashboardWidgetsProvider.notifier).reorder(from, to);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Reorder requires backend connection')),
+    );
   }
 
   void _toggleVisibility(String id, bool visible) {
-    ref.read(dashboardWidgetsProvider.notifier).toggleVisibility(id, visible);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Toggle visibility requires backend connection')),
+    );
   }
 
   void _confirmDelete(String id, String title) {
@@ -160,7 +164,9 @@ class _DashboardWidgetsScreenState extends ConsumerState<DashboardWidgetsScreen>
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () {
-              ref.read(dashboardWidgetsProvider.notifier).delete(id);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Delete requires backend connection')),
+              );
               Navigator.of(ctx).pop();
             },
             child: const Text('Delete'),
@@ -173,8 +179,8 @@ class _DashboardWidgetsScreenState extends ConsumerState<DashboardWidgetsScreen>
   void _showWidgetDialog(BuildContext context, dynamic existingWidget) {
     final isEditing = existingWidget != null;
     final titleController = TextEditingController(text: isEditing ? existingWidget.title : '');
-    final configController = TextEditingController(text: isEditing ? existingWidget.config : '');
-    String selectedType = isEditing ? existingWidget.type : 'chart';
+    final configController = TextEditingController(text: isEditing ? existingWidget.config.toString() : '');
+    String selectedType = isEditing ? existingWidget.widgetType : 'chart';
     int width = isEditing ? existingWidget.width : 2;
     int height = isEditing ? existingWidget.height : 1;
 
@@ -211,7 +217,7 @@ class _DashboardWidgetsScreenState extends ConsumerState<DashboardWidgetsScreen>
                         value: width,
                         decoration: const InputDecoration(labelText: 'Width'),
                         items: [1, 2, 3, 4]
-                            .map((w) => DropdownMenuItem(value: w, child: Text('$w'))),
+                            .map((w) => DropdownMenuItem(value: w, child: Text('$w'))).toList(),
                         onChanged: (v) => setDialogState(() => width = v!),
                       ),
                     ),
@@ -221,7 +227,7 @@ class _DashboardWidgetsScreenState extends ConsumerState<DashboardWidgetsScreen>
                         value: height,
                         decoration: const InputDecoration(labelText: 'Height'),
                         items: [1, 2, 3]
-                            .map((h) => DropdownMenuItem(value: h, child: Text('$h'))),
+                            .map((h) => DropdownMenuItem(value: h, child: Text('$h'))).toList(),
                         onChanged: (v) => setDialogState(() => height = v!),
                       ),
                     ),
@@ -240,24 +246,9 @@ class _DashboardWidgetsScreenState extends ConsumerState<DashboardWidgetsScreen>
             TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancel')),
             FilledButton(
               onPressed: () {
-                if (isEditing) {
-                  ref.read(dashboardWidgetsProvider.notifier).update(
-                    existingWidget.id,
-                    titleController.text,
-                    selectedType,
-                    width,
-                    height,
-                    configController.text,
-                  );
-                } else {
-                  ref.read(dashboardWidgetsProvider.notifier).create(
-                    titleController.text,
-                    selectedType,
-                    width,
-                    height,
-                    configController.text,
-                  );
-                }
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Save requires backend connection')),
+                );
                 Navigator.of(ctx).pop();
               },
               child: Text(isEditing ? 'Update' : 'Create'),
