@@ -499,7 +499,7 @@ func (r *ReportCacheRepository) GetCachedReport(ctx context.Context, orgID uuid.
 
 func (r *ReportCacheRepository) UpsertReportCache(ctx context.Context, rc *models.ReportCache) error {
 	_, err := r.db.Exec(ctx,
-		`INSERT INTO report_cache (id, org_id, report_type, period_start, period_end, data, total_websites, total_bandwidth_mb, total_duration_minutes, unique_devices, unique_users, blocked_attempts, generated_at) VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10,$11,$12,$12) ON CONFLICT (org_id, report_type, period_start, period_end) DO UPDATE SET data=$6::jsonb, total_websites=$7, total_bandwidth_mb=$8, total_duration_minutes=$9, unique_devices=$10, unique_users=$11, blocked_attempts=$12, generated_at=NOW()`,
+		`INSERT INTO report_cache (id, org_id, report_type, period_start, period_end, data, total_websites, total_bandwidth_mb, total_duration_minutes, unique_devices, unique_users, blocked_attempts, generated_at) VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10,$11,$12,NOW()) ON CONFLICT (org_id, report_type, period_start, period_end) DO UPDATE SET data=$6::jsonb, total_websites=$7, total_bandwidth_mb=$8, total_duration_minutes=$9, unique_devices=$10, unique_users=$11, blocked_attempts=$12, generated_at=NOW()`,
 		rc.ID, rc.OrganizationID, rc.ReportType, rc.PeriodStart, rc.PeriodEnd, rc.Data, rc.TotalWebsites, rc.TotalBandwidthMB, rc.TotalDurationMinutes, rc.UniqueDevices, rc.UniqueUsers, rc.BlockedAttempts)
 	return err
 }

@@ -137,6 +137,10 @@ func (s *ReportingService) GetTopUsers(ctx context.Context, orgID uuid.UUID, fro
 	return s.webLogRepo.GetTopUsers(ctx, orgID, from, to, limit)
 }
 
+func (s *ReportingService) GetTopBandwidthConsumers(ctx context.Context, orgID uuid.UUID, from, to time.Time, limit int) ([]models.TopUser, error) {
+	return s.webLogRepo.GetTopUsers(ctx, orgID, from, to, limit)
+}
+
 func (s *ReportingService) GetDepartmentReports(ctx context.Context, orgID uuid.UUID, from, to time.Time) ([]models.DepartmentReport, error) {
 	return s.webLogRepo.GetDepartmentReports(ctx, orgID, from, to)
 }

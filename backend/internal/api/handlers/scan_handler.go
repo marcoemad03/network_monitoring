@@ -73,7 +73,7 @@ func (h *ScanHandler) Start(c *gin.Context) {
 			"target_subnet":  req.TargetSubnet,
 			"name":           req.Name,
 			"progress":       0,
-			"started_at":     "2024-01-01T00:00:00Z",
+			"started_at":     time.Now().UTC().Format(time.RFC3339),
 		},
 		"message": "Scan started",
 	})

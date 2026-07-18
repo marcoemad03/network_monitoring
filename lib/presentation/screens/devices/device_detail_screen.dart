@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../../providers/device/device_provider.dart';
 import '../../widgets/common/status_badge.dart';
+import '../../widgets/common/app_error_widget.dart';
 import '../../../core/enums/device_type.dart';
 import '../../router/route_names.dart';
 import '../../../domain/entities/device.dart';
@@ -45,7 +46,7 @@ class _DeviceDetailScreenState extends ConsumerState<DeviceDetailScreen> {
           IconButton(
             icon: const Icon(Icons.edit),
             onPressed: () => context.push(
-              RouteNames.deviceEdit.replaceAll(':id', id),
+              RouteNames.deviceEdit.replaceAll(':id', widget.id),
             ),
           ),
           IconButton(
@@ -59,20 +60,9 @@ class _DeviceDetailScreenState extends ConsumerState<DeviceDetailScreen> {
       ),
       body: deviceAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.error_outline, size: 48),
-              const SizedBox(height: 16),
-              Text('Failed to load device'),
-              const SizedBox(height: 8),
-              OutlinedButton(
-                onPressed: () => ref.invalidate(deviceDetailProvider(widget.id)),
-                child: const Text('Retry'),
-              ),
-            ],
-          ),
+        error: (e, _) => AppErrorWidget(
+          message: 'Failed to load device',
+          onRetry: () => ref.invalidate(deviceDetailProvider(widget.id)),
         ),
         data: (device) {
           if (device == null) {
@@ -499,7 +489,7 @@ class _DeviceDetailContent extends ConsumerWidget {
 }
 
 final _deviceLatestMetricsProvider =
-    FutureProvider.family<DeviceMetrics?, String>((ref, id) async {
+    FutureProvider.autoDispose.family<DeviceMetrics?, String>((ref, id) async {
   final repo = ref.watch(deviceRepositoryProvider);
   final result = await repo.getLatestMetrics(id);
   return result.fold((_) => null, (m) => m);

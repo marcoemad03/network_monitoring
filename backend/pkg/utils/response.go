@@ -25,12 +25,11 @@ func Success(c *gin.Context, status int, data interface{}, message string) {
 	})
 }
 
-func SuccessWithMeta(c *gin.Context, status int, data interface{}, message string, meta *Meta) {
-	c.JSON(status, APIResponse{
-		Success: true,
-		Data:    data,
-		Message: message,
-		Meta:    meta,
+func SuccessWithMeta(c *gin.Context, statusCode int, data interface{}, meta interface{}) {
+	c.JSON(statusCode, gin.H{
+		"success": true,
+		"data":    data,
+		"meta":    meta,
 	})
 }
 

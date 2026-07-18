@@ -127,6 +127,7 @@ done:
 	return result
 }
 
+// TODO: Replace with real ICMP ping for production use
 func simulatedPing(ip string, timeoutMs int) (float64, bool) {
 	addr := net.ParseIP(ip)
 	if addr == nil {
@@ -174,6 +175,7 @@ func PingToModel(deviceID uuid.UUID, result *PingResult) *models.DevicePing {
 	}
 }
 
+// TODO: Replace with real device metrics collection for production use
 func SimulateMetrics(deviceID uuid.UUID, deviceType string) *models.DeviceMetrics {
 	now := time.Now()
 	cpu := 20.0 + rand.Float64()*60.0
@@ -218,6 +220,7 @@ func SimulateMetrics(deviceID uuid.UUID, deviceType string) *models.DeviceMetric
 	}
 }
 
+// TODO: Replace with real traffic data collection for production use
 func SimulateTraffic(deviceID uuid.UUID, interfaceID *uuid.UUID) *models.DeviceTraffic {
 	util := 5.0 + rand.Float64()*60.0
 	return &models.DeviceTraffic{
@@ -235,6 +238,7 @@ func SimulateTraffic(deviceID uuid.UUID, interfaceID *uuid.UUID) *models.DeviceT
 	}
 }
 
+// TODO: Replace with real speed test data for production use
 func SimulateSpeedTest(deviceID uuid.UUID) *models.DeviceSpeedTest {
 	up := 10.0 + rand.Float64()*100.0
 	down := 50.0 + rand.Float64()*400.0

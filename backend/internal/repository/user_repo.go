@@ -2,6 +2,8 @@ package repository
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"time"
 
@@ -132,18 +134,25 @@ func (r *UserRepository) UpdatePassword(ctx context.Context, id uuid.UUID, hash 
 }
 
 func (r *UserRepository) SetPasswordResetToken(ctx context.Context, id uuid.UUID, token string, expiresAt time.Time) error {
+	tokenHash := hashToken(token)
 	return r.db.Exec(ctx,
 		`UPDATE users SET password_reset_token=$1, password_reset_expires_at=$2 WHERE id=$3`,
-		token, expiresAt, id,
+		tokenHash, expiresAt, id,
 	)
 }
 
 func (r *UserRepository) GetByPasswordResetToken(ctx context.Context, token string) (*models.User, error) {
+	tokenHash := hashToken(token)
 	row := r.db.QueryRow(ctx,
 		`SELECT * FROM users WHERE password_reset_token = $1 AND password_reset_expires_at > NOW()`,
-		token,
+		tokenHash,
 	)
 	return r.scanUser(row)
+}
+
+func hashToken(token string) string {
+	hash := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(hash[:])
 }
 
 func (r *UserRepository) ClearPasswordResetToken(ctx context.Context, id uuid.UUID) error {

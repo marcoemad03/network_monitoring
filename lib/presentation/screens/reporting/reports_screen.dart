@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/reporting/reporting_provider.dart';
+import '../../widgets/common/app_error_widget.dart';
+import '../../../shared/extensions/string_extensions.dart';
 
 class ReportsScreen extends ConsumerStatefulWidget {
   const ReportsScreen({super.key});
@@ -61,20 +63,9 @@ class _SummaryTab extends ConsumerWidget {
 
     return summaryAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.error_outline, size: 48),
-            const SizedBox(height: 16),
-            const Text('Failed to load analytics'),
-            const SizedBox(height: 8),
-            OutlinedButton(
-              onPressed: () => ref.invalidate(analyticsSummaryProvider),
-              child: const Text('Retry'),
-            ),
-          ],
-        ),
+      error: (e, _) => AppErrorWidget(
+        message: 'Failed to load analytics',
+        onRetry: () => ref.invalidate(analyticsSummaryProvider),
       ),
       data: (summary) => SingleChildScrollView(
         padding: const EdgeInsets.all(16),
@@ -88,7 +79,7 @@ class _SummaryTab extends ConsumerWidget {
                 _AnalyticsCard(title: 'Total Web Logs', value: '${summary?.totalWebLogs ?? 0}', icon: Icons.language, color: Colors.blue),
                 _AnalyticsCard(title: 'Total Connections', value: '${summary?.totalConnections ?? 0}', icon: Icons.swap_vertical_circle, color: Colors.teal),
                 _AnalyticsCard(title: 'Total Downloads', value: '${summary?.totalDownloads ?? 0}', icon: Icons.download, color: Colors.purple),
-                _AnalyticsCard(title: 'Total Bandwidth', value: _formatBytes(summary?.totalBandwidthBytes ?? 0), icon: Icons.speed, color: Colors.orange),
+                _AnalyticsCard(title: 'Total Bandwidth', value: formatBytes(summary?.totalBandwidthBytes ?? 0), icon: Icons.speed, color: Colors.orange),
                 _AnalyticsCard(title: 'Unread Notifications', value: '${summary?.unreadNotifications ?? 0}', icon: Icons.notifications_active, color: Colors.red),
               ],
             ),
@@ -113,7 +104,7 @@ class _SummaryTab extends ConsumerWidget {
                           mainAxisAlignment: MainAxisAlignment.end,
                           children: [
                             Text(
-                              _formatBytes(val),
+                              formatBytes(val),
                               style: theme.textTheme.labelSmall,
                             ),
                             const SizedBox(height: 4),
@@ -148,7 +139,7 @@ class _SummaryTab extends ConsumerWidget {
                 children: consumers.map((c) => ListTile(
                   leading: CircleAvatar(child: Text('${consumers.indexOf(c) + 1}')),
                   title: Text(c.deviceName),
-                  trailing: Text(_formatBytes(c.totalBytes)),
+                  trailing: Text(formatBytes(c.totalBytes)),
                 )).toList(),
               ),
             ),
@@ -158,12 +149,7 @@ class _SummaryTab extends ConsumerWidget {
     );
   }
 
-  String _formatBytes(int bytes) {
-    if (bytes < 1024) return '$bytes B';
-    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-    if (bytes < 1024 * 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
-    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
-  }
+
 }
 
 class _AnalyticsCard extends StatelessWidget {
@@ -380,15 +366,8 @@ class _ExportsTab extends ConsumerWidget {
           const SizedBox(height: 16),
           exportsAsync.when(
             loading: () => const Center(child: CircularProgressIndicator()),
-            error: (e, _) => Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.error_outline, size: 48),
-                  const SizedBox(height: 16),
-                  Text('Failed to load exports'),
-                ],
-              ),
+            error: (e, _) => AppErrorWidget(
+              message: 'Failed to load exports',
             ),
             data: (exports) {
               if (exports.isEmpty) {
@@ -530,15 +509,8 @@ class _TopListContent extends ConsumerWidget {
 
     return asyncData.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.error_outline, size: 48),
-            const SizedBox(height: 16),
-            Text('Failed to load $label'),
-          ],
-        ),
+      error: (e, _) => AppErrorWidget(
+        message: 'Failed to load $label',
       ),
       data: (items) {
         if (items.isEmpty) {

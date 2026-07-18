@@ -66,12 +66,20 @@ class AuthState {
 
 class AuthNotifier extends StateNotifier<AuthState> {
   final AuthRepositoryImpl _authRepo;
+  bool _disposed = false;
 
   AuthNotifier(this._authRepo) : super(const AuthState());
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
+  }
 
   Future<void> checkAuth() async {
     state = state.copyWith(status: AuthStatus.loading);
     final valid = await _authRepo.isAuthenticated();
+    if (_disposed) return;
     if (valid.getOrElse(() => false)) {
       await _loadUser();
     } else {
@@ -85,6 +93,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       username: username,
       password: password,
     );
+    if (_disposed) return;
     result.fold(
       (failure) => state = state.copyWith(
         status: AuthStatus.unauthenticated,
@@ -99,11 +108,14 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   Future<void> logout() async {
     await _authRepo.logout();
-    state = const AuthState(status: AuthStatus.unauthenticated);
+    if (!_disposed) {
+      state = const AuthState(status: AuthStatus.unauthenticated);
+    }
   }
 
   Future<void> _loadUser() async {
     final result = await _authRepo.getCurrentUser();
+    if (_disposed) return;
     result.fold(
       (_) => state = state.copyWith(status: AuthStatus.unauthenticated),
       (user) {
@@ -115,6 +127,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   Future<void> _loadPermissions() async {
     final result = await _authRepo.getMyPermissions();
+    if (_disposed) return;
     result.fold(
       (_) {},
       (perms) => state = state.copyWith(permissions: perms),

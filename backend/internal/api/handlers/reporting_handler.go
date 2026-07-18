@@ -21,7 +21,11 @@ func NewLogsHandler(loggingService *services.LoggingService) *LogsHandler {
 }
 
 func (h *LogsHandler) GetWebLogs(c *gin.Context) {
-	orgID := uuid.MustParse(c.GetString("org_id"))
+	orgID, err := parseUUID(c.GetString("org_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid organization ID", "error_code": "VALIDATION_ERROR"})
+		return
+	}
 
 	var filter repository.WebLogFilter
 	if deviceID := c.Query("device_id"); deviceID != "" {
@@ -70,7 +74,11 @@ func (h *LogsHandler) GetWebLogs(c *gin.Context) {
 }
 
 func (h *LogsHandler) GetWebLogStats(c *gin.Context) {
-	orgID := uuid.MustParse(c.GetString("org_id"))
+	orgID, err := parseUUID(c.GetString("org_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid organization ID", "error_code": "VALIDATION_ERROR"})
+		return
+	}
 	from := parseTime(c.DefaultQuery("from", time.Now().Add(-24*time.Hour).Format(time.RFC3339)))
 	to := parseTime(c.DefaultQuery("to", time.Now().Format(time.RFC3339)))
 
@@ -83,7 +91,11 @@ func (h *LogsHandler) GetWebLogStats(c *gin.Context) {
 }
 
 func (h *LogsHandler) GetConnectionLogs(c *gin.Context) {
-	orgID := uuid.MustParse(c.GetString("org_id"))
+	orgID, err := parseUUID(c.GetString("org_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid organization ID", "error_code": "VALIDATION_ERROR"})
+		return
+	}
 
 	var filter repository.ConnectionLogFilter
 	if deviceID := c.Query("device_id"); deviceID != "" {
@@ -126,7 +138,11 @@ func (h *LogsHandler) GetConnectionLogs(c *gin.Context) {
 }
 
 func (h *LogsHandler) GetActiveConnections(c *gin.Context) {
-	orgID := uuid.MustParse(c.GetString("org_id"))
+	orgID, err := parseUUID(c.GetString("org_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid organization ID", "error_code": "VALIDATION_ERROR"})
+		return
+	}
 
 	conns, err := h.loggingService.GetActiveConnections(c.Request.Context(), orgID)
 	if err != nil {
@@ -140,7 +156,11 @@ func (h *LogsHandler) GetActiveConnections(c *gin.Context) {
 }
 
 func (h *LogsHandler) GetDownloadLogs(c *gin.Context) {
-	orgID := uuid.MustParse(c.GetString("org_id"))
+	orgID, err := parseUUID(c.GetString("org_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid organization ID", "error_code": "VALIDATION_ERROR"})
+		return
+	}
 
 	var filter repository.DownloadLogFilter
 	if deviceID := c.Query("device_id"); deviceID != "" {
@@ -193,7 +213,11 @@ type generateReportRequest struct {
 }
 
 func (h *ReportsHandler) GenerateReport(c *gin.Context) {
-	orgID := uuid.MustParse(c.GetString("org_id"))
+	orgID, err := parseUUID(c.GetString("org_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid organization ID", "error_code": "VALIDATION_ERROR"})
+		return
+	}
 
 	var req generateReportRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -269,7 +293,11 @@ func (h *ReportsHandler) GenerateReport(c *gin.Context) {
 }
 
 func (h *ReportsHandler) GetReportsList(c *gin.Context) {
-	orgID := uuid.MustParse(c.GetString("org_id"))
+	orgID, err := parseUUID(c.GetString("org_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid organization ID", "error_code": "VALIDATION_ERROR"})
+		return
+	}
 	reportType := c.DefaultQuery("report_type", "daily")
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
 
@@ -285,7 +313,11 @@ func (h *ReportsHandler) GetReportsList(c *gin.Context) {
 }
 
 func (h *ReportsHandler) GetReportDetail(c *gin.Context) {
-	orgID := uuid.MustParse(c.GetString("org_id"))
+	orgID, err := parseUUID(c.GetString("org_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid organization ID", "error_code": "VALIDATION_ERROR"})
+		return
+	}
 	reportType := c.Query("report_type")
 	periodStartStr := c.Query("period_start")
 	periodEndStr := c.Query("period_end")
@@ -302,7 +334,11 @@ func (h *ReportsHandler) GetReportDetail(c *gin.Context) {
 }
 
 func (h *ReportsHandler) GetTopWebsites(c *gin.Context) {
-	orgID := uuid.MustParse(c.GetString("org_id"))
+	orgID, err := parseUUID(c.GetString("org_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid organization ID", "error_code": "VALIDATION_ERROR"})
+		return
+	}
 	from := parseTime(c.DefaultQuery("from", time.Now().Add(-24*time.Hour).Format(time.RFC3339)))
 	to := parseTime(c.DefaultQuery("to", time.Now().Format(time.RFC3339)))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
@@ -319,7 +355,11 @@ func (h *ReportsHandler) GetTopWebsites(c *gin.Context) {
 }
 
 func (h *ReportsHandler) GetTopUsers(c *gin.Context) {
-	orgID := uuid.MustParse(c.GetString("org_id"))
+	orgID, err := parseUUID(c.GetString("org_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid organization ID", "error_code": "VALIDATION_ERROR"})
+		return
+	}
 	from := parseTime(c.DefaultQuery("from", time.Now().Add(-24*time.Hour).Format(time.RFC3339)))
 	to := parseTime(c.DefaultQuery("to", time.Now().Format(time.RFC3339)))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
@@ -336,19 +376,23 @@ func (h *ReportsHandler) GetTopUsers(c *gin.Context) {
 }
 
 func (h *ReportsHandler) GetTopBandwidthConsumers(c *gin.Context) {
-	orgID := uuid.MustParse(c.GetString("org_id"))
+	orgID, err := parseUUID(c.GetString("org_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid organization ID", "error_code": "VALIDATION_ERROR"})
+		return
+	}
 	from := parseTime(c.DefaultQuery("from", time.Now().Add(-24*time.Hour).Format(time.RFC3339)))
 	to := parseTime(c.DefaultQuery("to", time.Now().Format(time.RFC3339)))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
 
-	users, err := h.reportingService.GetTopUsers(c.Request.Context(), orgID, from, to, limit)
+	consumers, err := h.reportingService.GetTopBandwidthConsumers(c.Request.Context(), orgID, from, to, limit)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to fetch top bandwidth consumers", "error_code": "SERVER_ERROR"})
 		return
 	}
 
 	results := make([]gin.H, 0)
-	for _, u := range users {
+	for _, u := range consumers {
 		results = append(results, gin.H{
 			"user_id":     u.UserID,
 			"display_name": u.DisplayName,
@@ -359,7 +403,11 @@ func (h *ReportsHandler) GetTopBandwidthConsumers(c *gin.Context) {
 }
 
 func (h *ReportsHandler) GetDepartmentReports(c *gin.Context) {
-	orgID := uuid.MustParse(c.GetString("org_id"))
+	orgID, err := parseUUID(c.GetString("org_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid organization ID", "error_code": "VALIDATION_ERROR"})
+		return
+	}
 	from := parseTime(c.DefaultQuery("from", time.Now().Add(-24*time.Hour).Format(time.RFC3339)))
 	to := parseTime(c.DefaultQuery("to", time.Now().Format(time.RFC3339)))
 
@@ -390,8 +438,16 @@ type generateExportRequest struct {
 }
 
 func (h *ExportsHandler) GenerateExport(c *gin.Context) {
-	orgID := uuid.MustParse(c.GetString("org_id"))
-	userID := uuid.MustParse(c.GetString("user_id"))
+	orgID, err := parseUUID(c.GetString("org_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid organization ID", "error_code": "VALIDATION_ERROR"})
+		return
+	}
+	userID, err := parseUUID(c.GetString("user_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid user ID", "error_code": "VALIDATION_ERROR"})
+		return
+	}
 
 	var req generateExportRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -433,7 +489,11 @@ func (h *ExportsHandler) GenerateExport(c *gin.Context) {
 }
 
 func (h *ExportsHandler) GetExportsList(c *gin.Context) {
-	orgID := uuid.MustParse(c.GetString("org_id"))
+	orgID, err := parseUUID(c.GetString("org_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid organization ID", "error_code": "VALIDATION_ERROR"})
+		return
+	}
 
 	var filter repository.ExportFilter
 	if rt := c.Query("report_type"); rt != "" {
@@ -512,7 +572,11 @@ func NewAnalyticsHandler(analyticsService *services.AnalyticsService) *Analytics
 }
 
 func (h *AnalyticsHandler) GetBandwidthOverTime(c *gin.Context) {
-	orgID := uuid.MustParse(c.GetString("org_id"))
+	orgID, err := parseUUID(c.GetString("org_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid organization ID", "error_code": "VALIDATION_ERROR"})
+		return
+	}
 	from := parseTime(c.DefaultQuery("from", time.Now().Add(-7*24*time.Hour).Format(time.RFC3339)))
 	to := parseTime(c.DefaultQuery("to", time.Now().Format(time.RFC3339)))
 	interval := c.DefaultQuery("interval", "hourly")
@@ -529,7 +593,11 @@ func (h *AnalyticsHandler) GetBandwidthOverTime(c *gin.Context) {
 }
 
 func (h *AnalyticsHandler) GetAnalyticsSummary(c *gin.Context) {
-	orgID := uuid.MustParse(c.GetString("org_id"))
+	orgID, err := parseUUID(c.GetString("org_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid organization ID", "error_code": "VALIDATION_ERROR"})
+		return
+	}
 	from := parseTime(c.DefaultQuery("from", time.Now().Add(-24*time.Hour).Format(time.RFC3339)))
 	to := parseTime(c.DefaultQuery("to", time.Now().Format(time.RFC3339)))
 
@@ -542,7 +610,11 @@ func (h *AnalyticsHandler) GetAnalyticsSummary(c *gin.Context) {
 }
 
 func (h *AnalyticsHandler) GetDeviceAnalytics(c *gin.Context) {
-	orgID := uuid.MustParse(c.GetString("org_id"))
+	orgID, err := parseUUID(c.GetString("org_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid organization ID", "error_code": "VALIDATION_ERROR"})
+		return
+	}
 	deviceID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid device ID", "error_code": "VALIDATION_ERROR"})
@@ -577,7 +649,11 @@ func NewAlertRulesHandler(alertRuleRepo *repository.AlertRuleRepository, alertNo
 }
 
 func (h *AlertRulesHandler) ListAlertRules(c *gin.Context) {
-	orgID := uuid.MustParse(c.GetString("org_id"))
+	orgID, err := parseUUID(c.GetString("org_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid organization ID", "error_code": "VALIDATION_ERROR"})
+		return
+	}
 	rules, err := h.alertRuleRepo.GetAlertRules(c.Request.Context(), orgID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to fetch alert rules", "error_code": "SERVER_ERROR"})
@@ -590,8 +666,16 @@ func (h *AlertRulesHandler) ListAlertRules(c *gin.Context) {
 }
 
 func (h *AlertRulesHandler) CreateAlertRule(c *gin.Context) {
-	orgID := uuid.MustParse(c.GetString("org_id"))
-	userID := uuid.MustParse(c.GetString("user_id"))
+	orgID, err := parseUUID(c.GetString("org_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid organization ID", "error_code": "VALIDATION_ERROR"})
+		return
+	}
+	userID, err := parseUUID(c.GetString("user_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid user ID", "error_code": "VALIDATION_ERROR"})
+		return
+	}
 
 	var rule models.AlertRule
 	if err := c.ShouldBindJSON(&rule); err != nil {
@@ -659,7 +743,11 @@ func (h *AlertRulesHandler) DeleteAlertRule(c *gin.Context) {
 }
 
 func (h *AlertRulesHandler) ListNotifications(c *gin.Context) {
-	orgID := uuid.MustParse(c.GetString("org_id"))
+	orgID, err := parseUUID(c.GetString("org_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid organization ID", "error_code": "VALIDATION_ERROR"})
+		return
+	}
 
 	var filter repository.NotificationFilter
 	if severity := c.Query("severity"); severity != "" {
@@ -698,7 +786,11 @@ func (h *AlertRulesHandler) ListNotifications(c *gin.Context) {
 }
 
 func (h *AlertRulesHandler) GetUnreadCount(c *gin.Context) {
-	orgID := uuid.MustParse(c.GetString("org_id"))
+	orgID, err := parseUUID(c.GetString("org_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid organization ID", "error_code": "VALIDATION_ERROR"})
+		return
+	}
 	count, err := h.alertNotifRepo.GetUnreadCount(c.Request.Context(), orgID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to get unread count", "error_code": "SERVER_ERROR"})
@@ -727,7 +819,11 @@ func (h *AlertRulesHandler) Acknowledge(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid notification ID", "error_code": "VALIDATION_ERROR"})
 		return
 	}
-	userID := uuid.MustParse(c.GetString("user_id"))
+	userID, err := parseUUID(c.GetString("user_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid user ID", "error_code": "VALIDATION_ERROR"})
+		return
+	}
 
 	if err := h.alertNotifRepo.AcknowledgeNotification(c.Request.Context(), id, userID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to acknowledge notification", "error_code": "SERVER_ERROR"})
@@ -745,8 +841,16 @@ func NewDashboardHandler(dashboardService *services.DashboardService) *Dashboard
 }
 
 func (h *DashboardHandler) GetUserWidgets(c *gin.Context) {
-	orgID := uuid.MustParse(c.GetString("org_id"))
-	userID := uuid.MustParse(c.GetString("user_id"))
+	orgID, err := parseUUID(c.GetString("org_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid organization ID", "error_code": "VALIDATION_ERROR"})
+		return
+	}
+	userID, err := parseUUID(c.GetString("user_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid user ID", "error_code": "VALIDATION_ERROR"})
+		return
+	}
 
 	widgets, err := h.dashboardService.GetUserWidgets(c.Request.Context(), orgID, userID)
 	if err != nil {
@@ -760,8 +864,16 @@ func (h *DashboardHandler) GetUserWidgets(c *gin.Context) {
 }
 
 func (h *DashboardHandler) CreateWidget(c *gin.Context) {
-	orgID := uuid.MustParse(c.GetString("org_id"))
-	userID := uuid.MustParse(c.GetString("user_id"))
+	orgID, err := parseUUID(c.GetString("org_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid organization ID", "error_code": "VALIDATION_ERROR"})
+		return
+	}
+	userID, err := parseUUID(c.GetString("user_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid user ID", "error_code": "VALIDATION_ERROR"})
+		return
+	}
 
 	var widget models.DashboardWidget
 	if err := c.ShouldBindJSON(&widget); err != nil {
@@ -789,7 +901,11 @@ func (h *DashboardHandler) UpdateWidget(c *gin.Context) {
 		return
 	}
 
-	orgID := uuid.MustParse(c.GetString("org_id"))
+	orgID, err := parseUUID(c.GetString("org_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid organization ID", "error_code": "VALIDATION_ERROR"})
+		return
+	}
 
 	var widget models.DashboardWidget
 	if err := c.ShouldBindJSON(&widget); err != nil {
@@ -827,8 +943,16 @@ type reorderRequest struct {
 }
 
 func (h *DashboardHandler) ReorderWidgets(c *gin.Context) {
-	orgID := uuid.MustParse(c.GetString("org_id"))
-	userID := uuid.MustParse(c.GetString("user_id"))
+	orgID, err := parseUUID(c.GetString("org_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid organization ID", "error_code": "VALIDATION_ERROR"})
+		return
+	}
+	userID, err := parseUUID(c.GetString("user_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid user ID", "error_code": "VALIDATION_ERROR"})
+		return
+	}
 
 	var req reorderRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

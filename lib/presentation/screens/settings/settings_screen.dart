@@ -153,15 +153,15 @@ class SettingsScreen extends ConsumerWidget {
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Password must be at least 8 characters')));
                 return;
               }
-              Navigator.pop(ctx);
-              currentCtrl.dispose();
-              newCtrl.dispose();
-              confirmCtrl.dispose();
               final authRepo = ref.read(authRepositoryProvider);
               final result = await authRepo.changePassword(
                 currentPassword: currentCtrl.text,
                 newPassword: newCtrl.text,
               );
+              currentCtrl.dispose();
+              newCtrl.dispose();
+              confirmCtrl.dispose();
+              Navigator.pop(ctx);
               result.fold(
                 (failure) {
                   if (context.mounted) {

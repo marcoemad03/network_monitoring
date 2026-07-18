@@ -4,18 +4,11 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 
 	"github.com/gorilla/websocket"
 )
-
-var upgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
-	CheckOrigin: func(r *http.Request) bool {
-		return true
-	},
-}
 
 type Client struct {
 	hub  *Hub
@@ -24,20 +17,41 @@ type Client struct {
 }
 
 type Hub struct {
-	clients    map[*Client]bool
-	broadcast  chan []byte
-	register   chan *Client
-	unregister chan *Client
-	mu         sync.RWMutex
+	clients        map[*Client]bool
+	broadcast      chan []byte
+	register       chan *Client
+	unregister     chan *Client
+	mu             sync.RWMutex
+	allowedOrigins map[string]bool
 }
 
-func NewHub() *Hub {
-	return &Hub{
-		clients:    make(map[*Client]bool),
-		broadcast:  make(chan []byte, 256),
-		register:   make(chan *Client),
-		unregister: make(chan *Client),
+func NewHub(allowedOriginsStr string) *Hub {
+	allowedOrigins := make(map[string]bool)
+	for _, origin := range strings.Split(allowedOriginsStr, ",") {
+		origin = strings.TrimSpace(origin)
+		if origin != "" {
+			allowedOrigins[origin] = true
+		}
 	}
+
+	return &Hub{
+		clients:        make(map[*Client]bool),
+		broadcast:      make(chan []byte, 256),
+		register:       make(chan *Client),
+		unregister:     make(chan *Client),
+		allowedOrigins: allowedOrigins,
+	}
+}
+
+func (h *Hub) CheckOrigin(r *http.Request) bool {
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return true
+	}
+	if h.allowedOrigins["*"] {
+		return true
+	}
+	return h.allowedOrigins[origin]
 }
 
 func (h *Hub) Run() {
@@ -85,6 +99,11 @@ func (h *Hub) BroadcastMessage(msgType string, data interface{}) {
 }
 
 func ServeWS(hub *Hub, w http.ResponseWriter, r *http.Request) {
+	upgrader := websocket.Upgrader{
+		ReadBufferSize:  1024,
+		WriteBufferSize: 1024,
+		CheckOrigin:     hub.CheckOrigin,
+	}
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Printf("WebSocket upgrade error: %v", err)

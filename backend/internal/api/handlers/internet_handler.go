@@ -54,7 +54,11 @@ func (h *InternetHandler) GetPolicy(c *gin.Context) {
 }
 
 func (h *InternetHandler) CreatePolicy(c *gin.Context) {
-	orgID := uuid.MustParse(c.GetString("org_id"))
+	orgID, err := parseUUID(c.GetString("org_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid organization ID", "error_code": "VALIDATION_ERROR"})
+		return
+	}
 
 	var req struct {
 		Name            string     `json:"name"`
@@ -572,7 +576,11 @@ func (h *InternetHandler) DeleteSchedule(c *gin.Context) {
 // DeviceBlocks
 
 func (h *InternetHandler) ListDeviceBlocks(c *gin.Context) {
-	orgID := uuid.MustParse(c.GetString("org_id"))
+	orgID, err := parseUUID(c.GetString("org_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid organization ID", "error_code": "VALIDATION_ERROR"})
+		return
+	}
 
 	blocks, err := h.internetService.ListDeviceBlocks(c.Request.Context(), orgID)
 	if err != nil {
@@ -586,8 +594,16 @@ func (h *InternetHandler) ListDeviceBlocks(c *gin.Context) {
 }
 
 func (h *InternetHandler) BlockDevice(c *gin.Context) {
-	orgID := uuid.MustParse(c.GetString("org_id"))
-	userID := uuid.MustParse(c.GetString("user_id"))
+	orgID, err := parseUUID(c.GetString("org_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid organization ID", "error_code": "VALIDATION_ERROR"})
+		return
+	}
+	userID, err := parseUUID(c.GetString("user_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid user ID", "error_code": "VALIDATION_ERROR"})
+		return
+	}
 
 	var req struct {
 		DeviceID   *uuid.UUID `json:"device_id,omitempty"`
@@ -634,7 +650,11 @@ func (h *InternetHandler) UnblockDevice(c *gin.Context) {
 // VendorIntegrations
 
 func (h *InternetHandler) ListVendorIntegrations(c *gin.Context) {
-	orgID := uuid.MustParse(c.GetString("org_id"))
+	orgID, err := parseUUID(c.GetString("org_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid organization ID", "error_code": "VALIDATION_ERROR"})
+		return
+	}
 
 	integrations, err := h.internetService.ListVendorIntegrations(c.Request.Context(), orgID)
 	if err != nil {
@@ -663,7 +683,11 @@ func (h *InternetHandler) GetVendorIntegration(c *gin.Context) {
 }
 
 func (h *InternetHandler) CreateVendorIntegration(c *gin.Context) {
-	orgID := uuid.MustParse(c.GetString("org_id"))
+	orgID, err := parseUUID(c.GetString("org_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid organization ID", "error_code": "VALIDATION_ERROR"})
+		return
+	}
 
 	var req struct {
 		VendorType        string  `json:"vendor_type"`

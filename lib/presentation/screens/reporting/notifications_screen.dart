@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/reporting/reporting_provider.dart';
+import '../../widgets/common/app_error_widget.dart';
+import '../../../shared/extensions/datetime_extensions.dart';
 
 class NotificationsScreen extends ConsumerStatefulWidget {
   const NotificationsScreen({super.key});
@@ -65,20 +67,9 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
           Expanded(
             child: notificationsAsync.when(
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, _) => Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.error_outline, size: 48),
-                    const SizedBox(height: 16),
-                    Text('Failed to load notifications'),
-                    const SizedBox(height: 8),
-                    OutlinedButton(
-            onPressed: () => ref.invalidate(notificationsProvider),
-                      child: const Text('Retry'),
-                    ),
-                  ],
-                ),
+              error: (e, _) => AppErrorWidget(
+                message: 'Failed to load notifications',
+                onRetry: () => ref.invalidate(notificationsProvider),
               ),
               data: (notifications) {
                 final filtered = notifications.where((n) {
@@ -159,7 +150,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                                         _SeverityBadge(label: notification.severity, color: severityColor),
                                         const Spacer(),
                                         Text(
-                                          _formatTimestamp(notification.triggeredAt),
+                                          notification.triggeredAt.timeAgo(),
                                           style: theme.textTheme.bodySmall,
                                         ),
                                       ],
@@ -207,14 +198,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
     }
   }
 
-  String _formatTimestamp(DateTime timestamp) {
-    final now = DateTime.now();
-    final diff = now.difference(timestamp);
-    if (diff.inMinutes < 1) return 'Just now';
-    if (diff.inHours < 1) return '${diff.inMinutes}m ago';
-    if (diff.inDays < 1) return '${diff.inHours}h ago';
-    return '${timestamp.day}/${timestamp.month}/${timestamp.year} ${timestamp.hour}:${timestamp.minute.toString().padLeft(2, '0')}';
-  }
+
 }
 
 class _FilterChip extends StatelessWidget {

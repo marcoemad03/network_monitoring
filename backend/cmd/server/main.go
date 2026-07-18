@@ -27,6 +27,11 @@ func main() {
 	}
 
 	logger.Init(cfg.LogLevel, cfg.LogFormat)
+
+	if cfg.JWTAccessSecret == "change-me" || cfg.JWTRefreshSecret == "change-me" {
+		logger.Fatal("JWT secrets are set to default values. Change them in .env file")
+	}
+
 	logger.Info("Starting Hospital NMS Backend",
 		"environment", cfg.Environment,
 		"port", cfg.ServerPort,
@@ -42,7 +47,7 @@ func main() {
 		logger.Warn("Failed to seed database", "error", err)
 	}
 
-	hub := websocket.NewHub()
+	hub := websocket.NewHub(cfg.CORSAllowedOrigins)
 	go hub.Run()
 
 	monitor := monitoring.NewMonitor(db, hub, 30*time.Second)

@@ -120,10 +120,12 @@ func (c *SNMPCollector) repositoryDevice(ctx context.Context, id uuid.UUID) (*mo
 	return c.monRepo.GetDeviceByID(ctx, id)
 }
 
+// TODO: Implement real SNMP WalkOID using gosnmp for production use
 func (c *SNMPCollector) WalkOID(ctx context.Context, ip, community, oid string) (map[string]string, error) {
 	return nil, fmt.Errorf("SNMP WalkOID not yet implemented - requires gosnmp dependency")
 }
 
+// TODO: Implement real SNMP Get using gosnmp for production use
 func (c *SNMPCollector) Get(ctx context.Context, ip, community, oid string) (string, error) {
 	return "", fmt.Errorf("SNMP Get not yet implemented - requires gosnmp dependency")
 }

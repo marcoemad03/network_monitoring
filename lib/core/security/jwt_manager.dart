@@ -59,13 +59,9 @@ class JwtManager {
   }
 
   Future<bool> refreshToken() async {
-    try {
-      final token = await getRefreshToken();
-      if (token == null) return false;
-      return true;
-    } catch (_) {
-      return false;
-    }
+    // Deprecated: refresh is handled by AuthInterceptor and AuthRepositoryImpl.
+    // This method kept for backward compatibility.
+    return false;
   }
 
   Future<void> clearTokens() async {

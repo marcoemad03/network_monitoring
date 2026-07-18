@@ -9,7 +9,7 @@ enum WebSocketState { disconnected, connecting, connected, reconnecting }
 
 class WebSocketClient {
   final JwtManager _jwtManager;
-  WebSocketChannel? _channel;
+  IOWebSocketChannel? _channel;
   WebSocketState _state = WebSocketState.disconnected;
   Timer? _reconnectTimer;
   Timer? _heartbeatTimer;
@@ -90,9 +90,10 @@ class WebSocketClient {
     if (_reconnectAttempts >= _maxReconnectAttempts) return;
     _setState(WebSocketState.reconnecting);
     _reconnectAttempts++;
-    _reconnectTimer = Timer.periodic(
+    _reconnectTimer = Timer(
       Duration(seconds: _getBackoffSeconds()),
-      (_) {
+      () {
+        _reconnectTimer = null;
         if (_currentPath != null) {
           connect(_currentPath!);
         }

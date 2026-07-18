@@ -72,6 +72,28 @@ class AlertQueryParameters {
     this.sortBy,
     this.ascending = false,
   });
+
+  AlertQueryParameters copyWith({
+    int? page,
+    int? limit,
+    String? status,
+    String? severity,
+    String? category,
+    String? deviceId,
+    String? sortBy,
+    bool? ascending,
+  }) {
+    return AlertQueryParameters(
+      page: page ?? this.page,
+      limit: limit ?? this.limit,
+      status: status ?? this.status,
+      severity: severity ?? this.severity,
+      category: category ?? this.category,
+      deviceId: deviceId ?? this.deviceId,
+      sortBy: sortBy ?? this.sortBy,
+      ascending: ascending ?? this.ascending,
+    );
+  }
 }
 
 final alertFilterProvider =
@@ -83,9 +105,9 @@ class AlertFilterNotifier extends StateNotifier<AlertQueryParameters> {
   AlertFilterNotifier() : super(const AlertQueryParameters());
 
   void setStatus(String? status) =>
-      state = AlertQueryParameters(status: status, page: 1);
+      state = state.copyWith(status: status, page: 1);
   void setSeverity(String? severity) =>
-      state = AlertQueryParameters(severity: severity, page: 1);
-  void setPage(int page) => state = AlertQueryParameters(page: page);
+      state = state.copyWith(severity: severity, page: 1);
+  void setPage(int page) => state = state.copyWith(page: page);
   void reset() => state = const AlertQueryParameters();
 }

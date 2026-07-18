@@ -46,7 +46,7 @@ func (h *UserHandler) List(c *gin.Context) {
 	}
 
 	totalPages := (total + limit - 1) / limit
-	utils.SuccessWithMeta(c, http.StatusOK, sanitized, "Users retrieved", &utils.Meta{
+	utils.SuccessWithMeta(c, http.StatusOK, sanitized, &utils.Meta{
 		Page:       page,
 		Limit:      limit,
 		Total:      total,

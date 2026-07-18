@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/reporting/reporting_provider.dart';
+import '../../widgets/common/app_error_widget.dart';
 
 class DashboardWidgetsScreen extends ConsumerStatefulWidget {
   const DashboardWidgetsScreen({super.key});
@@ -31,20 +32,9 @@ class _DashboardWidgetsScreenState extends ConsumerState<DashboardWidgetsScreen>
       ),
       body: widgetsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.error_outline, size: 48),
-              const SizedBox(height: 16),
-              Text('Failed to load widgets'),
-              const SizedBox(height: 8),
-              OutlinedButton(
-                onPressed: () => ref.invalidate(dashboardWidgetsProvider),
-                child: const Text('Retry'),
-              ),
-            ],
-          ),
+        error: (e, _) => AppErrorWidget(
+          message: 'Failed to load widgets',
+          onRetry: () => ref.invalidate(dashboardWidgetsProvider),
         ),
         data: (widgets) {
           if (widgets.isEmpty) {
