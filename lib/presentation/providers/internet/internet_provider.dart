@@ -8,8 +8,6 @@ import '../../../domain/entities/vendor_integration.dart';
 import '../../../data/repositories/internet_repository_impl.dart';
 import '../../../data/datasources/remote/internet_remote_datasource.dart';
 import '../../../core/di/injection_container.dart';
-import '../../../core/network/dio_client.dart';
-import '../../../core/network/network_info.dart';
 
 final internetRemoteDataSourceProvider = Provider<InternetRemoteDataSource>((ref) {
   return InternetRemoteDataSourceImpl(ref.watch(dioProvider));

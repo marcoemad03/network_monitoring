@@ -1,4 +1,3 @@
-import 'package:dio/dio.dart';
 import '../../models/internet_policy_model.dart';
 import '../../models/bandwidth_rule_model.dart';
 import '../../models/filtering_rule_model.dart';
@@ -11,7 +10,6 @@ import '../../../domain/entities/filtering_rule.dart';
 import '../../../domain/entities/time_schedule.dart';
 import '../../../domain/entities/device_block.dart';
 import '../../../domain/entities/vendor_integration.dart';
-import '../../../core/errors/exceptions.dart';
 import '../../../core/network/dio_client.dart';
 import '../../../core/constants/api_constants.dart';
 

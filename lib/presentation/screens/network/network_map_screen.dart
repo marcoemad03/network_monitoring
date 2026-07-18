@@ -6,7 +6,6 @@ import '../../providers/device/device_provider.dart';
 import '../../router/route_names.dart';
 import '../../../core/enums/device_type.dart';
 import '../../../core/enums/device_status.dart';
-import '../../../core/network/websocket_client.dart';
 import '../../../domain/entities/device.dart';
 import '../../../domain/entities/device_connection.dart';
 

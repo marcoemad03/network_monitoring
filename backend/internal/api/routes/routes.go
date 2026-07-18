@@ -25,12 +25,28 @@ func RegisterRoutes(router *gin.Engine, db *database.DB, hub *websocket.Hub, cfg
 	monRepo := repository.NewMonitoringRepository(db)
 	internetRepo := repository.NewInternetRepository(db)
 
+	// Reporting repositories
+	webLogRepo := repository.NewWebLogRepository(db)
+	connLogRepo := repository.NewConnectionLogRepository(db)
+	downLogRepo := repository.NewDownloadLogRepository(db)
+	reportCacheRepo := repository.NewReportCacheRepository(db)
+	reportExportRepo := repository.NewReportExportRepository(db)
+	alertRuleRepo := repository.NewAlertRuleRepository(db)
+	alertNotifRepo := repository.NewAlertNotificationRepository(db)
+	dashWidgetRepo := repository.NewDashboardWidgetRepository(db)
+
 	authService := services.NewAuthService(userRepo, sessionRepo, jwtManager, cfg)
 	deviceService := services.NewDeviceService(deviceRepo, alertRepo, auditRepo)
 	alertService := services.NewAlertService(alertRepo)
 	permService := services.NewPermissionService(permRepo, userRepo)
 	monitoringService := services.NewMonitoringService(monRepo, deviceRepo)
 	internetService := services.NewInternetService(internetRepo)
+
+	// Reporting services
+	loggingService := services.NewLoggingService(webLogRepo, connLogRepo, downLogRepo)
+	reportingService := services.NewReportingService(reportCacheRepo, reportExportRepo, webLogRepo)
+	analyticsService := services.NewAnalyticsService(webLogRepo)
+	dashboardService := services.NewDashboardService(dashWidgetRepo)
 
 	authHandler := handlers.NewAuthHandler(authService, userRepo)
 	deviceHandler := handlers.NewDeviceHandler(deviceService)
@@ -41,6 +57,14 @@ func RegisterRoutes(router *gin.Engine, db *database.DB, hub *websocket.Hub, cfg
 	permHandler := handlers.NewPermissionHandler(permService)
 	monitoringHandler := handlers.NewMonitoringHandler(monitoringService)
 	internetHandler := handlers.NewInternetHandler(internetService)
+
+	// Reporting handlers
+	logsHandler := handlers.NewLogsHandler(loggingService)
+	reportsHandler := handlers.NewReportsHandler(reportingService)
+	exportsHandler := handlers.NewExportsHandler(reportingService)
+	analyticsHandler := handlers.NewAnalyticsHandler(analyticsService)
+	alertsHandler := handlers.NewAlertRulesHandler(alertRuleRepo, alertNotifRepo)
+	dashboardHandler := handlers.NewDashboardHandler(dashboardService)
 
 	api := router.Group("/api/v1")
 	api.Use(middleware.CorrelationID())
@@ -199,6 +223,68 @@ func RegisterRoutes(router *gin.Engine, db *database.DB, hub *websocket.Hub, cfg
 		}
 
 		protected.GET("/dashboard/summary", monitoringHandler.GetDashboardSummary)
+
+		// Reporting - Logs
+		logs := protected.Group("/logs")
+		{
+			logs.GET("/web", logsHandler.GetWebLogs)
+			logs.GET("/web/stats", logsHandler.GetWebLogStats)
+			logs.GET("/connections", logsHandler.GetConnectionLogs)
+			logs.GET("/connections/active", logsHandler.GetActiveConnections)
+			logs.GET("/downloads", logsHandler.GetDownloadLogs)
+		}
+
+		// Reports
+		reports := protected.Group("/reports")
+		{
+			reports.POST("/generate", reportsHandler.GenerateReport)
+			reports.GET("", reportsHandler.GetReportsList)
+			reports.GET("/detail", reportsHandler.GetReportDetail)
+			reports.GET("/top-websites", reportsHandler.GetTopWebsites)
+			reports.GET("/top-users", reportsHandler.GetTopUsers)
+			reports.GET("/top-bandwidth", reportsHandler.GetTopBandwidthConsumers)
+			reports.GET("/departments", reportsHandler.GetDepartmentReports)
+		}
+
+		// Exports
+		exports := protected.Group("/exports")
+		{
+			exports.POST("/generate", exportsHandler.GenerateExport)
+			exports.GET("", exportsHandler.GetExportsList)
+			exports.GET("/:id/download", exportsHandler.DownloadExport)
+			exports.DELETE("/:id", exportsHandler.DeleteExport)
+		}
+
+		// Analytics
+		analytics := protected.Group("/analytics")
+		{
+			analytics.GET("/bandwidth", analyticsHandler.GetBandwidthOverTime)
+			analytics.GET("/summary", analyticsHandler.GetAnalyticsSummary)
+			analytics.GET("/device/:id", analyticsHandler.GetDeviceAnalytics)
+		}
+
+		// Alerts
+		alerts := protected.Group("/alerts")
+		{
+			alerts.GET("/rules", alertsHandler.ListAlertRules)
+			alerts.POST("/rules", alertsHandler.CreateAlertRule)
+			alerts.PUT("/rules/:id", alertsHandler.UpdateAlertRule)
+			alerts.DELETE("/rules/:id", alertsHandler.DeleteAlertRule)
+			alerts.GET("/notifications", alertsHandler.ListNotifications)
+			alerts.GET("/notifications/unread-count", alertsHandler.GetUnreadCount)
+			alerts.PUT("/notifications/:id/read", alertsHandler.MarkAsRead)
+			alerts.PUT("/notifications/:id/acknowledge", alertsHandler.Acknowledge)
+		}
+
+		// Dashboard Widgets
+		dashWidgets := protected.Group("/dashboard/widgets")
+		{
+			dashWidgets.GET("", dashboardHandler.GetUserWidgets)
+			dashWidgets.POST("", dashboardHandler.CreateWidget)
+			dashWidgets.PUT("/:id", dashboardHandler.UpdateWidget)
+			dashWidgets.DELETE("/:id", dashboardHandler.DeleteWidget)
+			dashWidgets.PUT("/reorder", dashboardHandler.ReorderWidgets)
+		}
 	}
 
 	router.GET("/ws/alerts", func(c *gin.Context) {

@@ -56,25 +56,26 @@ class VendorIntegrationsScreen extends ConsumerWidget {
               onEdit: () => _showVendorDialog(context, ref, vendors[index]),
               onDelete: () async {
                 final repo = ref.read(internetRepositoryProvider);
-                (await repo.deleteVendorIntegration(vendors[index].id)).fold(
-                  (_) => ref.invalidate(vendorIntegrationsProvider),
+                final result = await repo.deleteVendorIntegration(vendors[index].id);
+                result.fold(
                   (f) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: ${f.message}'))),
+                  (_) => ref.invalidate(vendorIntegrationsProvider),
                 );
               },
               onTest: () async {
                 final repo = ref.read(internetRepositoryProvider);
                 final result = await repo.testVendorConnection(vendors[index].id);
                 result.fold(
-                  (_) => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Connection successful'), backgroundColor: Colors.green)),
                   (f) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Test failed: ${f.message}'), backgroundColor: Colors.red)),
+                  (_) => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Connection successful'), backgroundColor: Colors.green)),
                 );
               },
               onSync: () async {
                 final repo = ref.read(internetRepositoryProvider);
                 final result = await repo.syncVendor(vendors[index].id);
                 result.fold(
-                  (_) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Sync initiated'), backgroundColor: Colors.blue)); ref.invalidate(vendorIntegrationsProvider); },
                   (f) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Sync failed: ${f.message}'), backgroundColor: Colors.red)),
+                  (_) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Sync initiated'), backgroundColor: Colors.blue)); ref.invalidate(vendorIntegrationsProvider); },
                 );
               },
             ),
@@ -122,9 +123,9 @@ class VendorIntegrationsScreen extends ConsumerWidget {
                   const SizedBox(height: 16),
                   TextField(controller: userCtrl, decoration: const InputDecoration(labelText: 'Username')),
                   const SizedBox(height: 16),
-                  TextField(controller: passCtrl, decoration: const InputDecoration(labelText: existing != null ? 'New Password (leave empty to keep)' : 'Password'), obscureText: true),
+                  TextField(controller: passCtrl, decoration: InputDecoration(labelText: existing != null ? 'New Password (leave empty to keep)' : 'Password'), obscureText: true),
                   const SizedBox(height: 16),
-                  TextField(controller: apiKeyCtrl, decoration: const InputDecoration(labelText: existing != null ? 'New API Key' : 'API Key'), obscureText: true),
+                  TextField(controller: apiKeyCtrl, decoration: InputDecoration(labelText: existing != null ? 'New API Key' : 'API Key'), obscureText: true),
                   const SizedBox(height: 16),
                   SwitchListTile(
                     title: const Text('Active'),

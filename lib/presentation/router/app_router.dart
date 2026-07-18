@@ -20,6 +20,13 @@ import '../screens/internet/policy_list_screen.dart';
 import '../screens/internet/policy_detail_screen.dart';
 import '../screens/internet/device_blocks_screen.dart';
 import '../screens/internet/vendor_integrations_screen.dart';
+import '../screens/reporting/reporting_hub_screen.dart';
+import '../screens/reporting/web_logs_screen.dart';
+import '../screens/reporting/connection_logs_screen.dart';
+import '../screens/reporting/download_logs_screen.dart';
+import '../screens/reporting/reports_screen.dart';
+import '../screens/reporting/alert_rules_screen.dart';
+import '../screens/reporting/dashboard_widgets_screen.dart';
 import 'route_names.dart';
 import '../widgets/layout/app_scaffold.dart';
 
@@ -137,6 +144,34 @@ class AppRouter {
                 GoRoute(
                   path: RouteNames.auditLog,
                   builder: (context, state) => const AuditLogScreen(),
+                ),
+                GoRoute(
+                  path: RouteNames.reporting,
+                  builder: (context, state) => const ReportingHubScreen(),
+                ),
+                GoRoute(
+                  path: RouteNames.webLogs,
+                  builder: (context, state) => const WebLogsScreen(),
+                ),
+                GoRoute(
+                  path: RouteNames.connectionLogs,
+                  builder: (context, state) => const ConnectionLogsScreen(),
+                ),
+                GoRoute(
+                  path: RouteNames.downloadLogs,
+                  builder: (context, state) => const DownloadLogsScreen(),
+                ),
+                GoRoute(
+                  path: RouteNames.reports,
+                  builder: (context, state) => const ReportsScreen(),
+                ),
+                GoRoute(
+                  path: RouteNames.alertRules,
+                  builder: (context, state) => const AlertRulesScreen(),
+                ),
+                GoRoute(
+                  path: RouteNames.widgets,
+                  builder: (context, state) => const DashboardWidgetsScreen(),
                 ),
               ],
             ),

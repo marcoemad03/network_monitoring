@@ -25,4 +25,13 @@ class RouteNames {
   static const String internetPolicyCreate = '/internet/policies/create';
   static const String deviceBlocks = '/internet/blocks';
   static const String vendorIntegrations = '/internet/vendors';
+
+  // Reporting & Analytics
+  static const String reporting = '/reporting';
+  static const String webLogs = '/reporting/web-logs';
+  static const String connectionLogs = '/reporting/connections';
+  static const String downloadLogs = '/reporting/downloads';
+  static const String reports = '/reporting/reports';
+  static const String alertRules = '/reporting/alerts';
+  static const String widgets = '/reporting/widgets';
 }

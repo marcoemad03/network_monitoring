@@ -107,6 +107,36 @@ class ApiConstants {
   static String vendorIntegrationTest(String id) => '$basePath/vendor-integrations/$id/test';
   static String vendorIntegrationSync(String id) => '$basePath/vendor-integrations/$id/sync';
 
+  // Reporting & Analytics
+  static const String webLogs = '$basePath/logs/web';
+  static const String webLogStats = '$basePath/logs/web/stats';
+  static const String connectionLogs = '$basePath/logs/connections';
+  static const String activeConnections = '$basePath/logs/connections/active';
+  static const String downloadLogs = '$basePath/logs/downloads';
+  static const String reports = '$basePath/reports';
+  static const String reportGenerate = '$basePath/reports/generate';
+  static const String reportDetail = '$basePath/reports/detail';
+  static const String topWebsites = '$basePath/reports/top-websites';
+  static const String topUsers = '$basePath/reports/top-users';
+  static const String topBandwidth = '$basePath/reports/top-bandwidth';
+  static const String departmentReports = '$basePath/reports/departments';
+  static const String exports = '$basePath/exports';
+  static const String exportGenerate = '$basePath/exports/generate';
+  static String exportDownload(String id) => '$basePath/exports/$id/download';
+  static String exportDetail(String id) => '$basePath/exports/$id';
+  static const String analyticsBandwidth = '$basePath/analytics/bandwidth';
+  static const String analyticsSummary = '$basePath/analytics/summary';
+  static String deviceAnalytics(String id) => '$basePath/analytics/device/$id';
+  static const String alertRules = '$basePath/alerts/rules';
+  static String alertRuleDetail(String id) => '$basePath/alerts/rules/$id';
+  static const String notifications = '$basePath/alerts/notifications';
+  static const String unreadCount = '$basePath/alerts/notifications/unread-count';
+  static String markNotificationRead(String id) => '$basePath/alerts/notifications/$id/read';
+  static String acknowledgeNotification(String id) => '$basePath/alerts/notifications/$id/acknowledge';
+  static const String dashboardWidgets = '$basePath/dashboard/widgets';
+  static String dashboardWidgetDetail(String id) => '$basePath/dashboard/widgets/$id';
+  static const String dashboardWidgetReorder = '$basePath/dashboard/widgets/reorder';
+
   // Content Types
   static const String applicationJson = 'application/json';
 }

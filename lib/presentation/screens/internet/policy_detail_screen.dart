@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/internet/internet_provider.dart';
-import '../../providers/device/device_provider.dart';
 import '../../../domain/entities/internet_policy.dart';
 import '../../../domain/entities/bandwidth_rule.dart';
 import '../../../domain/entities/filtering_rule.dart';
@@ -49,7 +48,7 @@ class _InternetPolicyDetailScreenState extends ConsumerState<InternetPolicyDetai
     final isNew = widget.policyId == null;
 
     if (isNew) {
-      return _buildEditor(theme, null);
+      return _buildEditor(theme, null, isNew);
     }
 
     final policyAsync = ref.watch(internetPolicyDetailProvider(widget.policyId!));
@@ -58,11 +57,11 @@ class _InternetPolicyDetailScreenState extends ConsumerState<InternetPolicyDetai
       error: (e, _) => Scaffold(body: Center(child: Text('Error: $e'))),
       data: (policy) => policy == null
           ? const Scaffold(body: Center(child: Text('Policy not found')))
-          : _buildEditor(theme, policy),
+          : _buildEditor(theme, policy, isNew),
     );
   }
 
-  Widget _buildEditor(ThemeData theme, InternetPolicy? policy) {
+  Widget _buildEditor(ThemeData theme, InternetPolicy? policy, bool isNew) {
     if (policy != null && _nameCtrl.text.isEmpty) {
       _nameCtrl.text = policy.name;
       _descCtrl.text = policy.description ?? '';
@@ -240,7 +239,7 @@ class _BandwidthTab extends ConsumerWidget {
                       itemBuilder: (context, index) => _BandwidthRuleCard(
                         rule: rules[index],
                         onEdit: () => _showRuleDialog(context, ref, rules[index]),
-                        onDelete: () => _deleteRule(ref, rules[index].id),
+                        onDelete: () => _deleteRule(context, ref, rules[index].id),
                       ),
                     ),
             ),
@@ -329,7 +328,7 @@ class _BandwidthTab extends ConsumerWidget {
     );
   }
 
-  void _deleteRule(WidgetRef ref, String ruleId) async {
+  void _deleteRule(BuildContext context, WidgetRef ref, String ruleId) async {
     final repo = ref.read(internetRepositoryProvider);
     final result = await repo.deleteBandwidthRule(ruleId);
     result.fold(
@@ -348,7 +347,6 @@ class _BandwidthRuleCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
@@ -406,9 +404,10 @@ class _FilteringTab extends ConsumerWidget {
                         onEdit: () => _showFilterDialog(context, ref, rules[index]),
                         onDelete: () async {
                           final repo = ref.read(internetRepositoryProvider);
-                          (await repo.deleteFilteringRule(rules[index].id)).fold(
-                            (_) => ref.invalidate(filteringRulesProvider(policyId)),
+                          final result = await repo.deleteFilteringRule(rules[index].id);
+                          result.fold(
                             (f) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $f'))),
+                            (_) => ref.invalidate(filteringRulesProvider(policyId)),
                           );
                         },
                       ),
@@ -518,7 +517,6 @@ class _FilteringRuleCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final filterColor = rule.filterType == 'block' || rule.filterType == 'blacklist'
         ? Colors.red : Colors.green;
     return Card(
@@ -587,9 +585,10 @@ class _SchedulingTab extends ConsumerWidget {
                             icon: Icon(Icons.delete, size: 18, color: Colors.red),
                             onPressed: () async {
                               final repo = ref.read(internetRepositoryProvider);
-                              (await repo.deleteSchedule(schedules[index].id)).fold(
-                                (_) => ref.invalidate(schedulesProvider(policyId)),
+                              final result = await repo.deleteSchedule(schedules[index].id);
+                              result.fold(
                                 (f) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $f'))),
+                                (_) => ref.invalidate(schedulesProvider(policyId)),
                               );
                             },
                           ),

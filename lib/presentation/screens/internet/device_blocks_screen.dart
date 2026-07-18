@@ -55,9 +55,10 @@ class DeviceBlocksScreen extends ConsumerWidget {
               block: blocks[index],
               onUnblock: () async {
                 final repo = ref.read(internetRepositoryProvider);
-                (await repo.unblockDevice(blocks[index].id)).fold(
-                  (_) => ref.invalidate(deviceBlocksProvider),
+                final result = await repo.unblockDevice(blocks[index].id);
+                result.fold(
                   (f) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: ${f.message}'))),
+                  (_) => ref.invalidate(deviceBlocksProvider),
                 );
               },
             ),
@@ -104,9 +105,10 @@ class DeviceBlocksScreen extends ConsumerWidget {
                 blockedBy: null, blockedAt: DateTime.now(),
                 isActive: true,
               );
-              (await repo.blockDevice(block)).fold(
-                (_) { ref.invalidate(deviceBlocksProvider); Navigator.pop(ctx); },
+              final result = await repo.blockDevice(block);
+              result.fold(
                 (f) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: ${f.message}'))),
+                (_) { ref.invalidate(deviceBlocksProvider); Navigator.pop(ctx); },
               );
             },
             child: const Text('Block'),
