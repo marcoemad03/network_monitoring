@@ -159,7 +159,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                                         _SeverityBadge(label: notification.severity, color: severityColor),
                                         const Spacer(),
                                         Text(
-                                          _formatTimestamp(notification.timestamp),
+                                          _formatTimestamp(notification.triggeredAt),
                                           style: theme.textTheme.bodySmall,
                                         ),
                                       ],

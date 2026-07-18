@@ -172,7 +172,7 @@ func (s *AuthService) Logout(ctx context.Context, accessToken string) error {
 	tokenHash := s.jwtManager.HashToken(accessToken)
 	session, err := s.sessionRepo.GetByTokenHash(ctx, tokenHash)
 	if err == nil {
-		s.sessionRepo.Revoke(ctx, session.ID)
+		return s.sessionRepo.Revoke(ctx, session.ID)
 	}
 	return nil
 }
@@ -186,11 +186,6 @@ func (s *AuthService) ListSessions(ctx context.Context, userID uuid.UUID) ([]mod
 }
 
 func (s *AuthService) RevokeSession(ctx context.Context, userID, sessionID uuid.UUID) error {
-	session, err := s.sessionRepo.GetByTokenHash(ctx, "")
-	if err != nil {
-		return err
-	}
-	_ = session
 	return s.sessionRepo.Revoke(ctx, sessionID)
 }
 

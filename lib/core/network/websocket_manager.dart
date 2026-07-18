@@ -5,6 +5,7 @@ import '../utils/logger.dart';
 final class WebSocketManager {
   final WebSocketClient _client;
   StreamSubscription<Map<String, dynamic>>? _subscription;
+  Timer? _reconnectTimer;
   bool _started = false;
 
   final _messagesController = StreamController<Map<String, dynamic>>.broadcast();
@@ -48,7 +49,8 @@ final class WebSocketManager {
   }
 
   void _attemptReconnect() {
-    Future.delayed(const Duration(seconds: 5), () {
+    _reconnectTimer?.cancel();
+    _reconnectTimer = Timer(const Duration(seconds: 5), () {
       if (_started) start();
     });
   }
@@ -61,6 +63,7 @@ final class WebSocketManager {
   }
 
   void dispose() {
+    _reconnectTimer?.cancel();
     stop();
     _messagesController.close();
     _connectionStateController.close();

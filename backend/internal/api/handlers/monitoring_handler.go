@@ -19,7 +19,11 @@ func NewMonitoringHandler(monitoringService *services.MonitoringService) *Monito
 }
 
 func (h *MonitoringHandler) GetDashboardSummary(c *gin.Context) {
-	orgID := uuid.MustParse(c.GetString("org_id"))
+	orgID, err := parseUUID(c.GetString("org_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid organization ID", "error_code": "VALIDATION_ERROR"})
+		return
+	}
 
 	summary, err := h.monitoringService.GetDashboardSummary(c.Request.Context(), orgID)
 	if err != nil {
@@ -68,7 +72,11 @@ func (h *MonitoringHandler) GetDeviceClients(c *gin.Context) {
 }
 
 func (h *MonitoringHandler) GetAllClients(c *gin.Context) {
-	orgID := uuid.MustParse(c.GetString("org_id"))
+	orgID, err := parseUUID(c.GetString("org_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid organization ID", "error_code": "VALIDATION_ERROR"})
+		return
+	}
 
 	clients, err := h.monitoringService.GetAllClients(c.Request.Context(), orgID)
 	if err != nil {
@@ -91,7 +99,11 @@ func (h *MonitoringHandler) GetAllClients(c *gin.Context) {
 }
 
 func (h *MonitoringHandler) GetConnections(c *gin.Context) {
-	orgID := uuid.MustParse(c.GetString("org_id"))
+	orgID, err := parseUUID(c.GetString("org_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid organization ID", "error_code": "VALIDATION_ERROR"})
+		return
+	}
 
 	connections, err := h.monitoringService.GetConnections(c.Request.Context(), orgID)
 	if err != nil {

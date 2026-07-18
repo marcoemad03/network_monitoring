@@ -25,7 +25,11 @@ type startScanRequest struct {
 }
 
 func (h *ScanHandler) List(c *gin.Context) {
-	orgID := uuid.MustParse(c.GetString("org_id"))
+	orgID, err := parseUUID(c.GetString("org_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid organization ID", "error_code": "VALIDATION_ERROR"})
+		return
+	}
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
 

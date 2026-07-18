@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/reporting/reporting_provider.dart';
+import '../../widgets/common/app_error_widget.dart';
+import '../../../shared/extensions/string_extensions.dart';
 
 class ConnectionLogsScreen extends ConsumerStatefulWidget {
   const ConnectionLogsScreen({super.key});
@@ -25,7 +27,6 @@ class _ConnectionLogsScreenState extends ConsumerState<ConnectionLogsScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final statsAsync = ref.watch(activeConnectionCountProvider);
     final logsAsync = ref.watch(connectionLogsProvider);
 
     return Scaffold(
@@ -147,20 +148,9 @@ class _ConnectionLogsScreenState extends ConsumerState<ConnectionLogsScreen> {
           Expanded(
             child: logsAsync.when(
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, _) => Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.error_outline, size: 48),
-                    const SizedBox(height: 16),
-                    Text('Failed to load connection logs'),
-                    const SizedBox(height: 8),
-                    OutlinedButton(
-                      onPressed: () => ref.invalidate(connectionLogsProvider),
-                      child: const Text('Retry'),
-                    ),
-                  ],
-                ),
+              error: (e, _) => AppErrorWidget(
+                message: 'Failed to load connection logs',
+                onRetry: () => ref.invalidate(connectionLogsProvider),
               ),
               data: (logs) {
                 if (logs.isEmpty) {
@@ -197,7 +187,7 @@ class _ConnectionLogsScreenState extends ConsumerState<ConnectionLogsScreen> {
                           DataCell(Text(log.destIp)),
                           DataCell(_ProtocolBadge(protocol: log.protocol ?? '')),
                           DataCell(Text(log.isActive ? 'Active' : '${log.durationSeconds}s')),
-                          DataCell(Text(_formatBytes(log.bytesSent + log.bytesReceived))),
+                          DataCell(Text(formatBytes(log.bytesSent + log.bytesReceived))),
                           DataCell(
                             isActive
                                 ? Container(
@@ -241,12 +231,7 @@ class _ConnectionLogsScreenState extends ConsumerState<ConnectionLogsScreen> {
     }
   }
 
-  String _formatBytes(int bytes) {
-    if (bytes < 1024) return '$bytes B';
-    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-    if (bytes < 1024 * 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
-    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
-  }
+
 }
 
 class _StatCard extends StatelessWidget {

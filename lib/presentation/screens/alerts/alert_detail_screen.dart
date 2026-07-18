@@ -1,8 +1,4 @@
 import 'package:flutter/material.dart';
-import '../../../core/enums/alert_severity.dart';
-import '../../../core/utils/date_formatters.dart';
-import '../../widgets/common/status_badge.dart';
-import '../../../domain/entities/alert.dart';
 
 class AlertDetailScreen extends StatelessWidget {
   final String id;

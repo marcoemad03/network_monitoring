@@ -161,6 +161,10 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
           FilledButton(
             onPressed: () async {
               Navigator.pop(ctx);
+              nameController.dispose();
+              emailController.dispose();
+              usernameController.dispose();
+              passwordController.dispose();
               final repo = ref.read(_userRepoProvider);
               if (user != null) {
                 await repo.updateUser(
@@ -229,6 +233,7 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
           FilledButton(
             onPressed: () async {
               Navigator.pop(ctx);
+              controller.dispose();
               if (controller.text.length >= 8) {
                 await ref.read(_userRepoProvider).adminResetPassword(user.id, controller.text);
                 if (context.mounted) {

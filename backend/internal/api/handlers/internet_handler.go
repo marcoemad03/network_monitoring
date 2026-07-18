@@ -21,7 +21,11 @@ func NewInternetHandler(internetService *services.InternetService) *InternetHand
 // InternetPolicies
 
 func (h *InternetHandler) ListPolicies(c *gin.Context) {
-	orgID := uuid.MustParse(c.GetString("org_id"))
+	orgID, err := parseUUID(c.GetString("org_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid organization ID", "error_code": "VALIDATION_ERROR"})
+		return
+	}
 
 	policies, err := h.internetService.ListPolicies(c.Request.Context(), orgID)
 	if err != nil {

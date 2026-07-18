@@ -49,25 +49,19 @@ class JwtManager {
   }
 
   Map<String, dynamic> _decodeBase64(String str) {
-    final normalized = str.replaceAll('-', '+').replaceAll('_', '/');
-    final padded = normalized.padRight(
-      normalized.length + (4 - normalized.length % 4) % 4,
-      '=',
-    );
-    final decoded = String.fromCharCodes(
-      base64.decode(padded),
-    );
-    return Map<String, dynamic>.from(
-      Uri.splitQueryString(
-        decoded.replaceAll('{', '').replaceAll('}', '').replaceAll('"', ''),
-      ),
-    );
+    try {
+      final normalized = base64Url.normalize(str);
+      final decoded = utf8.decode(base64Url.decode(normalized));
+      return Map<String, dynamic>.from(jsonDecode(decoded) as Map);
+    } catch (_) {
+      return <String, dynamic>{};
+    }
   }
 
   Future<bool> refreshToken() async {
     try {
-      final refreshToken = await getRefreshToken();
-      if (refreshToken == null) return false;
+      final token = await getRefreshToken();
+      if (token == null) return false;
       return true;
     } catch (_) {
       return false;

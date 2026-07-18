@@ -85,9 +85,9 @@ class _SummaryTab extends ConsumerWidget {
               spacing: 12,
               runSpacing: 12,
               children: [
-                _AnalyticsCard(title: 'Total Web Logs', value: '${summary.totalWebLogs}', icon: Icons.language, color: Colors.blue),
-                _AnalyticsCard(title: 'Total Connections', value: '${summary.totalConnections}', icon: Icons.swap_vertical_circle, color: Colors.teal),
-                _AnalyticsCard(title: 'Total Downloads', value: '${summary.totalDownloads}', icon: Icons.download, color: Colors.purple),
+                _AnalyticsCard(title: 'Total Web Logs', value: '${summary?.totalWebLogs ?? 0}', icon: Icons.language, color: Colors.blue),
+                _AnalyticsCard(title: 'Total Connections', value: '${summary?.totalConnections ?? 0}', icon: Icons.swap_vertical_circle, color: Colors.teal),
+                _AnalyticsCard(title: 'Total Downloads', value: '${summary?.totalDownloads ?? 0}', icon: Icons.download, color: Colors.purple),
                 _AnalyticsCard(title: 'Total Bandwidth', value: _formatBytes(summary?.totalBandwidthBytes ?? 0), icon: Icons.speed, color: Colors.orange),
                 _AnalyticsCard(title: 'Unread Notifications', value: '${summary?.unreadNotifications ?? 0}', icon: Icons.notifications_active, color: Colors.red),
               ],
@@ -575,12 +575,4 @@ class _TopListContent extends ConsumerWidget {
     );
   }
 
-  String _formatValue(dynamic value) {
-    if (value is int) {
-      if (value > 1024 * 1024) return '${(value / (1024 * 1024)).toStringAsFixed(1)} MB';
-      if (value > 1024) return '${(value / 1024).toStringAsFixed(1)} KB';
-      return '$value';
-    }
-    return '$value';
-  }
 }

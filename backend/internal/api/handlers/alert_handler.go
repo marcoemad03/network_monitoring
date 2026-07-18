@@ -18,7 +18,11 @@ func NewAlertHandler(alertService *services.AlertService) *AlertHandler {
 }
 
 func (h *AlertHandler) List(c *gin.Context) {
-	orgID := uuid.MustParse(c.GetString("org_id"))
+	orgID, err := parseUUID(c.GetString("org_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid organization ID", "error_code": "VALIDATION_ERROR"})
+		return
+	}
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
 	status := c.Query("status")
@@ -93,8 +97,15 @@ func (h *AlertHandler) Acknowledge(c *gin.Context) {
 	}
 
 	var req acknowledgeRequest
-	c.ShouldBindJSON(&req)
-	userID := uuid.MustParse(c.GetString("user_id"))
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid request body", "error_code": "VALIDATION_ERROR"})
+		return
+	}
+	userID, err := parseUUID(c.GetString("user_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid user ID", "error_code": "VALIDATION_ERROR"})
+		return
+	}
 
 	if err := h.alertService.Acknowledge(c.Request.Context(), id, userID, req.Notes); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -132,7 +143,11 @@ func (h *AlertHandler) Resolve(c *gin.Context) {
 		})
 		return
 	}
-	userID := uuid.MustParse(c.GetString("user_id"))
+	userID, err := parseUUID(c.GetString("user_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid user ID", "error_code": "VALIDATION_ERROR"})
+		return
+	}
 
 	if err := h.alertService.Resolve(c.Request.Context(), id, userID, req.ResolutionNotes); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{

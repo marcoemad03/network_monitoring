@@ -19,7 +19,11 @@ func NewAuditHandler(auditRepo *repository.AuditRepository) *AuditHandler {
 }
 
 func (h *AuditHandler) List(c *gin.Context) {
-	orgID := uuid.MustParse(c.GetString("org_id"))
+	orgID, err := parseUUID(c.GetString("org_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid organization ID", "error_code": "VALIDATION_ERROR"})
+		return
+	}
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
 	action := c.Query("action")
@@ -70,7 +74,11 @@ func (h *AuditHandler) Export(c *gin.Context) {
 }
 
 func (h *AuditHandler) GetDashboardSummary(c *gin.Context) {
-	orgID := uuid.MustParse(c.GetString("org_id"))
+	orgID, err := parseUUID(c.GetString("org_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid organization ID", "error_code": "VALIDATION_ERROR"})
+		return
+	}
 	_ = orgID
 
 	c.JSON(http.StatusOK, gin.H{

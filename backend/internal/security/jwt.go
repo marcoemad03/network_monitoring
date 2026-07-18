@@ -1,6 +1,8 @@
 package security
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"time"
 
@@ -111,5 +113,6 @@ func (m *JWTManager) ValidateRefreshToken(tokenString string) (*Claims, error) {
 }
 
 func (m *JWTManager) HashToken(token string) string {
-	return token
+	hash := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(hash[:])
 }

@@ -1,6 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../domain/entities/user.dart';
-import '../../../domain/entities/permission.dart';
 import '../../../core/di/injection_container.dart';
 import '../../../core/enums/user_role.dart';
 import '../../../data/repositories/auth_repository_impl.dart';
@@ -123,7 +122,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 }
 
-final authProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
+final authProvider = StateNotifierProvider.autoDispose<AuthNotifier, AuthState>((ref) {
   return AuthNotifier(ref.watch(authRepositoryProvider));
 });
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/reporting/reporting_provider.dart';
+import '../../widgets/common/app_error_widget.dart';
 
 class AlertRulesScreen extends ConsumerStatefulWidget {
   const AlertRulesScreen({super.key});
@@ -31,20 +32,9 @@ class _AlertRulesScreenState extends ConsumerState<AlertRulesScreen> {
       ),
       body: rulesAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.error_outline, size: 48),
-              const SizedBox(height: 16),
-              Text('Failed to load alert rules'),
-              const SizedBox(height: 8),
-              OutlinedButton(
-                onPressed: () => ref.invalidate(alertRulesProvider),
-                child: const Text('Retry'),
-              ),
-            ],
-          ),
+        error: (e, _) => AppErrorWidget(
+          message: 'Failed to load alert rules',
+          onRetry: () => ref.invalidate(alertRulesProvider),
         ),
         data: (rules) {
           if (rules.isEmpty) {
@@ -318,17 +308,6 @@ class _AlertRulesScreenState extends ConsumerState<AlertRulesScreen> {
             TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancel')),
             FilledButton(
               onPressed: () {
-                final data = {
-                  'name': nameController.text,
-                  'description': descController.text,
-                  'metric': selectedMetric,
-                  'condition': selectedCondition,
-                  'threshold': double.tryParse(thresholdController.text) ?? 0,
-                  'duration': int.tryParse(durationController.text) ?? 5,
-                  'cooldown': int.tryParse(cooldownController.text) ?? 10,
-                  'severity': selectedSeverity,
-                  'channels': selectedChannels,
-                };
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(content: Text(isEditing ? 'Update requires backend connection' : 'Create requires backend connection')),
                 );

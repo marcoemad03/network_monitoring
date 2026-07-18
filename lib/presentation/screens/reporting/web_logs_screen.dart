@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/reporting/reporting_provider.dart';
+import '../../widgets/common/app_error_widget.dart';
+import '../../../shared/extensions/string_extensions.dart';
 
 class WebLogsScreen extends ConsumerStatefulWidget {
   const WebLogsScreen({super.key});
@@ -15,7 +17,6 @@ class _WebLogsScreenState extends ConsumerState<WebLogsScreen> {
   DateTime? _toDate;
   String? _selectedCategory;
   bool _blockedOnly = false;
-  int _rowsPerPage = 15;
 
   @override
   void dispose() {
@@ -61,7 +62,7 @@ class _WebLogsScreenState extends ConsumerState<WebLogsScreen> {
                   const SizedBox(width: 12),
                   _StatCard(title: 'Unique Domains', value: '${stats?.uniqueDomains ?? 0}', color: Colors.teal),
                   const SizedBox(width: 12),
-                  _StatCard(title: 'Bandwidth', value: _formatBytes(stats?.totalBytes ?? 0), color: Colors.purple),
+                  _StatCard(title: 'Bandwidth', value: formatBytes(stats?.totalBytes ?? 0), color: Colors.purple),
                 ],
               ),
             ),
@@ -151,20 +152,9 @@ class _WebLogsScreenState extends ConsumerState<WebLogsScreen> {
           Expanded(
             child: logsAsync.when(
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, _) => Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.error_outline, size: 48),
-                    const SizedBox(height: 16),
-                    Text('Failed to load web logs'),
-                    const SizedBox(height: 8),
-                    OutlinedButton(
-                      onPressed: () => ref.invalidate(webLogsProvider),
-                      child: const Text('Retry'),
-                    ),
-                  ],
-                ),
+              error: (e, _) => AppErrorWidget(
+                message: 'Failed to load web logs',
+                onRetry: () => ref.invalidate(webLogsProvider),
               ),
               data: (logs) {
                 if (logs.isEmpty) {
@@ -199,7 +189,7 @@ class _WebLogsScreenState extends ConsumerState<WebLogsScreen> {
                         DataCell(Text(log.domain ?? '')),
                         DataCell(_CategoryBadge(label: log.category ?? '')),
                         DataCell(_StatusBadge(code: log.statusCode)),
-                        DataCell(Text(_formatBytes(log.bytesSent + log.bytesReceived))),
+                        DataCell(Text(formatBytes(log.bytesSent + log.bytesReceived))),
                         DataCell(Text('${log.durationSeconds}s')),
                         DataCell(
                           log.isBlocked
@@ -236,12 +226,7 @@ class _WebLogsScreenState extends ConsumerState<WebLogsScreen> {
     }
   }
 
-  String _formatBytes(int bytes) {
-    if (bytes < 1024) return '$bytes B';
-    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-    if (bytes < 1024 * 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
-    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
-  }
+
 }
 
 class _StatCard extends StatelessWidget {

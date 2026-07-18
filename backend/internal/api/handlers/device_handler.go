@@ -19,7 +19,11 @@ func NewDeviceHandler(deviceService *services.DeviceService) *DeviceHandler {
 }
 
 func (h *DeviceHandler) List(c *gin.Context) {
-	orgID := uuid.MustParse(c.GetString("org_id"))
+	orgID, err := parseUUID(c.GetString("org_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid organization ID", "error_code": "VALIDATION_ERROR"})
+		return
+	}
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
 	search := c.Query("search")
@@ -84,8 +88,16 @@ func (h *DeviceHandler) Get(c *gin.Context) {
 }
 
 func (h *DeviceHandler) Create(c *gin.Context) {
-	orgID := uuid.MustParse(c.GetString("org_id"))
-	userID := uuid.MustParse(c.GetString("user_id"))
+	orgID, err := parseUUID(c.GetString("org_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid organization ID", "error_code": "VALIDATION_ERROR"})
+		return
+	}
+	userID, err := parseUUID(c.GetString("user_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid user ID", "error_code": "VALIDATION_ERROR"})
+		return
+	}
 
 	var device models.Device
 	if err := c.ShouldBindJSON(&device); err != nil {
@@ -134,7 +146,13 @@ func (h *DeviceHandler) Update(c *gin.Context) {
 
 	device.ID = id
 
-	if err := h.deviceService.Update(c.Request.Context(), &device, uuid.MustParse(c.GetString("user_id"))); err != nil {
+	userID, err := parseUUID(c.GetString("user_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid user ID", "error_code": "VALIDATION_ERROR"})
+		return
+	}
+
+	if err := h.deviceService.Update(c.Request.Context(), &device, userID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false, "message": "Failed to update device",
 			"error_code": "SERVER_ERROR",
@@ -159,7 +177,13 @@ func (h *DeviceHandler) Delete(c *gin.Context) {
 		return
 	}
 
-	if err := h.deviceService.Delete(c.Request.Context(), id, uuid.MustParse(c.GetString("user_id"))); err != nil {
+	userID, err := parseUUID(c.GetString("user_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid user ID", "error_code": "VALIDATION_ERROR"})
+		return
+	}
+
+	if err := h.deviceService.Delete(c.Request.Context(), id, userID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false, "message": "Failed to delete device",
 			"error_code": "SERVER_ERROR",

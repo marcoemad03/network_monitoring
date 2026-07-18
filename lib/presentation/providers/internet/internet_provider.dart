@@ -20,13 +20,13 @@ final internetRepositoryProvider = Provider<InternetRepositoryImpl>((ref) {
   );
 });
 
-final internetPoliciesProvider = FutureProvider<List<InternetPolicy>>((ref) async {
+final internetPoliciesProvider = FutureProvider.autoDispose<List<InternetPolicy>>((ref) async {
   final repo = ref.watch(internetRepositoryProvider);
   final result = await repo.getPolicies();
   return result.fold((_) => <InternetPolicy>[], (policies) => policies);
 });
 
-final internetPolicyDetailProvider = FutureProvider.family<InternetPolicy?, String>(
+final internetPolicyDetailProvider = FutureProvider.autoDispose.family<InternetPolicy?, String>(
   (ref, id) async {
     final repo = ref.watch(internetRepositoryProvider);
     final result = await repo.getPolicyById(id);
@@ -34,7 +34,7 @@ final internetPolicyDetailProvider = FutureProvider.family<InternetPolicy?, Stri
   },
 );
 
-final bandwidthRulesProvider = FutureProvider.family<List<BandwidthRule>, String>(
+final bandwidthRulesProvider = FutureProvider.autoDispose.family<List<BandwidthRule>, String>(
   (ref, policyId) async {
     final repo = ref.watch(internetRepositoryProvider);
     final result = await repo.getBandwidthRules(policyId);
@@ -42,7 +42,7 @@ final bandwidthRulesProvider = FutureProvider.family<List<BandwidthRule>, String
   },
 );
 
-final filteringRulesProvider = FutureProvider.family<List<FilteringRule>, String>(
+final filteringRulesProvider = FutureProvider.autoDispose.family<List<FilteringRule>, String>(
   (ref, policyId) async {
     final repo = ref.watch(internetRepositoryProvider);
     final result = await repo.getFilteringRules(policyId);
@@ -50,7 +50,7 @@ final filteringRulesProvider = FutureProvider.family<List<FilteringRule>, String
   },
 );
 
-final schedulesProvider = FutureProvider.family<List<TimeSchedule>, String>(
+final schedulesProvider = FutureProvider.autoDispose.family<List<TimeSchedule>, String>(
   (ref, policyId) async {
     final repo = ref.watch(internetRepositoryProvider);
     final result = await repo.getSchedules(policyId);
@@ -58,13 +58,13 @@ final schedulesProvider = FutureProvider.family<List<TimeSchedule>, String>(
   },
 );
 
-final deviceBlocksProvider = FutureProvider<List<DeviceBlock>>((ref) async {
+final deviceBlocksProvider = FutureProvider.autoDispose<List<DeviceBlock>>((ref) async {
   final repo = ref.watch(internetRepositoryProvider);
   final result = await repo.getDeviceBlocks();
   return result.fold((_) => <DeviceBlock>[], (blocks) => blocks);
 });
 
-final vendorIntegrationsProvider = FutureProvider<List<VendorIntegration>>((ref) async {
+final vendorIntegrationsProvider = FutureProvider.autoDispose<List<VendorIntegration>>((ref) async {
   final repo = ref.watch(internetRepositoryProvider);
   final result = await repo.getVendorIntegrations();
   return result.fold((_) => <VendorIntegration>[], (integrations) => integrations);

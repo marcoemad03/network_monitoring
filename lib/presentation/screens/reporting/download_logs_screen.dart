@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/reporting/reporting_provider.dart';
+import '../../widgets/common/app_error_widget.dart';
+import '../../../shared/extensions/string_extensions.dart';
 
 class DownloadLogsScreen extends ConsumerStatefulWidget {
   const DownloadLogsScreen({super.key});
@@ -117,20 +119,9 @@ class _DownloadLogsScreenState extends ConsumerState<DownloadLogsScreen> {
           Expanded(
             child: logsAsync.when(
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, _) => Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.error_outline, size: 48),
-                    const SizedBox(height: 16),
-                    Text('Failed to load download logs'),
-                    const SizedBox(height: 8),
-                    OutlinedButton(
-                      onPressed: () => ref.invalidate(downloadLogsProvider),
-                      child: const Text('Retry'),
-                    ),
-                  ],
-                ),
+              error: (e, _) => AppErrorWidget(
+                message: 'Failed to load download logs',
+                onRetry: () => ref.invalidate(downloadLogsProvider),
               ),
               data: (logs) {
                 if (logs.isEmpty) {
@@ -176,7 +167,7 @@ class _DownloadLogsScreenState extends ConsumerState<DownloadLogsScreen> {
                             ],
                           ),
                         ),
-                        DataCell(Text(_formatBytes(log.sizeBytes))),
+                        DataCell(Text(formatBytes(log.sizeBytes))),
                         DataCell(_ProtocolBadge(protocol: log.protocol)),
                         DataCell(_StatusBadge(status: log.status)),
                         DataCell(Text(
@@ -213,12 +204,7 @@ class _DownloadLogsScreenState extends ConsumerState<DownloadLogsScreen> {
     }
   }
 
-  String _formatBytes(int bytes) {
-    if (bytes < 1024) return '$bytes B';
-    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-    if (bytes < 1024 * 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
-    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
-  }
+
 }
 
 class _ProtocolBadge extends StatelessWidget {

@@ -35,7 +35,7 @@ final alertRemoteDataSourceProvider2 = Provider<AlertRemoteDataSource>((ref) {
 });
 
 final alertListProvider =
-    FutureProvider.family<List<Alert>, AlertQueryParameters>(
+    FutureProvider.autoDispose.family<List<Alert>, AlertQueryParameters>(
   (ref, params) async {
     final useCase = ref.watch(getAlertsUseCaseProvider);
     final result = await useCase(

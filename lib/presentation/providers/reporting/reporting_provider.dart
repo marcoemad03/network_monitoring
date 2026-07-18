@@ -25,66 +25,66 @@ final reportingRepositoryProvider = Provider<ReportingRepositoryImpl>((ref) {
 });
 
 // Web Logs
-final webLogsProvider = FutureProvider<List<WebLog>>((ref) async {
+final webLogsProvider = FutureProvider.autoDispose<List<WebLog>>((ref) async {
   final repo = ref.watch(reportingRepositoryProvider);
   final result = await repo.getWebLogs();
   return result.fold((_) => <WebLog>[], (list) => list);
 });
 
-final webLogStatsProvider = FutureProvider<WebLogStats?>((ref) async {
+final webLogStatsProvider = FutureProvider.autoDispose<WebLogStats?>((ref) async {
   final repo = ref.watch(reportingRepositoryProvider);
   final result = await repo.getWebLogStats();
   return result.fold((_) => null, (stats) => stats);
 });
 
-final topWebsitesProvider = FutureProvider<List<TopWebsite>>((ref) async {
+final topWebsitesProvider = FutureProvider.autoDispose<List<TopWebsite>>((ref) async {
   final repo = ref.watch(reportingRepositoryProvider);
   final result = await repo.getTopWebsites();
   return result.fold((_) => <TopWebsite>[], (list) => list);
 });
 
-final topUsersProvider = FutureProvider<List<TopUser>>((ref) async {
+final topUsersProvider = FutureProvider.autoDispose<List<TopUser>>((ref) async {
   final repo = ref.watch(reportingRepositoryProvider);
   final result = await repo.getTopUsers();
   return result.fold((_) => <TopUser>[], (list) => list);
 });
 
 final departmentReportsProvider =
-    FutureProvider<List<DepartmentReport>>((ref) async {
+    FutureProvider.autoDispose<List<DepartmentReport>>((ref) async {
   final repo = ref.watch(reportingRepositoryProvider);
   final result = await repo.getDepartmentReports();
   return result.fold((_) => <DepartmentReport>[], (list) => list);
 });
 
 // Connection Logs
-final connectionLogsProvider = FutureProvider<List<ConnectionLog>>((ref) async {
+final connectionLogsProvider = FutureProvider.autoDispose<List<ConnectionLog>>((ref) async {
   final repo = ref.watch(reportingRepositoryProvider);
   final result = await repo.getConnectionLogs();
   return result.fold((_) => <ConnectionLog>[], (list) => list);
 });
 
 final activeConnectionsProvider =
-    FutureProvider<List<ConnectionLog>>((ref) async {
+    FutureProvider.autoDispose<List<ConnectionLog>>((ref) async {
   final repo = ref.watch(reportingRepositoryProvider);
   final result = await repo.getActiveConnections();
   return result.fold((_) => <ConnectionLog>[], (list) => list);
 });
 
-final activeConnectionCountProvider = FutureProvider<int>((ref) async {
+final activeConnectionCountProvider = FutureProvider.autoDispose<int>((ref) async {
   final repo = ref.watch(reportingRepositoryProvider);
   final result = await repo.getActiveConnectionCount();
   return result.fold((_) => 0, (count) => count);
 });
 
 // Download Logs
-final downloadLogsProvider = FutureProvider<List<DownloadLog>>((ref) async {
+final downloadLogsProvider = FutureProvider.autoDispose<List<DownloadLog>>((ref) async {
   final repo = ref.watch(reportingRepositoryProvider);
   final result = await repo.getDownloadLogs();
   return result.fold((_) => <DownloadLog>[], (list) => list);
 });
 
 // Reports
-final reportsListProvider = FutureProvider<List<Report>>((ref) async {
+final reportsListProvider = FutureProvider.autoDispose<List<Report>>((ref) async {
   final repo = ref.watch(reportingRepositoryProvider);
   final result = await repo.getReportsList();
   return result.fold((_) => <Report>[], (list) => list);
@@ -104,14 +104,14 @@ final reportDetailProvider =
 );
 
 final topBandwidthConsumersProvider =
-    FutureProvider<List<TopBandwidthConsumer>>((ref) async {
+    FutureProvider.autoDispose<List<TopBandwidthConsumer>>((ref) async {
   final repo = ref.watch(reportingRepositoryProvider);
   final result = await repo.getTopBandwidthConsumers();
   return result.fold((_) => <TopBandwidthConsumer>[], (list) => list);
 });
 
 // Exports
-final exportsListProvider = FutureProvider<List<ReportExport>>((ref) async {
+final exportsListProvider = FutureProvider.autoDispose<List<ReportExport>>((ref) async {
   final repo = ref.watch(reportingRepositoryProvider);
   final result = await repo.getExportsList();
   return result.fold((_) => <ReportExport>[], (list) => list);
@@ -119,13 +119,13 @@ final exportsListProvider = FutureProvider<List<ReportExport>>((ref) async {
 
 // Analytics
 final bandwidthOverTimeProvider =
-    FutureProvider<List<BandwidthDataPoint>>((ref) async {
+    FutureProvider.autoDispose<List<BandwidthDataPoint>>((ref) async {
   final repo = ref.watch(reportingRepositoryProvider);
   final result = await repo.getBandwidthOverTime();
   return result.fold((_) => <BandwidthDataPoint>[], (list) => list);
 });
 
-final analyticsSummaryProvider = FutureProvider<AnalyticsSummary?>((ref) async {
+final analyticsSummaryProvider = FutureProvider.autoDispose<AnalyticsSummary?>((ref) async {
   final repo = ref.watch(reportingRepositoryProvider);
   final result = await repo.getAnalyticsSummary();
   return result.fold((_) => null, (summary) => summary);
@@ -141,7 +141,7 @@ final deviceAnalyticsProvider =
 );
 
 // Alert Rules
-final alertRulesProvider = FutureProvider<List<AlertRule>>((ref) async {
+final alertRulesProvider = FutureProvider.autoDispose<List<AlertRule>>((ref) async {
   final repo = ref.watch(reportingRepositoryProvider);
   final result = await repo.getAlertRules();
   return result.fold((_) => <AlertRule>[], (list) => list);
@@ -156,20 +156,20 @@ final alertRuleDetailProvider = FutureProvider.family<AlertRule?, String>(
 );
 
 // Alert Notifications
-final notificationsProvider = FutureProvider<List<AlertNotification>>((ref) async {
+final notificationsProvider = FutureProvider.autoDispose<List<AlertNotification>>((ref) async {
   final repo = ref.watch(reportingRepositoryProvider);
   final result = await repo.getNotifications();
   return result.fold((_) => <AlertNotification>[], (list) => list);
 });
 
-final unreadCountProvider = FutureProvider<int>((ref) async {
+final unreadCountProvider = FutureProvider.autoDispose<int>((ref) async {
   final repo = ref.watch(reportingRepositoryProvider);
   final result = await repo.getUnreadCount();
   return result.fold((_) => 0, (count) => count);
 });
 
 final recentNotificationsProvider =
-    FutureProvider<List<AlertNotification>>((ref) async {
+    FutureProvider.autoDispose<List<AlertNotification>>((ref) async {
   final repo = ref.watch(reportingRepositoryProvider);
   final result = await repo.getRecentNotifications();
   return result.fold((_) => <AlertNotification>[], (list) => list);
@@ -177,7 +177,7 @@ final recentNotificationsProvider =
 
 // Dashboard Widgets
 final dashboardWidgetsProvider =
-    FutureProvider<List<DashboardWidget>>((ref) async {
+    FutureProvider.autoDispose<List<DashboardWidget>>((ref) async {
   final repo = ref.watch(reportingRepositoryProvider);
   final result = await repo.getUserWidgets();
   return result.fold((_) => <DashboardWidget>[], (list) => list);

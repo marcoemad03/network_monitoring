@@ -10,24 +10,33 @@ import '../../../domain/entities/device.dart';
 import '../../../domain/entities/device_metrics.dart';
 import '../../../domain/entities/device_client.dart';
 
-class DeviceDetailScreen extends ConsumerWidget {
+class DeviceDetailScreen extends ConsumerStatefulWidget {
   final String id;
 
   const DeviceDetailScreen({super.key, required this.id});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final deviceAsync = ref.watch(deviceDetailProvider(id));
+  ConsumerState<DeviceDetailScreen> createState() => _DeviceDetailScreenState();
+}
 
-    ref.listen<AsyncValue<Map<String, dynamic>>>(deviceUpdateStreamProvider, (_, next) {
-      if (next.hasValue) {
-        final data = next.requireValue;
-        if (data['device_id'] == id) {
-          ref.invalidate(deviceDetailProvider(id));
-          ref.invalidate(deviceClientsProvider(id));
-        }
-      }
-    });
+class _DeviceDetailScreenState extends ConsumerState<DeviceDetailScreen> {
+  bool _listenerAttached = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final deviceAsync = ref.watch(deviceDetailProvider(widget.id));
+
+    if (!_listenerAttached) {
+      _listenerAttached = true;
+      ref.listen<AsyncValue<Map<String, dynamic>>>(deviceUpdateStreamProvider, (_, next) {
+        next.whenOrNull(data: (data) {
+          if (data['device_id'] == widget.id) {
+            ref.invalidate(deviceDetailProvider(widget.id));
+            ref.invalidate(deviceClientsProvider(widget.id));
+          }
+        });
+      });
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -42,8 +51,8 @@ class DeviceDetailScreen extends ConsumerWidget {
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: () {
-              ref.invalidate(deviceDetailProvider(id));
-              ref.invalidate(deviceClientsProvider(id));
+              ref.invalidate(deviceDetailProvider(widget.id));
+              ref.invalidate(deviceClientsProvider(widget.id));
             },
           ),
         ],
@@ -59,7 +68,7 @@ class DeviceDetailScreen extends ConsumerWidget {
               Text('Failed to load device'),
               const SizedBox(height: 8),
               OutlinedButton(
-                onPressed: () => ref.invalidate(deviceDetailProvider(id)),
+                onPressed: () => ref.invalidate(deviceDetailProvider(widget.id)),
                 child: const Text('Retry'),
               ),
             ],
@@ -69,7 +78,7 @@ class DeviceDetailScreen extends ConsumerWidget {
           if (device == null) {
             return const Center(child: Text('Device not found'));
           }
-          return _DeviceDetailContent(device: device, deviceId: id);
+          return _DeviceDetailContent(device: device, deviceId: widget.id);
         },
       ),
     );

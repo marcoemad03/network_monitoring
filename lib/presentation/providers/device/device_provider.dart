@@ -54,7 +54,7 @@ final deviceLocalDataSourceProvider = Provider<DeviceLocalDataSource>((ref) {
 });
 
 final deviceListProvider =
-    FutureProvider.family<List<Device>, DeviceFilter>(
+    FutureProvider.autoDispose.family<List<Device>, DeviceFilter>(
   (ref, filter) async {
     final useCase = ref.watch(getDevicesUseCaseProvider);
     final result = await useCase(
@@ -132,7 +132,7 @@ class DeviceFilterNotifier extends StateNotifier<DeviceFilter> {
   void reset() => state = const DeviceFilter();
 }
 
-final deviceDetailProvider = FutureProvider.family<Device?, String>(
+final deviceDetailProvider = FutureProvider.autoDispose.family<Device?, String>(
   (ref, id) async {
     final useCase = ref.watch(getDeviceDetailUseCaseProvider);
     final result = await useCase(id);
@@ -152,13 +152,13 @@ final webSocketManagerProvider = Provider<WebSocketManager>((ref) {
   return manager;
 });
 
-final allDevicesProvider = FutureProvider<List<Device>>((ref) async {
+final allDevicesProvider = FutureProvider.autoDispose<List<Device>>((ref) async {
   final useCase = ref.watch(getDevicesUseCaseProvider);
   final result = await useCase(page: 1, limit: 500);
   return result.fold((_) => [], (devices) => devices);
 });
 
-final dashboardSummaryProvider = StreamProvider<DashboardLive?>((ref) async* {
+final dashboardSummaryProvider = StreamProvider.autoDispose<DashboardLive?>((ref) async* {
   final repo = ref.watch(deviceRepositoryProvider);
   final manager = ref.watch(webSocketManagerProvider);
 
@@ -178,7 +178,7 @@ final dashboardSummaryProvider = StreamProvider<DashboardLive?>((ref) async* {
   }
 });
 
-final deviceClientsProvider = FutureProvider.family<List<DeviceClient>, String>(
+final deviceClientsProvider = FutureProvider.autoDispose.family<List<DeviceClient>, String>(
   (ref, deviceId) async {
     final repo = ref.watch(deviceRepositoryProvider);
     final result = await repo.getDeviceClients(deviceId);
@@ -186,19 +186,19 @@ final deviceClientsProvider = FutureProvider.family<List<DeviceClient>, String>(
   },
 );
 
-final allClientsProvider = FutureProvider<List<DeviceClient>>((ref) async {
+final allClientsProvider = FutureProvider.autoDispose<List<DeviceClient>>((ref) async {
   final repo = ref.watch(deviceRepositoryProvider);
   final result = await repo.getAllClients();
   return result.fold((_) => [], (clients) => clients);
 });
 
-final connectionsProvider = FutureProvider<List<DeviceConnection>>((ref) async {
+final connectionsProvider = FutureProvider.autoDispose<List<DeviceConnection>>((ref) async {
   final repo = ref.watch(deviceRepositoryProvider);
   final result = await repo.getConnections();
   return result.fold((_) => [], (conns) => conns);
 });
 
-final deviceUpdateStreamProvider = StreamProvider<Map<String, dynamic>>((ref) {
+final deviceUpdateStreamProvider = StreamProvider.autoDispose<Map<String, dynamic>>((ref) {
   final manager = ref.watch(webSocketManagerProvider);
 
   return () async* {

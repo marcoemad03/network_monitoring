@@ -154,8 +154,9 @@ class SettingsScreen extends ConsumerWidget {
                 return;
               }
               Navigator.pop(ctx);
-              final repo = ref.read(authProvider.notifier);
-              await repo.logout();
+              currentCtrl.dispose();
+              newCtrl.dispose();
+              confirmCtrl.dispose();
               final authRepo = ref.read(authRepositoryProvider);
               final result = await authRepo.changePassword(
                 currentPassword: currentCtrl.text,
@@ -167,10 +168,13 @@ class SettingsScreen extends ConsumerWidget {
                     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(failure.message)));
                   }
                 },
-                (_) {
+                (_) async {
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Password changed successfully')));
                   }
+                  final repo = ref.read(authProvider.notifier);
+                  await repo.logout();
+                  if (context.mounted) context.go(RouteNames.login);
                 },
               );
             },
