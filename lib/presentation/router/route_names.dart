@@ -34,4 +34,15 @@ class RouteNames {
   static const String reports = '/reporting/reports';
   static const String alertRules = '/reporting/alerts';
   static const String widgets = '/reporting/widgets';
+
+  // Asset Management
+  static const String assetGroups = '/asset/groups';
+  static String assetGroupDetail(String id) => '/asset/groups/$id';
+  static const String floorMaps = '/asset/floor-maps';
+  static String floorMapDetail(String id) => '/asset/floor-maps/$id';
+  static String floorMapEditor(String id) => '/asset/floor-maps/$id/edit';
+  static const String assetPolicies = '/asset/policies';
+  static String assetPolicyDetail(String id) => '/asset/policies/$id';
+  static const String assetList = '/asset/list';
+  static String assetDeviceDetail(String deviceId) => '/asset/list/$deviceId';
 }

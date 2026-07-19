@@ -1,0 +1,6 @@
+$env:JWT_ACCESS_SECRET = "dev-secret-key-change-in-production-123456"
+$env:JWT_REFRESH_SECRET = "dev-refresh-secret-key-change-in-production-789012"
+$env:DB_PASSWORD = "changeme"
+$env:LOG_LEVEL = "error"
+Start-Process -FilePath "C:\Users\marco\Desktop\network_monitorong\backend\server.exe" -NoNewWindow -RedirectStandardOutput "C:\Users\marco\Desktop\network_monitorong\backend\server_bg.log" -RedirectStandardError "C:\Users\marco\Desktop\network_monitorong\backend\server_bg_err.log"
+Write-Host "Started"

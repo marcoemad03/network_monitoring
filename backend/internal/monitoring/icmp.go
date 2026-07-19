@@ -8,6 +8,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/hospital/nms-backend/internal/models"
 )
 

@@ -24,6 +24,7 @@ func RegisterRoutes(router *gin.Engine, db *database.DB, hub *websocket.Hub, cfg
 	permRepo := repository.NewPermissionRepository(db)
 	monRepo := repository.NewMonitoringRepository(db)
 	internetRepo := repository.NewInternetRepository(db)
+	assetRepo := repository.NewAssetRepository(db)
 
 	// Reporting repositories
 	webLogRepo := repository.NewWebLogRepository(db)
@@ -41,6 +42,9 @@ func RegisterRoutes(router *gin.Engine, db *database.DB, hub *websocket.Hub, cfg
 	permService := services.NewPermissionService(permRepo, userRepo)
 	monitoringService := services.NewMonitoringService(monRepo, deviceRepo)
 	internetService := services.NewInternetService(internetRepo)
+	discoveryService := services.NewDiscoveryService(deviceRepo, scanRepo, cfg)
+	assetService := services.NewAssetService(assetRepo)
+	policySyncService := services.NewPolicySyncService(assetRepo, deviceRepo, cfg)
 
 	// Reporting services
 	loggingService := services.NewLoggingService(webLogRepo, connLogRepo, downLogRepo)
@@ -51,12 +55,13 @@ func RegisterRoutes(router *gin.Engine, db *database.DB, hub *websocket.Hub, cfg
 	authHandler := handlers.NewAuthHandler(authService, userRepo)
 	deviceHandler := handlers.NewDeviceHandler(deviceService)
 	alertHandler := handlers.NewAlertHandler(alertService)
-	scanHandler := handlers.NewScanHandler(scanRepo)
+	scanHandler := handlers.NewScanHandler(scanRepo, discoveryService, internetService)
 	auditHandler := handlers.NewAuditHandler(auditRepo)
 	userHandler := handlers.NewUserHandler(userRepo)
 	permHandler := handlers.NewPermissionHandler(permService)
 	monitoringHandler := handlers.NewMonitoringHandler(monitoringService)
-	internetHandler := handlers.NewInternetHandler(internetService)
+	internetHandler := handlers.NewInternetHandler(internetService, scanRepo, discoveryService)
+	assetHandler := handlers.NewAssetHandler(assetService, policySyncService)
 
 	// Reporting handlers
 	logsHandler := handlers.NewLogsHandler(loggingService)
@@ -118,6 +123,7 @@ func RegisterRoutes(router *gin.Engine, db *database.DB, hub *websocket.Hub, cfg
 			scans.GET("", scanHandler.List)
 			scans.POST("", scanHandler.Start)
 			scans.GET("/:id", scanHandler.Get)
+			scans.GET("/:id/devices", scanHandler.GetScanDevices)
 			scans.POST("/:id/cancel", scanHandler.Cancel)
 		}
 
@@ -263,8 +269,8 @@ func RegisterRoutes(router *gin.Engine, db *database.DB, hub *websocket.Hub, cfg
 			analytics.GET("/device/:id", analyticsHandler.GetDeviceAnalytics)
 		}
 
-		// Alerts
-		alerts := protected.Group("/alerts")
+		// Alert rules and notifications
+		alerts = protected.Group("/alerts")
 		{
 			alerts.GET("/rules", alertsHandler.ListAlertRules)
 			alerts.POST("/rules", alertsHandler.CreateAlertRule)
@@ -284,6 +290,56 @@ func RegisterRoutes(router *gin.Engine, db *database.DB, hub *websocket.Hub, cfg
 			dashWidgets.PUT("/:id", dashboardHandler.UpdateWidget)
 			dashWidgets.DELETE("/:id", dashboardHandler.DeleteWidget)
 			dashWidgets.PUT("/reorder", dashboardHandler.ReorderWidgets)
+		}
+
+		// Asset & Policy Management
+		groups := protected.Group("/groups")
+		{
+			groups.GET("", assetHandler.ListGroups)
+			groups.GET("/:id", assetHandler.GetGroup)
+			groups.POST("", assetHandler.CreateGroup)
+			groups.PUT("/:id", assetHandler.UpdateGroup)
+			groups.DELETE("/:id", assetHandler.DeleteGroup)
+			groups.POST("/:id/devices", assetHandler.AssignDevicesToGroup)
+			groups.DELETE("/:id/devices/:deviceId", assetHandler.RemoveDeviceFromGroup)
+			groups.GET("/:id/devices", assetHandler.GetGroupDevices)
+			groups.GET("/:id/policies", assetHandler.GetPoliciesForGroup)
+		}
+
+		protected.GET("/devices/:id/groups", assetHandler.ListGroupsForDevice)
+		protected.GET("/devices/:id/asset", assetHandler.GetAssetDetail)
+		protected.POST("/devices/:id/asset", assetHandler.UpsertAssetDetail)
+
+		floorMaps := protected.Group("/floor-maps")
+		{
+			floorMaps.GET("", assetHandler.ListFloorMaps)
+			floorMaps.GET("/:id", assetHandler.GetFloorMap)
+			floorMaps.POST("", assetHandler.CreateFloorMap)
+			floorMaps.PUT("/:id", assetHandler.UpdateFloorMap)
+			floorMaps.DELETE("/:id", assetHandler.DeleteFloorMap)
+			floorMaps.GET("/:id/devices", assetHandler.GetFloorMapDevices)
+			floorMaps.POST("/devices", assetHandler.PlaceDeviceOnMap)
+			floorMaps.DELETE("/:id/devices/:deviceId", assetHandler.RemoveDeviceFromMap)
+		}
+
+		assetDetails := protected.Group("/assets")
+		{
+			assetDetails.GET("", assetHandler.ListAssetDetails)
+			assetDetails.GET("/:deviceId", assetHandler.GetAssetDetail)
+			assetDetails.POST("", assetHandler.UpsertAssetDetail)
+		}
+
+		policies := protected.Group("/policies")
+		{
+			policies.GET("", assetHandler.ListPolicies)
+			policies.GET("/:id", assetHandler.GetPolicy)
+			policies.POST("", assetHandler.CreatePolicy)
+			policies.PUT("/:id", assetHandler.UpdatePolicy)
+			policies.DELETE("/:id", assetHandler.DeletePolicy)
+			policies.POST("/:id/groups", assetHandler.AssignPolicyToGroup)
+			policies.DELETE("/:id/groups/:groupId", assetHandler.RemovePolicyFromGroup)
+			policies.POST("/sync", assetHandler.SyncPolicies)
+			policies.GET("/sync-logs", assetHandler.ListSyncLogs)
 		}
 	}
 

@@ -325,6 +325,28 @@ type DeviceSpeedTest struct {
 	Timestamp           time.Time `json:"timestamp" db:"timestamp"`
 }
 
+type ScanResult struct {
+	ID            uuid.UUID  `json:"id" db:"id"`
+	ScanID        uuid.UUID  `json:"scan_id" db:"scan_id"`
+	IPAddress     net.IP     `json:"ip_address" db:"ip_address"`
+	Hostname      *string    `json:"hostname,omitempty" db:"hostname"`
+	MACAddress    *string    `json:"mac_address,omitempty" db:"mac_address"`
+	Vendor        *string    `json:"vendor,omitempty" db:"vendor"`
+	OpenPorts     []int      `json:"open_ports,omitempty" db:"open_ports"`
+	OSGuess       *string    `json:"os_guess,omitempty" db:"os_guess"`
+	ResponseTimeMs *float64  `json:"response_time_ms,omitempty" db:"response_time_ms"`
+	IsAlive       bool       `json:"is_alive" db:"is_alive"`
+	IsNewDevice   bool       `json:"is_new_device" db:"is_new_device"`
+	DiscoveredAt  time.Time  `json:"discovered_at" db:"discovered_at"`
+}
+
+type ScanResultDevice struct {
+	ScanResult
+	DeviceID      *uuid.UUID `json:"device_id,omitempty"`
+	DeviceName    *string    `json:"device_name,omitempty"`
+	OnlineStatus  *string    `json:"online_status,omitempty"`
+}
+
 type DashboardLiveSummary struct {
 	TotalDevices       int     `json:"total_devices"`
 	OnlineDevices      int     `json:"online_devices"`

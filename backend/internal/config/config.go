@@ -61,6 +61,8 @@ type Config struct {
 	ScanTimeout      time.Duration
 	ScanConcurrency  int
 	ScanDefaultPorts string
+	MikroTikAPITimeout time.Duration
+	MikroTikAPIRetryCount int
 	PingTimeout      time.Duration
 	TracerouteMaxHops int
 }
@@ -141,6 +143,13 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("invalid PING_TIMEOUT: %w", err)
 	}
 	cfg.PingTimeout = pingTimeout
+
+	mikrotikTimeout, err := time.ParseDuration(getEnv("MIKROTIK_API_TIMEOUT", "10s"))
+	if err != nil {
+		return nil, fmt.Errorf("invalid MIKROTIK_API_TIMEOUT: %w", err)
+	}
+	cfg.MikroTikAPITimeout = mikrotikTimeout
+	cfg.MikroTikAPIRetryCount = getEnvInt("MIKROTIK_API_RETRY_COUNT", 2)
 
 	rateLimitWindow, err := time.ParseDuration(getEnv("RATE_LIMIT_WINDOW", "1m"))
 	if err != nil {

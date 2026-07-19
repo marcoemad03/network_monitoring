@@ -3,6 +3,8 @@ package repository
 import (
 	"context"
 	"fmt"
+	"net"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -20,7 +22,7 @@ func NewDeviceRepository(db *database.DB) *DeviceRepository {
 
 func (r *DeviceRepository) List(ctx context.Context, orgID uuid.UUID, page, limit int, search, status, deviceType, department, sortBy string, ascending bool) ([]models.Device, int, error) {
 	offset := (page - 1) * limit
-	query := `SELECT * FROM devices WHERE organization_id = $1`
+	query := `SELECT id, organization_id, name, hostname, ip_address, mac_address::text, device_type, status, vendor, model, serial_number, os_version, firmware_version, location, department, notes, custom_fields, first_seen, last_boot, last_seen, is_critical, is_monitored, created_at, updated_at FROM devices WHERE organization_id = $1`
 	countQuery := `SELECT COUNT(*) FROM devices WHERE organization_id = $1`
 	args := []interface{}{orgID}
 	argIdx := 2
@@ -93,7 +95,7 @@ func (r *DeviceRepository) List(ctx context.Context, orgID uuid.UUID, page, limi
 }
 
 func (r *DeviceRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.Device, error) {
-	query := `SELECT * FROM devices WHERE id = $1`
+	query := `SELECT id, organization_id, name, hostname, ip_address, mac_address::text, device_type, status, vendor, model, serial_number, os_version, firmware_version, location, department, notes, custom_fields, first_seen, last_boot, last_seen, is_critical, is_monitored, created_at, updated_at FROM devices WHERE id = $1`
 	row := r.db.QueryRow(ctx, query, id)
 
 	var d models.Device
@@ -107,6 +109,56 @@ func (r *DeviceRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.D
 		return nil, fmt.Errorf("get device by id: %w", err)
 	}
 	return &d, nil
+}
+
+func (r *DeviceRepository) GetByIDForOrganization(ctx context.Context, orgID, id uuid.UUID) (*models.Device, error) {
+	query := `SELECT id, organization_id, name, hostname, ip_address, mac_address::text, device_type, status, vendor, model, serial_number, os_version, firmware_version, location, department, notes, custom_fields, first_seen, last_boot, last_seen, is_critical, is_monitored, created_at, updated_at FROM devices WHERE id = $1 AND organization_id = $2`
+	var d models.Device
+	if err := r.db.QueryRow(ctx, query, id, orgID).Scan(
+		&d.ID, &d.OrganizationID, &d.Name, &d.Hostname, &d.IPAddress, &d.MACAddress,
+		&d.DeviceType, &d.Status, &d.Vendor, &d.Model, &d.SerialNumber, &d.OSVersion,
+		&d.FirmwareVersion, &d.Location, &d.Department, &d.Notes, &d.CustomFields,
+		&d.FirstSeen, &d.LastBoot, &d.LastSeen, &d.IsCritical, &d.IsMonitored,
+		&d.CreatedAt, &d.UpdatedAt,
+	); err != nil {
+		return nil, fmt.Errorf("get organization device: %w", err)
+	}
+	return &d, nil
+}
+
+// UpsertDiscovered uses the stable MAC identity and updates a device's current IP.
+// Devices without a MAC are matched by IP only within the same organization.
+func (r *DeviceRepository) UpsertDiscovered(ctx context.Context, d *models.Device) (uuid.UUID, bool, error) {
+	if d.MACAddress != nil && strings.TrimSpace(*d.MACAddress) != "" {
+		mac := strings.ToUpper(strings.TrimSpace(*d.MACAddress))
+		var id uuid.UUID
+		var inserted bool
+		err := r.db.QueryRow(ctx, `
+			INSERT INTO devices (id, organization_id, name, hostname, ip_address, mac_address, device_type, status, vendor, first_seen, last_seen, is_monitored, created_at, updated_at)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW(),NOW())
+			ON CONFLICT (organization_id, mac_address) WHERE mac_address IS NOT NULL
+			DO UPDATE SET ip_address=EXCLUDED.ip_address, hostname=COALESCE(EXCLUDED.hostname, devices.hostname),
+				name=CASE WHEN EXCLUDED.hostname IS NOT NULL THEN EXCLUDED.name ELSE devices.name END,
+				vendor=COALESCE(EXCLUDED.vendor, devices.vendor), status=EXCLUDED.status,
+				last_seen=EXCLUDED.last_seen, updated_at=NOW()
+			RETURNING id, (xmax = 0)`, d.ID, d.OrganizationID, d.Name, d.Hostname, d.IPAddress,
+			mac, d.DeviceType, d.Status, d.Vendor, d.FirstSeen, d.LastSeen, d.IsMonitored).Scan(&id, &inserted)
+		return id, inserted, err
+	}
+
+	var existingID uuid.UUID
+	err := r.db.QueryRow(ctx, `SELECT id FROM devices WHERE organization_id=$1 AND ip_address=$2 ORDER BY created_at LIMIT 1`, d.OrganizationID, d.IPAddress).Scan(&existingID)
+	if err == nil {
+		_, err = r.db.Exec(ctx, `UPDATE devices SET hostname=COALESCE($1, hostname), name=CASE WHEN $1::text IS NOT NULL THEN $2 ELSE name END, vendor=COALESCE($3, vendor), status=$4, last_seen=$5, updated_at=NOW() WHERE id=$6 AND organization_id=$7`, d.Hostname, d.Name, d.Vendor, d.Status, d.LastSeen, existingID, d.OrganizationID)
+		return existingID, false, err
+	}
+	if !d.IPAddress.Equal(net.IP{}) {
+		if err := r.Create(ctx, d); err != nil {
+			return uuid.Nil, false, err
+		}
+		return d.ID, true, nil
+	}
+	return uuid.Nil, false, fmt.Errorf("discovered device has neither MAC nor IP")
 }
 
 func (r *DeviceRepository) Create(ctx context.Context, d *models.Device) error {
@@ -138,7 +190,7 @@ func (r *DeviceRepository) Delete(ctx context.Context, id uuid.UUID) error {
 }
 
 func (r *DeviceRepository) GetInterfaces(ctx context.Context, deviceID uuid.UUID) ([]models.Interface, error) {
-	rows, err := r.db.Query(ctx, `SELECT * FROM interfaces WHERE device_id = $1 ORDER BY index ASC`, deviceID)
+	rows, err := r.db.Query(ctx, `SELECT id, device_id, name, description, mac_address, ip_address, subnet_mask, gateway, connection_type, is_up, is_management, mtu, speed_mbps, duplex, index, vlan_id, bytes_in, bytes_out, errors_in, errors_out, utilization_percent, last_status_change, created_at, updated_at FROM interfaces WHERE device_id = $1 ORDER BY index ASC`, deviceID)
 	if err != nil {
 		return nil, err
 	}
@@ -163,14 +215,16 @@ func (r *DeviceRepository) GetInterfaces(ctx context.Context, deviceID uuid.UUID
 }
 
 func (r *DeviceRepository) GetMetrics(ctx context.Context, deviceID uuid.UUID) (*models.DeviceMetrics, error) {
-	query := `SELECT * FROM device_metrics WHERE device_id = $1 ORDER BY timestamp DESC LIMIT 1`
+	query := `SELECT device_id, cpu_usage_percent, memory_usage_percent, disk_usage_percent, temperature_celsius, uptime_seconds, total_traffic_in_bps, total_traffic_out_bps, average_latency_ms, max_latency_ms, packet_loss_percent, upload_speed_bps, download_speed_bps, signal_strength_dbm, signal_quality_percent, connected_ap_id, connected_switch_id, timestamp FROM device_metrics WHERE device_id = $1 ORDER BY timestamp DESC LIMIT 1`
 	row := r.db.QueryRow(ctx, query, deviceID)
 
 	var m models.DeviceMetrics
 	if err := row.Scan(
 		&m.DeviceID, &m.CPUUsagePercent, &m.MemoryUsagePercent, &m.DiskUsagePercent,
 		&m.TemperatureCelsius, &m.UptimeSeconds, &m.TotalTrafficInBps, &m.TotalTrafficOutBps,
-		&m.AverageLatencyMs, &m.MaxLatencyMs, &m.PacketLossPercent, &m.Timestamp,
+		&m.AverageLatencyMs, &m.MaxLatencyMs, &m.PacketLossPercent,
+		&m.UploadSpeedBps, &m.DownloadSpeedBps, &m.SignalStrengthDbm, &m.SignalQualityPercent,
+		&m.ConnectedAPID, &m.ConnectedSwitchID, &m.Timestamp,
 	); err != nil {
 		return nil, fmt.Errorf("get device metrics: %w", err)
 	}

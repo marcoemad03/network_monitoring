@@ -62,6 +62,11 @@ class AppScaffold extends StatelessWidget {
                 label: Text('Settings'),
               ),
               NavigationRailDestination(
+                icon: Icon(Icons.inventory_2_outlined),
+                selectedIcon: Icon(Icons.inventory_2),
+                label: Text('Assets'),
+              ),
+              NavigationRailDestination(
                 icon: Icon(Icons.history_outlined),
                 selectedIcon: Icon(Icons.history),
                 label: Text('Audit'),
@@ -83,8 +88,9 @@ class AppScaffold extends StatelessWidget {
     if (location.startsWith('/network')) return 3;
     if (location.startsWith('/reporting')) return 4;
     if (location.startsWith('/internet')) return 5;
-    if (location.startsWith('/settings')) return 6;
-    if (location.startsWith('/audit')) return 7;
+    if (location.startsWith('/asset')) return 6;
+    if (location.startsWith('/settings')) return 7;
+    if (location.startsWith('/audit')) return 8;
     return 0;
   }
 
@@ -103,8 +109,10 @@ class AppScaffold extends StatelessWidget {
       case 5:
         context.go(RouteNames.internetManagement);
       case 6:
-        context.go(RouteNames.settings);
+        context.go(RouteNames.assetList);
       case 7:
+        context.go(RouteNames.settings);
+      case 8:
         context.go(RouteNames.auditLog);
     }
   }

@@ -282,7 +282,8 @@ func (r *MonitoringRepository) GetDashboardLiveSummary(ctx context.Context, orgI
 }
 
 func (r *MonitoringRepository) UpdateDeviceStatus(ctx context.Context, deviceID uuid.UUID, status string) error {
-	return r.db.Exec(ctx, `UPDATE devices SET status = $1, last_seen = NOW() WHERE id = $2`, status, deviceID)
+	_, err := r.db.Exec(ctx, `UPDATE devices SET status = $1, last_seen = NOW() WHERE id = $2`, status, deviceID)
+	return err
 }
 
 func (r *MonitoringRepository) GetMonitoredDevices(ctx context.Context) ([]uuid.UUID, error) {

@@ -27,6 +27,15 @@ import '../screens/reporting/download_logs_screen.dart';
 import '../screens/reporting/reports_screen.dart';
 import '../screens/reporting/alert_rules_screen.dart';
 import '../screens/reporting/dashboard_widgets_screen.dart';
+import '../screens/groups/group_list_screen.dart';
+import '../screens/groups/group_detail_screen.dart';
+import '../screens/floor_map/floor_map_list_screen.dart';
+import '../screens/floor_map/floor_map_viewer_screen.dart';
+import '../screens/floor_map/floor_map_editor_screen.dart';
+import '../screens/policies/policy_list_screen.dart';
+import '../screens/policies/policy_detail_screen.dart';
+import '../screens/assets/asset_list_screen.dart';
+import '../screens/assets/asset_detail_screen.dart';
 import 'route_names.dart';
 import '../widgets/layout/app_scaffold.dart';
 
@@ -172,6 +181,62 @@ class AppRouter {
                 GoRoute(
                   path: RouteNames.widgets,
                   builder: (context, state) => const DashboardWidgetsScreen(),
+                ),
+                GoRoute(
+                  path: RouteNames.assetGroups,
+                  builder: (context, state) => const GroupListScreen(),
+                  routes: [
+                    GoRoute(
+                      path: ':id',
+                      builder: (context, state) => GroupDetailScreen(
+                        groupId: state.pathParameters['id']!,
+                      ),
+                    ),
+                  ],
+                ),
+                GoRoute(
+                  path: RouteNames.floorMaps,
+                  builder: (context, state) => const FloorMapListScreen(),
+                  routes: [
+                    GoRoute(
+                      path: ':id',
+                      builder: (context, state) => FloorMapViewerScreen(
+                        mapId: state.pathParameters['id']!,
+                      ),
+                      routes: [
+                        GoRoute(
+                          path: 'edit',
+                          builder: (context, state) => FloorMapEditorScreen(
+                            mapId: state.pathParameters['id']!,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                GoRoute(
+                  path: RouteNames.assetPolicies,
+                  builder: (context, state) => const PolicyListScreen(),
+                  routes: [
+                    GoRoute(
+                      path: ':id',
+                      builder: (context, state) => PolicyDetailScreen(
+                        policyId: state.pathParameters['id'],
+                      ),
+                    ),
+                  ],
+                ),
+                GoRoute(
+                  path: RouteNames.assetList,
+                  builder: (context, state) => const AssetListScreen(),
+                  routes: [
+                    GoRoute(
+                      path: ':id',
+                      builder: (context, state) => AssetDetailScreen(
+                        deviceId: state.pathParameters['id']!,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),

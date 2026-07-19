@@ -1,20 +1,30 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/hospital/nms-backend/internal/models"
 	"github.com/hospital/nms-backend/internal/repository"
+	"github.com/hospital/nms-backend/internal/services"
 )
 
 type ScanHandler struct {
-	scanRepo *repository.ScanRepository
+	scanRepo    *repository.ScanRepository
+	discService *services.DiscoveryService
+	internetSvc *services.InternetService
 }
 
-func NewScanHandler(scanRepo *repository.ScanRepository) *ScanHandler {
-	return &ScanHandler{scanRepo: scanRepo}
+func NewScanHandler(scanRepo *repository.ScanRepository, discService *services.DiscoveryService, internetSvc *services.InternetService) *ScanHandler {
+	return &ScanHandler{
+		scanRepo:    scanRepo,
+		discService: discService,
+		internetSvc: internetSvc,
+	}
 }
 
 type startScanRequest struct {
@@ -22,6 +32,7 @@ type startScanRequest struct {
 	Name         string   `json:"name"`
 	PortRange    string   `json:"port_range"`
 	Ports        []int    `json:"ports"`
+	VendorID     string   `json:"vendor_id"`
 }
 
 func (h *ScanHandler) List(c *gin.Context) {
@@ -55,6 +66,12 @@ func (h *ScanHandler) List(c *gin.Context) {
 }
 
 func (h *ScanHandler) Start(c *gin.Context) {
+	orgID, err := parseUUID(c.GetString("org_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid organization ID", "error_code": "VALIDATION_ERROR"})
+		return
+	}
+
 	var req startScanRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -64,17 +81,42 @@ func (h *ScanHandler) Start(c *gin.Context) {
 		return
 	}
 
+	scan := &models.NetworkScan{
+		ID:             uuid.New(),
+		OrganizationID: orgID,
+		Type:           "vendor_discovery",
+		Status:         "running",
+		Name:           &req.Name,
+		TargetSubnet:   req.TargetSubnet,
+		StartedAt:      time.Now().UTC(),
+		CreatedAt:      time.Now().UTC(),
+		Progress:       float64Ptr(0),
+	}
+
+	if err := h.scanRepo.Create(c.Request.Context(), scan); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false, "message": "Failed to create scan",
+			"error_code": "SERVER_ERROR",
+		})
+		return
+	}
+
+	if req.VendorID != "" {
+		vendorID, err := uuid.Parse(req.VendorID)
+		if err == nil {
+			vendor, err := h.internetSvc.GetVendorIntegrationByID(c.Request.Context(), vendorID)
+			if err == nil && vendor.VendorType == "mikrotik" && vendor.IsActive {
+				go func() {
+					bgCtx := context.Background()
+					h.discService.StartMikroTikDiscovery(bgCtx, scan, vendor)
+				}()
+			}
+		}
+	}
+
 	c.JSON(http.StatusCreated, gin.H{
 		"success": true,
-		"data": gin.H{
-			"id":             uuid.New(),
-			"type":           "ping",
-			"status":         "running",
-			"target_subnet":  req.TargetSubnet,
-			"name":           req.Name,
-			"progress":       0,
-			"started_at":     time.Now().UTC().Format(time.RFC3339),
-		},
+		"data":    scan,
 		"message": "Scan started",
 	})
 }
@@ -127,4 +169,37 @@ func (h *ScanHandler) Cancel(c *gin.Context) {
 		"success": true,
 		"message": "Scan cancelled",
 	})
+}
+
+func (h *ScanHandler) GetScanDevices(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false, "message": "Invalid scan ID",
+			"error_code": "VALIDATION_ERROR",
+		})
+		return
+	}
+
+	results, err := h.scanRepo.ListScanResultsByScanID(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false, "message": "Failed to fetch scan results",
+			"error_code": "SERVER_ERROR",
+		})
+		return
+	}
+	if results == nil {
+		results = []models.ScanResult{}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    results,
+		"message": "Scan results retrieved",
+	})
+}
+
+func float64Ptr(v float64) *float64 {
+	return &v
 }

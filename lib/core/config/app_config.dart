@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'environment.dart';
 
 class AppConfig {
@@ -29,20 +31,28 @@ class AppConfig {
     required this.tokenRefreshThresholdMin,
   });
 
-  factory AppConfig.development() => const AppConfig(
-        environment: Environment.development,
-        apiBaseUrl: 'http://localhost:8080/api/v1',
-        wsBaseUrl: 'ws://localhost:8080/ws',
-        appName: 'NMS Hospital (Dev)',
-        appVersion: '1.0.0',
-        enableLogging: true,
-        enableAnalytics: false,
-        connectTimeoutMs: 15000,
-        receiveTimeoutMs: 15000,
-        sendTimeoutMs: 15000,
-        maxRetries: 2,
-        tokenRefreshThresholdMin: 5,
-      );
+  factory AppConfig.development() {
+    String host;
+    try {
+      host = Platform.isAndroid ? '10.0.2.2' : 'localhost';
+    } catch (_) {
+      host = 'localhost';
+    }
+    return AppConfig(
+      environment: Environment.development,
+      apiBaseUrl: 'http://$host:8080',
+      wsBaseUrl: 'ws://$host:8080/ws',
+      appName: 'NMS Hospital (Dev)',
+      appVersion: '1.0.0',
+      enableLogging: true,
+      enableAnalytics: false,
+      connectTimeoutMs: 15000,
+      receiveTimeoutMs: 15000,
+      sendTimeoutMs: 15000,
+      maxRetries: 2,
+      tokenRefreshThresholdMin: 5,
+    );
+  }
 
   factory AppConfig.staging() => const AppConfig(
         environment: Environment.staging,

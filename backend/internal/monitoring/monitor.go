@@ -7,7 +7,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/hospital/nms-backend/internal/database"
-	"github.com/hospital/nms-backend/internal/models"
 	"github.com/hospital/nms-backend/internal/repository"
 	"github.com/hospital/nms-backend/internal/websocket"
 	"github.com/hospital/nms-backend/pkg/logger"

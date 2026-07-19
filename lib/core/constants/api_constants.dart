@@ -137,6 +137,28 @@ class ApiConstants {
   static String dashboardWidgetDetail(String id) => '$basePath/dashboard/widgets/$id';
   static const String dashboardWidgetReorder = '$basePath/dashboard/widgets/reorder';
 
+  // Asset & Policy Management
+  static const String groups = '$basePath/groups';
+  static String groupDetail(String id) => '$basePath/groups/$id';
+  static String groupDevices(String id) => '$basePath/groups/$id/devices';
+  static String groupDeviceItem(String groupId, String deviceId) => '$basePath/groups/$groupId/devices/$deviceId';
+  static String groupPolicies(String id) => '$basePath/groups/$id/policies';
+  static String deviceGroups(String deviceId) => '$basePath/devices/$deviceId/groups';
+  static String deviceAssetDetail(String deviceId) => '$basePath/devices/$deviceId/asset';
+  static const String floorMaps = '$basePath/floor-maps';
+  static String floorMapDetail(String id) => '$basePath/floor-maps/$id';
+  static const String floorMapDevices = '$basePath/floor-maps/devices';
+  static String floorMapDevicesList(String id) => '$basePath/floor-maps/$id/devices';
+  static String floorMapDeviceItem(String floorMapId, String deviceId) => '$basePath/floor-maps/$floorMapId/devices/$deviceId';
+  static const String assets = '$basePath/assets';
+  static String assetDetail(String deviceId) => '$basePath/assets/$deviceId';
+  static const String policies = '$basePath/policies';
+  static String policyDetail(String id) => '$basePath/policies/$id';
+  static String policyGroups(String id) => '$basePath/policies/$id/groups';
+  static String policyGroupItem(String policyId, String groupId) => '$basePath/policies/$policyId/groups/$groupId';
+  static const String policySync = '$basePath/policies/sync';
+  static const String policySyncLogs = '$basePath/policies/sync-logs';
+
   // Content Types
   static const String applicationJson = 'application/json';
 }

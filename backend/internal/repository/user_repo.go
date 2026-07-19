@@ -104,41 +104,46 @@ func (r *UserRepository) Create(ctx context.Context, user *models.User) error {
 	user.ID = uuid.New()
 	user.CreatedAt = time.Now()
 	user.UpdatedAt = time.Now()
-	return r.db.Exec(ctx,
+	_, err := r.db.Exec(ctx,
 		`INSERT INTO users (id, organization_id, username, email, password_hash, display_name, first_name, last_name, role, department, title, phone, is_active, is_locked, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
 		user.ID, user.OrganizationID, user.Username, user.Email, user.PasswordHash,
 		user.DisplayName, user.FirstName, user.LastName, user.Role, user.Department,
 		user.Title, user.Phone, user.IsActive, user.IsLocked, user.CreatedAt, user.UpdatedAt,
 	)
+	return err
 }
 
 func (r *UserRepository) Update(ctx context.Context, user *models.User) error {
 	user.UpdatedAt = time.Now()
-	return r.db.Exec(ctx,
+	_, err := r.db.Exec(ctx,
 		`UPDATE users SET username=$1, email=$2, display_name=$3, first_name=$4, last_name=$5, role=$6, department=$7, title=$8, phone=$9, is_active=$10, updated_at=$11 WHERE id=$12`,
 		user.Username, user.Email, user.DisplayName, user.FirstName, user.LastName,
 		user.Role, user.Department, user.Title, user.Phone, user.IsActive, user.UpdatedAt, user.ID,
 	)
+	return err
 }
 
 func (r *UserRepository) Delete(ctx context.Context, id uuid.UUID) error {
-	return r.db.Exec(ctx, `DELETE FROM users WHERE id = $1`, id)
+	_, err := r.db.Exec(ctx, `DELETE FROM users WHERE id = $1`, id)
+	return err
 }
 
 func (r *UserRepository) UpdatePassword(ctx context.Context, id uuid.UUID, hash string) error {
 	now := time.Now()
-	return r.db.Exec(ctx,
+	_, err := r.db.Exec(ctx,
 		`UPDATE users SET password_hash=$1, password_changed_at=$2, updated_at=$3 WHERE id=$4`,
 		hash, now, now, id,
 	)
+	return err
 }
 
 func (r *UserRepository) SetPasswordResetToken(ctx context.Context, id uuid.UUID, token string, expiresAt time.Time) error {
 	tokenHash := hashToken(token)
-	return r.db.Exec(ctx,
+	_, err := r.db.Exec(ctx,
 		`UPDATE users SET password_reset_token=$1, password_reset_expires_at=$2 WHERE id=$3`,
 		tokenHash, expiresAt, id,
 	)
+	return err
 }
 
 func (r *UserRepository) GetByPasswordResetToken(ctx context.Context, token string) (*models.User, error) {
@@ -156,10 +161,11 @@ func hashToken(token string) string {
 }
 
 func (r *UserRepository) ClearPasswordResetToken(ctx context.Context, id uuid.UUID) error {
-	return r.db.Exec(ctx,
+	_, err := r.db.Exec(ctx,
 		`UPDATE users SET password_reset_token=NULL, password_reset_expires_at=NULL WHERE id=$1`,
 		id,
 	)
+	return err
 }
 
 func (r *UserRepository) GetUserPermissions(ctx context.Context, userID uuid.UUID) ([]string, error) {
@@ -194,8 +200,8 @@ func (r *UserRepository) scanUser(row interface{ Scan(dest ...interface{}) error
 		&u.DisplayName, &u.FirstName, &u.LastName, &u.Role, &u.Department,
 		&u.Title, &u.Phone, &u.AvatarURL, &u.IsActive, &u.IsLocked, &u.IsMfaEnabled,
 		&u.MFASecret, &u.FailedLoginAttempts, &u.LockedUntil, &u.LastLoginAt,
-		&u.LastLoginIP, &u.PasswordChangedAt, &u.PasswordResetToken,
-		&u.PasswordResetExpiresAt, &u.PasswordHistory, &u.CreatedAt, &u.UpdatedAt,
+		&u.LastLoginIP, &u.PasswordChangedAt, &u.CreatedAt, &u.UpdatedAt,
+		&u.PasswordResetToken, &u.PasswordResetExpiresAt, &u.PasswordHistory,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("scan user: %w", err)
@@ -209,7 +215,7 @@ func scanUserRows(row interface{ Scan(dest ...interface{}) error }, u *models.Us
 		&u.DisplayName, &u.FirstName, &u.LastName, &u.Role, &u.Department,
 		&u.Title, &u.Phone, &u.AvatarURL, &u.IsActive, &u.IsLocked, &u.IsMfaEnabled,
 		&u.MFASecret, &u.FailedLoginAttempts, &u.LockedUntil, &u.LastLoginAt,
-		&u.LastLoginIP, &u.PasswordChangedAt, &u.PasswordResetToken,
-		&u.PasswordResetExpiresAt, &u.PasswordHistory, &u.CreatedAt, &u.UpdatedAt,
+		&u.LastLoginIP, &u.PasswordChangedAt, &u.CreatedAt, &u.UpdatedAt,
+		&u.PasswordResetToken, &u.PasswordResetExpiresAt, &u.PasswordHistory,
 	)
 }

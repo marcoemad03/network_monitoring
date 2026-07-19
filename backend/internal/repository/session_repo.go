@@ -22,12 +22,13 @@ func (r *SessionRepository) Create(ctx context.Context, session *models.UserSess
 	session.ID = uuid.New()
 	session.CreatedAt = time.Now()
 	session.LastActivity = time.Now()
-	return r.db.Exec(ctx,
+	_, err := r.db.Exec(ctx,
 		`INSERT INTO user_sessions (id, user_id, token_hash, refresh_token_hash, ip_address, user_agent, last_activity, expires_at, is_revoked, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
 		session.ID, session.UserID, session.TokenHash, session.RefreshTokenHash,
 		session.IPAddress, session.UserAgent, session.LastActivity, session.ExpiresAt,
 		session.IsRevoked, session.CreatedAt,
 	)
+	return err
 }
 
 func (r *SessionRepository) GetByTokenHash(ctx context.Context, hash string) (*models.UserSession, error) {
@@ -62,19 +63,23 @@ func (r *SessionRepository) ListByUser(ctx context.Context, userID uuid.UUID) ([
 }
 
 func (r *SessionRepository) Revoke(ctx context.Context, sessionID uuid.UUID) error {
-	return r.db.Exec(ctx, `UPDATE user_sessions SET is_revoked = true WHERE id = $1`, sessionID)
+	_, err := r.db.Exec(ctx, `UPDATE user_sessions SET is_revoked = true WHERE id = $1`, sessionID)
+	return err
 }
 
 func (r *SessionRepository) RevokeAllByUser(ctx context.Context, userID uuid.UUID) error {
-	return r.db.Exec(ctx, `UPDATE user_sessions SET is_revoked = true WHERE user_id = $1`, userID)
+	_, err := r.db.Exec(ctx, `UPDATE user_sessions SET is_revoked = true WHERE user_id = $1`, userID)
+	return err
 }
 
 func (r *SessionRepository) UpdateActivity(ctx context.Context, sessionID uuid.UUID) error {
-	return r.db.Exec(ctx, `UPDATE user_sessions SET last_activity = $1 WHERE id = $2`, time.Now(), sessionID)
+	_, err := r.db.Exec(ctx, `UPDATE user_sessions SET last_activity = $1 WHERE id = $2`, time.Now(), sessionID)
+	return err
 }
 
 func (r *SessionRepository) CleanupExpired(ctx context.Context) error {
-	return r.db.Exec(ctx, `DELETE FROM user_sessions WHERE expires_at < $1`, time.Now())
+	_, err := r.db.Exec(ctx, `DELETE FROM user_sessions WHERE expires_at < $1`, time.Now())
+	return err
 }
 
 func (r *SessionRepository) scanSession(row interface{ Scan(dest ...interface{}) error }) (*models.UserSession, error) {

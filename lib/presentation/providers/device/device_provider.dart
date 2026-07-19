@@ -160,21 +160,30 @@ final allDevicesProvider = FutureProvider.autoDispose<List<Device>>((ref) async 
 
 final dashboardSummaryProvider = StreamProvider.autoDispose<DashboardLive?>((ref) async* {
   final repo = ref.watch(deviceRepositoryProvider);
-  final manager = ref.watch(webSocketManagerProvider);
 
   try {
     final result = await repo.getDashboardSummary();
     yield result.fold((_) => null, (s) => s);
+  } catch (e) {
+    AppLogger.error('Failed to fetch dashboard summary', error: e);
+    yield null;
+  }
 
+  try {
+    final manager = ref.watch(webSocketManagerProvider);
     await manager.start();
     await for (final message in manager.messages) {
       if (message['type'] == 'dashboard_summary') {
-        final data = message['data'] as Map<String, dynamic>;
-        yield DashboardLiveModel.fromJson(data).toEntity();
+        try {
+          final data = message['data'] as Map<String, dynamic>;
+          yield DashboardLiveModel.fromJson(data).toEntity();
+        } catch (e) {
+          AppLogger.error('Failed to parse WebSocket dashboard update', error: e);
+        }
       }
     }
-  } finally {
-    AppLogger.debug('dashboardSummaryProvider stream ended');
+  } catch (e) {
+    AppLogger.debug('WebSocket dashboard stream ended', error: e);
   }
 });
 

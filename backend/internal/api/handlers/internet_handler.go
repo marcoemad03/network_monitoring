@@ -1,21 +1,29 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/hospital/nms-backend/internal/models"
+	"github.com/hospital/nms-backend/internal/repository"
 	"github.com/hospital/nms-backend/internal/services"
 )
 
 type InternetHandler struct {
 	internetService *services.InternetService
+	scanRepo        *repository.ScanRepository
+	discService     *services.DiscoveryService
 }
 
-func NewInternetHandler(internetService *services.InternetService) *InternetHandler {
-	return &InternetHandler{internetService: internetService}
+func NewInternetHandler(internetService *services.InternetService, scanRepo *repository.ScanRepository, discService *services.DiscoveryService) *InternetHandler {
+	return &InternetHandler{
+		internetService: internetService,
+		scanRepo:        scanRepo,
+		discService:     discService,
+	}
 }
 
 // InternetPolicies
@@ -808,32 +816,81 @@ func (h *InternetHandler) TestVendorConnection(c *gin.Context) {
 		return
 	}
 
-	_, err = h.internetService.GetVendorIntegrationByID(c.Request.Context(), id)
+	vendor, err := h.internetService.GetVendorIntegrationByID(c.Request.Context(), id)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "Vendor integration not found", "error_code": "NOT_FOUND"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Connection test initiated"})
+	if vendor.VendorType != "mikrotik" {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Unsupported vendor type", "error_code": "VALIDATION_ERROR"})
+		return
+	}
+
+	if err := h.discService.TestMikroTikConnection(vendor); err != nil {
+		now := time.Now()
+		errMsg := err.Error()
+		h.internetService.UpdateVendorSyncStatus(c.Request.Context(), id, "failed", now, &errMsg)
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": "Connection failed: " + err.Error(), "error_code": "CONNECTION_ERROR"})
+		return
+	}
+
+	now := time.Now()
+	h.internetService.UpdateVendorSyncStatus(c.Request.Context(), id, "connected", now, nil)
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Connection successful"})
 }
 
 func (h *InternetHandler) SyncVendor(c *gin.Context) {
+	orgID, err := parseUUID(c.GetString("org_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid organization ID", "error_code": "VALIDATION_ERROR"})
+		return
+	}
+
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid integration ID", "error_code": "VALIDATION_ERROR"})
 		return
 	}
 
-	_, err = h.internetService.GetVendorIntegrationByID(c.Request.Context(), id)
+	vendor, err := h.internetService.GetVendorIntegrationByID(c.Request.Context(), id)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "Vendor integration not found", "error_code": "NOT_FOUND"})
 		return
 	}
 
-	if err := h.internetService.UpdateVendorSyncStatus(c.Request.Context(), id, "syncing", time.Now(), nil); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to start sync", "error_code": "SERVER_ERROR"})
+	if vendor.VendorType != "mikrotik" {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Unsupported vendor type for sync", "error_code": "VALIDATION_ERROR"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Sync initiated"})
+	scan := &models.NetworkScan{
+		ID:             uuid.New(),
+		OrganizationID: orgID,
+		Type:           "vendor_discovery",
+		Status:         "running",
+		TargetSubnet:   vendor.BaseURL,
+		Progress:       float64Ptr(0),
+		StartedAt:      time.Now().UTC(),
+		CreatedAt:      time.Now().UTC(),
+	}
+
+	if err := h.scanRepo.Create(c.Request.Context(), scan); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to create scan", "error_code": "SERVER_ERROR"})
+		return
+	}
+
+	now := time.Now()
+	h.internetService.UpdateVendorSyncStatus(c.Request.Context(), id, "syncing", now, nil)
+
+	go func() {
+		bgCtx := context.Background()
+		h.discService.StartMikroTikDiscovery(bgCtx, scan, vendor)
+	}()
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    scan,
+		"message": "Sync initiated",
+	})
 }

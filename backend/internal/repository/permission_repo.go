@@ -60,22 +60,25 @@ func (r *PermissionRepository) CreateRole(ctx context.Context, role *models.Role
 	role.ID = uuid.New()
 	role.CreatedAt = time.Now()
 	role.UpdatedAt = time.Now()
-	return r.db.Exec(ctx,
+	_, err := r.db.Exec(ctx,
 		`INSERT INTO roles (id, name, slug, description, permission_level, is_system_role, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
 		role.ID, role.Name, role.Slug, role.Description, role.PermissionLevel, role.IsSystemRole, role.CreatedAt, role.UpdatedAt,
 	)
+	return err
 }
 
 func (r *PermissionRepository) UpdateRole(ctx context.Context, role *models.Role) error {
 	role.UpdatedAt = time.Now()
-	return r.db.Exec(ctx,
+	_, err := r.db.Exec(ctx,
 		`UPDATE roles SET name=$1, description=$2, permission_level=$3, updated_at=$4 WHERE id=$5`,
 		role.Name, role.Description, role.PermissionLevel, role.UpdatedAt, role.ID,
 	)
+	return err
 }
 
 func (r *PermissionRepository) DeleteRole(ctx context.Context, id uuid.UUID) error {
-	return r.db.Exec(ctx, `DELETE FROM roles WHERE id = $1 AND is_system_role = false`, id)
+	_, err := r.db.Exec(ctx, `DELETE FROM roles WHERE id = $1 AND is_system_role = false`, id)
+	return err
 }
 
 func (r *PermissionRepository) ListPermissions(ctx context.Context) ([]models.Permission, error) {
@@ -118,17 +121,19 @@ func (r *PermissionRepository) GetRolePermissions(ctx context.Context, roleID uu
 }
 
 func (r *PermissionRepository) AssignPermissionToRole(ctx context.Context, roleID, permID uuid.UUID) error {
-	return r.db.Exec(ctx,
+	_, err := r.db.Exec(ctx,
 		`INSERT INTO role_permissions (role_id, permission_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
 		roleID, permID,
 	)
+	return err
 }
 
 func (r *PermissionRepository) RemovePermissionFromRole(ctx context.Context, roleID, permID uuid.UUID) error {
-	return r.db.Exec(ctx,
+	_, err := r.db.Exec(ctx,
 		`DELETE FROM role_permissions WHERE role_id = $1 AND permission_id = $2`,
 		roleID, permID,
 	)
+	return err
 }
 
 func (r *PermissionRepository) UserHasPermission(ctx context.Context, userID uuid.UUID, permissionSlug string) (bool, error) {

@@ -621,7 +621,8 @@ func (r *ReportExportRepository) GetExportByID(ctx context.Context, id uuid.UUID
 }
 
 func (r *ReportExportRepository) DeleteOldExports(ctx context.Context, before time.Time) error {
-	return r.db.Exec(ctx, `DELETE FROM report_exports WHERE generated_at < $1`, before)
+	_, err := r.db.Exec(ctx, `DELETE FROM report_exports WHERE generated_at < $1`, before)
+	return err
 }
 
 type AlertRuleRepository struct {
@@ -647,7 +648,8 @@ func (r *AlertRuleRepository) UpdateAlertRule(ctx context.Context, a *models.Ale
 }
 
 func (r *AlertRuleRepository) DeleteAlertRule(ctx context.Context, id uuid.UUID) error {
-	return r.db.Exec(ctx, `DELETE FROM alert_rules WHERE id = $1`, id)
+	_, err := r.db.Exec(ctx, `DELETE FROM alert_rules WHERE id = $1`, id)
+	return err
 }
 
 func (r *AlertRuleRepository) GetAlertRules(ctx context.Context, orgID uuid.UUID) ([]models.AlertRule, error) {
@@ -798,15 +800,18 @@ func (r *AlertNotificationRepository) GetUnreadCount(ctx context.Context, orgID 
 }
 
 func (r *AlertNotificationRepository) MarkAsRead(ctx context.Context, id uuid.UUID) error {
-	return r.db.Exec(ctx, `UPDATE alert_notifications SET is_read = true WHERE id = $1`, id)
+	_, err := r.db.Exec(ctx, `UPDATE alert_notifications SET is_read = true WHERE id = $1`, id)
+	return err
 }
 
 func (r *AlertNotificationRepository) AcknowledgeNotification(ctx context.Context, id, userID uuid.UUID) error {
-	return r.db.Exec(ctx, `UPDATE alert_notifications SET acknowledged_at = NOW(), acknowledged_by = $1, is_read = true WHERE id = $2`, userID, id)
+	_, err := r.db.Exec(ctx, `UPDATE alert_notifications SET acknowledged_at = NOW(), acknowledged_by = $1, is_read = true WHERE id = $2`, userID, id)
+	return err
 }
 
 func (r *AlertNotificationRepository) DeleteNotification(ctx context.Context, id uuid.UUID) error {
-	return r.db.Exec(ctx, `DELETE FROM alert_notifications WHERE id = $1`, id)
+	_, err := r.db.Exec(ctx, `DELETE FROM alert_notifications WHERE id = $1`, id)
+	return err
 }
 
 func (r *AlertNotificationRepository) GetRecentNotifications(ctx context.Context, orgID uuid.UUID, limit int) ([]models.AlertNotification, error) {
@@ -855,7 +860,8 @@ func (r *DashboardWidgetRepository) UpdateWidget(ctx context.Context, w *models.
 }
 
 func (r *DashboardWidgetRepository) DeleteWidget(ctx context.Context, id uuid.UUID) error {
-	return r.db.Exec(ctx, `DELETE FROM dashboard_widgets WHERE id = $1`, id)
+	_, err := r.db.Exec(ctx, `DELETE FROM dashboard_widgets WHERE id = $1`, id)
+	return err
 }
 
 func (r *DashboardWidgetRepository) GetUserWidgets(ctx context.Context, orgID, userID uuid.UUID) ([]models.DashboardWidget, error) {
@@ -885,7 +891,7 @@ type WidgetPosition struct {
 
 func (r *DashboardWidgetRepository) ReorderWidgets(ctx context.Context, orgID, userID uuid.UUID, positions []WidgetPosition) error {
 	for _, p := range positions {
-		if err := r.db.Exec(ctx,
+		if _, err := r.db.Exec(ctx,
 			`UPDATE dashboard_widgets SET position = $1, updated_at = NOW() WHERE id = $2 AND org_id = $3 AND (user_id = $4 OR user_id IS NULL)`,
 			p.Position, p.ID, orgID, userID); err != nil {
 			return err

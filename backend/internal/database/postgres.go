@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/hospital/nms-backend/internal/config"
 	"github.com/hospital/nms-backend/pkg/logger"
@@ -64,15 +66,14 @@ func (db *DB) Close() {
 	logger.Info("Database connection closed")
 }
 
-func (db *DB) Exec(ctx context.Context, sql string, args ...interface{}) error {
-	_, err := db.Pool.Exec(ctx, sql, args...)
-	return err
+func (db *DB) Exec(ctx context.Context, sql string, args ...interface{}) (pgconn.CommandTag, error) {
+	return db.Pool.Exec(ctx, sql, args...)
 }
 
-func (db *DB) Query(ctx context.Context, sql string, args ...interface{}) (pgxpool.Rows, error) {
+func (db *DB) Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error) {
 	return db.Pool.Query(ctx, sql, args...)
 }
 
-func (db *DB) QueryRow(ctx context.Context, sql string, args ...interface{}) pgxpool.Row {
+func (db *DB) QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row {
 	return db.Pool.QueryRow(ctx, sql, args...)
 }
