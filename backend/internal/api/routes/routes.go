@@ -29,6 +29,7 @@ func RegisterRoutes(router *gin.Engine, db *database.DB, hub *websocket.Hub, cfg
 	assetRepo := repository.NewAssetRepository(db)
 	deviceCtrlRepo := repository.NewDeviceControlRepository(db)
 	deviceEventRepo := repository.NewDeviceEventRepository(db)
+	hotspotWelcomeRepo := repository.NewHotspotWelcomeRepository(db)
 
 	// Reporting repositories
 	webLogRepo := repository.NewWebLogRepository(db)
@@ -48,10 +49,11 @@ func RegisterRoutes(router *gin.Engine, db *database.DB, hub *websocket.Hub, cfg
 	internetService := services.NewInternetService(internetRepo)
 	discoveryService := services.NewDiscoveryService(deviceRepo, scanRepo, cfg)
 	assetService := services.NewAssetService(assetRepo)
-	policySyncService := services.NewPolicySyncService(assetRepo, deviceRepo, cfg)
+	policySyncService := services.NewPolicySyncService(assetRepo, internetRepo, cfg)
 	deviceControlService := services.NewDeviceControlService(deviceRepo, deviceCtrlRepo, monRepo, auditRepo)
 	deviceEventService := services.NewDeviceEventService(deviceEventRepo, deviceRepo, alertRepo)
 	enhancedDiscoverySvc := services.NewEnhancedDiscoveryService(deviceRepo, scanRepo, deviceEventRepo, deviceCtrlRepo, internetRepo, hub, cfg)
+	hotspotWelcomeService := services.NewHotspotWelcomeService(hotspotWelcomeRepo)
 
 	// Reporting services
 	loggingService := services.NewLoggingService(webLogRepo, connLogRepo, downLogRepo)
@@ -70,6 +72,7 @@ func RegisterRoutes(router *gin.Engine, db *database.DB, hub *websocket.Hub, cfg
 	internetHandler := handlers.NewInternetHandler(internetService, scanRepo, discoveryService)
 	assetHandler := handlers.NewAssetHandler(assetService, policySyncService)
 	deviceCtrlHandler := handlers.NewDeviceControlHandler(deviceControlService, deviceEventService, enhancedDiscoverySvc)
+	hotspotWelcomeHandler := handlers.NewHotspotWelcomeHandler(hotspotWelcomeService)
 
 	// Reporting handlers
 	logsHandler := handlers.NewLogsHandler(loggingService)
@@ -242,6 +245,14 @@ func RegisterRoutes(router *gin.Engine, db *database.DB, hub *websocket.Hub, cfg
 		}
 
 		protected.GET("/dashboard/summary", monitoringHandler.GetDashboardSummary)
+
+		hotspotWelcome := protected.Group("/hotspot/welcome-page")
+		{
+			hotspotWelcome.GET("", hotspotWelcomeHandler.Get)
+			hotspotWelcome.PUT("", middleware.RoleAuthorization("super_admin", "network_admin"), hotspotWelcomeHandler.Update)
+			hotspotWelcome.GET("/login.html", hotspotWelcomeHandler.Download)
+			hotspotWelcome.POST("/configure-profile", middleware.RoleAuthorization("super_admin", "network_admin"), hotspotWelcomeHandler.ConfigureProfile)
+		}
 
 		// Reporting - Logs
 		logs := protected.Group("/logs")

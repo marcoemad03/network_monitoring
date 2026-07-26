@@ -94,7 +94,7 @@ func (s *AssetService) RemoveDeviceFromMap(ctx context.Context, floorMapID, devi
 	return s.assetRepo.RemoveDeviceFromMap(ctx, floorMapID, deviceID)
 }
 
-func (s *AssetService) GetFloorMapDevices(ctx context.Context, floorMapID uuid.UUID) ([]models.FloorMapDevice, error) {
+func (s *AssetService) GetFloorMapDevices(ctx context.Context, floorMapID uuid.UUID) ([]models.FloorMapDeviceView, error) {
 	return s.assetRepo.GetFloorMapDevices(ctx, floorMapID)
 }
 

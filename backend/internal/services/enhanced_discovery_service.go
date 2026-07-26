@@ -380,15 +380,7 @@ func (s *EnhancedDiscoveryService) findDeviceByMAC(ctx context.Context, orgID uu
 	if mac == "" {
 		return nil, fmt.Errorf("empty mac")
 	}
-	macUpper := strings.ToUpper(mac)
-	devices, _, err := s.deviceRepo.List(ctx, orgID, 1, 1, macUpper, "", "", "", "created_at", false)
-	if err != nil {
-		return nil, err
-	}
-	if len(devices) > 0 {
-		return &devices[0], nil
-	}
-	return nil, nil
+	return s.deviceRepo.GetByMACForOrganization(ctx, orgID, mac)
 }
 
 func (s *EnhancedDiscoveryService) findDeviceByIP(ctx context.Context, orgID uuid.UUID, ipStr string) (*models.Device, error) {

@@ -45,23 +45,20 @@ func (db *DB) RunMigrations(ctx context.Context, migrationsDir string) error {
 			return fmt.Errorf("read migration %s: %w", f, err)
 		}
 
-		statements := strings.Split(string(content), ";")
-		for _, stmt := range statements {
-			stmt = strings.TrimSpace(stmt)
-			if stmt == "" {
-				continue
-			}
-			if _, err := db.Exec(ctx, stmt); err != nil {
-				logger.Warn("Migration statement failed (may be OK if column already exists)",
-					"file", f,
-					"error", err,
-					"statement", stmt[:min(len(stmt), 200)],
-				)
-			}
+		tx, err := db.Pool.Begin(ctx)
+		if err != nil {
+			return fmt.Errorf("begin migration %s: %w", f, err)
 		}
-
-		if _, err := db.Exec(ctx, "INSERT INTO schema_migrations (version) VALUES ($1)", f); err != nil {
+		if _, err := tx.Exec(ctx, string(content)); err != nil {
+			tx.Rollback(ctx)
+			return fmt.Errorf("apply migration %s: %w", f, err)
+		}
+		if _, err := tx.Exec(ctx, "INSERT INTO schema_migrations (version) VALUES ($1)", f); err != nil {
+			tx.Rollback(ctx)
 			return fmt.Errorf("record migration %s: %w", f, err)
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return fmt.Errorf("commit migration %s: %w", f, err)
 		}
 
 		logger.Info("Applied migration", "file", f)

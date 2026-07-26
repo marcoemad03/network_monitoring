@@ -90,46 +90,30 @@ func (s *DiscoveryService) StartMikroTikDiscovery(ctx context.Context, scan *mod
 			macAddr = &d.MACAddress
 		}
 
-		existing, _, err := s.deviceRepo.List(ctx, scan.OrganizationID, 1, 1, d.MACAddress, "", "", "", "created_at", false)
-		isNew := true
-		var deviceID uuid.UUID
-
-		if err == nil && len(existing) > 0 {
-			isNew = false
-			deviceID = existing[0].ID
-			existing[0].IPAddress = ip
-			existing[0].LastSeen = time.Now()
-			if d.Hostname != "" {
-				existing[0].Hostname = &d.Hostname
-			}
-			existing[0].Status = "online"
-			s.deviceRepo.Update(ctx, &existing[0])
+		dev := &models.Device{
+			ID:             uuid.New(),
+			OrganizationID: scan.OrganizationID,
+			Name:           d.Hostname,
+			Hostname:       &d.Hostname,
+			IPAddress:      ip,
+			MACAddress:     macAddr,
+			DeviceType:     "unknown",
+			Status:         "online",
+			Vendor:         &d.Vendor,
+			FirstSeen:      time.Now(),
+			LastSeen:       time.Now(),
+			IsMonitored:    true,
+		}
+		if d.Hostname != "" {
+			dev.Name = d.Hostname
+		} else if d.IPAddress != "" {
+			dev.Name = d.IPAddress
 		} else {
-			dev := &models.Device{
-				ID:             uuid.New(),
-				OrganizationID: scan.OrganizationID,
-				Name:           d.Hostname,
-				Hostname:       &d.Hostname,
-				IPAddress:      ip,
-				MACAddress:     macAddr,
-				DeviceType:     "unknown",
-				Status:         "online",
-				Vendor:         &d.Vendor,
-				FirstSeen:      time.Now(),
-				LastSeen:       time.Now(),
-				IsMonitored:    true,
-			}
-			if d.Hostname != "" {
-				dev.Name = d.Hostname
-			} else if d.IPAddress != "" {
-				dev.Name = d.IPAddress
-			} else {
-				dev.Name = "Unknown Device"
-			}
-			if err := s.deviceRepo.Create(ctx, dev); err != nil {
-				continue
-			}
-			deviceID = dev.ID
+			dev.Name = "Unknown Device"
+		}
+		deviceID, isNew, err := s.deviceRepo.UpsertDiscovered(ctx, dev)
+		if err != nil {
+			continue
 		}
 
 		hostname := ""

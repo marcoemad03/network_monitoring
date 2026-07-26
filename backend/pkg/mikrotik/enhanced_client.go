@@ -3,6 +3,7 @@ package mikrotik
 import (
 	"fmt"
 	"net"
+	"sort"
 	"strings"
 )
 
@@ -591,11 +592,12 @@ func (c *Client) ExecuteCommand(cmd string, args map[string]string) ([]map[strin
 	}
 	defer conn.Close()
 
-	fullCmd := cmd
+	attrs := make([]string, 0, len(args))
 	for k, v := range args {
-		fullCmd += fmt.Sprintf(" =%s=%s", k, v)
+		attrs = append(attrs, fmt.Sprintf("=%s=%s", k, v))
 	}
-	return conn.Command(fullCmd)
+	sort.Strings(attrs)
+	return conn.Command(cmd, attrs...)
 }
 
 func (c *Client) AddFirewallAddressList(listName, address, comment string) error {

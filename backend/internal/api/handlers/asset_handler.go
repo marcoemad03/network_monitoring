@@ -1,7 +1,7 @@
 package handlers
 
 import (
-	"context"
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -11,13 +11,13 @@ import (
 )
 
 type AssetHandler struct {
-	assetService     *services.AssetService
+	assetService      *services.AssetService
 	policySyncService *services.PolicySyncService
 }
 
 func NewAssetHandler(assetService *services.AssetService, policySyncService *services.PolicySyncService) *AssetHandler {
 	return &AssetHandler{
-		assetService:     assetService,
+		assetService:      assetService,
 		policySyncService: policySyncService,
 	}
 }
@@ -371,7 +371,7 @@ func (h *AssetHandler) GetFloorMapDevices(c *gin.Context) {
 		return
 	}
 	if devices == nil {
-		devices = []models.FloorMapDevice{}
+		devices = []models.FloorMapDeviceView{}
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": devices, "message": "Floor map devices retrieved"})
 }
@@ -583,6 +583,19 @@ func (h *AssetHandler) AssignPolicyToGroup(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to assign policy to group", "error_code": "SERVER_ERROR"})
 		return
 	}
+	policy, err := h.assetService.GetPolicy(c.Request.Context(), policyID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Policy assigned but synchronization could not resolve the organization", "error_code": "POLICY_SYNC_ERROR"})
+		return
+	}
+	if err := h.policySyncService.SyncPoliciesToMikroTik(c.Request.Context(), policy.OrganizationID); err != nil {
+		status, code := http.StatusInternalServerError, "POLICY_SYNC_ERROR"
+		if errors.Is(err, services.ErrPolicyUnsupported) {
+			status, code = http.StatusUnprocessableEntity, "POLICY_UNSUPPORTED"
+		}
+		c.JSON(status, gin.H{"success": false, "message": "Policy assigned but enforcement failed: " + err.Error(), "error_code": code})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Policy assigned to group"})
 }
 
@@ -600,6 +613,13 @@ func (h *AssetHandler) RemovePolicyFromGroup(c *gin.Context) {
 	if err := h.assetService.RemovePolicyFromGroup(c.Request.Context(), policyID, groupID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to remove policy from group", "error_code": "SERVER_ERROR"})
 		return
+	}
+	policy, err := h.assetService.GetPolicy(c.Request.Context(), policyID)
+	if err == nil {
+		if err := h.policySyncService.SyncPoliciesToMikroTik(c.Request.Context(), policy.OrganizationID); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Policy removed but enforcement failed: " + err.Error(), "error_code": "POLICY_SYNC_ERROR"})
+			return
+		}
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Policy removed from group"})
 }
@@ -627,10 +647,17 @@ func (h *AssetHandler) SyncPolicies(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid organization ID", "error_code": "VALIDATION_ERROR"})
 		return
 	}
-	go func() {
-		h.policySyncService.SyncPoliciesToMikroTik(context.Background(), orgID, &models.VendorIntegration{ID: uuid.Nil})
-	}()
-	c.JSON(http.StatusAccepted, gin.H{"success": true, "message": "Policy sync started"})
+	if err := h.policySyncService.SyncPoliciesToMikroTik(c.Request.Context(), orgID); err != nil {
+		status := http.StatusInternalServerError
+		code := "POLICY_SYNC_ERROR"
+		if errors.Is(err, services.ErrPolicyUnsupported) {
+			status = http.StatusUnprocessableEntity
+			code = "POLICY_UNSUPPORTED"
+		}
+		c.JSON(status, gin.H{"success": false, "message": err.Error(), "error_code": code})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Policies synchronized"})
 }
 
 func (h *AssetHandler) ListSyncLogs(c *gin.Context) {

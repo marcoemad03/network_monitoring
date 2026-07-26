@@ -83,6 +83,10 @@ func (c *Client) Host() string {
 	return c.host
 }
 
+func (c *Client) Port() int {
+	return c.port
+}
+
 func (c *Client) Username() string {
 	return c.username
 }

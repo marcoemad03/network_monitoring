@@ -95,6 +95,13 @@ class SettingsScreen extends ConsumerWidget {
               trailing: const Icon(Icons.chevron_right),
               onTap: () => context.push(RouteNames.userManagement),
             ),
+            ListTile(
+              leading: const Icon(Icons.wifi_tethering),
+              title: const Text('Hotspot Welcome Page'),
+              subtitle: const Text('Brand, preview, and prepare RouterOS login.html'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => context.push(RouteNames.hotspotWelcome),
+            ),
           ],
           const Divider(),
           _buildSectionHeader(context, 'About'),

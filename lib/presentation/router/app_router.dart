@@ -19,6 +19,7 @@ import '../screens/network/scan_screen.dart';
 import '../screens/settings/settings_screen.dart';
 import '../screens/settings/user_management_screen.dart';
 import '../screens/settings/permission_management_screen.dart';
+import '../screens/settings/hotspot_welcome_screen.dart';
 import '../screens/audit/audit_log_screen.dart';
 import '../screens/internet/internet_management_screen.dart';
 import '../screens/internet/policy_list_screen.dart';
@@ -181,6 +182,10 @@ class AppRouter {
               GoRoute(
                 path: RouteNames.permissionManagement,
                 builder: (context, state) => const PermissionManagementScreen(),
+              ),
+              GoRoute(
+                path: RouteNames.hotspotWelcome,
+                builder: (context, state) => const HotspotWelcomeScreen(),
               ),
               GoRoute(
                 path: RouteNames.auditLog,

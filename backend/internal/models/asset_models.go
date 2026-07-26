@@ -68,17 +68,17 @@ type AssetDetail struct {
 
 type AssetInventory struct {
 	AssetDetail
-	DeviceName       string     `json:"device_name" db:"device_name"`
-	MACAddress       *string    `json:"mac_address,omitempty" db:"mac_address"`
-	IPAddress        net.IP     `json:"ip_address" db:"ip_address"`
-	Status           string     `json:"status" db:"status"`
-	GroupIDs         []uuid.UUID `json:"group_ids" db:"group_ids"`
-	GroupNames       []string   `json:"group_names" db:"group_names"`
-	FloorMapID       *uuid.UUID `json:"floor_map_id,omitempty" db:"floor_map_id"`
-	FloorMapName     *string    `json:"floor_map_name,omitempty" db:"floor_map_name"`
-	XCoord           *float64   `json:"x_coord,omitempty" db:"x_coord"`
-	YCoord           *float64   `json:"y_coord,omitempty" db:"y_coord"`
-	AccessPointName  *string    `json:"access_point_name,omitempty" db:"access_point_name"`
+	DeviceName      string      `json:"device_name" db:"device_name"`
+	MACAddress      *string     `json:"mac_address,omitempty" db:"mac_address"`
+	IPAddress       net.IP      `json:"ip_address" db:"ip_address"`
+	Status          string      `json:"status" db:"status"`
+	GroupIDs        []uuid.UUID `json:"group_ids" db:"group_ids"`
+	GroupNames      []string    `json:"group_names" db:"group_names"`
+	FloorMapID      *uuid.UUID  `json:"floor_map_id,omitempty" db:"floor_map_id"`
+	FloorMapName    *string     `json:"floor_map_name,omitempty" db:"floor_map_name"`
+	XCoord          *float64    `json:"x_coord,omitempty" db:"x_coord"`
+	YCoord          *float64    `json:"y_coord,omitempty" db:"y_coord"`
+	AccessPointName *string     `json:"access_point_name,omitempty" db:"access_point_name"`
 }
 
 type Policy struct {
@@ -100,11 +100,16 @@ type PolicyAssignment struct {
 	CreatedAt time.Time `json:"created_at" db:"created_at"`
 }
 
+type AssignedPolicyDevice struct {
+	Policy Policy
+	Device Device
+}
+
 type SyncLog struct {
-	ID                 uuid.UUID              `json:"id" db:"id"`
-	OrganizationID     uuid.UUID              `json:"organization_id" db:"organization_id"`
-	VendorIntegrationID *uuid.UUID            `json:"vendor_integration_id,omitempty" db:"vendor_integration_id"`
-	Status             string                 `json:"status" db:"status"`
-	Details            map[string]interface{} `json:"details" db:"details"`
-	CreatedAt          time.Time              `json:"created_at" db:"created_at"`
+	ID                  uuid.UUID              `json:"id" db:"id"`
+	OrganizationID      uuid.UUID              `json:"organization_id" db:"organization_id"`
+	VendorIntegrationID *uuid.UUID             `json:"vendor_integration_id,omitempty" db:"vendor_integration_id"`
+	Status              string                 `json:"status" db:"status"`
+	Details             map[string]interface{} `json:"details" db:"details"`
+	CreatedAt           time.Time              `json:"created_at" db:"created_at"`
 }

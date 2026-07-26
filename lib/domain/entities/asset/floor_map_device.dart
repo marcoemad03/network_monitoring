@@ -6,6 +6,10 @@ class FloorMapDevice extends Equatable {
   final String deviceId;
   final double xCoord;
   final double yCoord;
+  final String deviceName;
+  final String? macAddress;
+  final String? ipAddress;
+  final String status;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -15,6 +19,10 @@ class FloorMapDevice extends Equatable {
     required this.deviceId,
     this.xCoord = 0,
     this.yCoord = 0,
+    required this.deviceName,
+    this.macAddress,
+    this.ipAddress,
+    this.status = 'unknown',
     required this.createdAt,
     required this.updatedAt,
   });
@@ -25,6 +33,10 @@ class FloorMapDevice extends Equatable {
     String? deviceId,
     double? xCoord,
     double? yCoord,
+    String? deviceName,
+    String? macAddress,
+    String? ipAddress,
+    String? status,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -34,11 +46,27 @@ class FloorMapDevice extends Equatable {
       deviceId: deviceId ?? this.deviceId,
       xCoord: xCoord ?? this.xCoord,
       yCoord: yCoord ?? this.yCoord,
+      deviceName: deviceName ?? this.deviceName,
+      macAddress: macAddress ?? this.macAddress,
+      ipAddress: ipAddress ?? this.ipAddress,
+      status: status ?? this.status,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
   }
 
   @override
-  List<Object?> get props => [id, floorMapId, deviceId, xCoord, yCoord, createdAt, updatedAt];
+  List<Object?> get props => [
+    id,
+    floorMapId,
+    deviceId,
+    xCoord,
+    yCoord,
+    deviceName,
+    macAddress,
+    ipAddress,
+    status,
+    createdAt,
+    updatedAt,
+  ];
 }

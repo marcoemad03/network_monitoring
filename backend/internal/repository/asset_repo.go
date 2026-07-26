@@ -186,17 +186,27 @@ func (r *AssetRepository) RemoveDeviceFromMap(ctx context.Context, floorMapID, d
 	return err
 }
 
-func (r *AssetRepository) GetFloorMapDevices(ctx context.Context, floorMapID uuid.UUID) ([]models.FloorMapDevice, error) {
+func (r *AssetRepository) GetFloorMapDevices(ctx context.Context, floorMapID uuid.UUID) ([]models.FloorMapDeviceView, error) {
 	rows, err := r.db.Query(ctx,
-		`SELECT id, floor_map_id, device_id, x_coord, y_coord, created_at, updated_at FROM floor_map_devices WHERE floor_map_id=$1`, floorMapID)
+		`SELECT fmd.id, fmd.floor_map_id, fmd.device_id, fmd.x_coord, fmd.y_coord,
+		        fmd.created_at, fmd.updated_at, d.name, d.mac_address::text,
+		        d.ip_address, d.status
+		 FROM floor_map_devices fmd
+		 JOIN devices d ON d.id = fmd.device_id
+		 WHERE fmd.floor_map_id=$1
+		 ORDER BY d.name`, floorMapID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var devices []models.FloorMapDevice
+	var devices []models.FloorMapDeviceView
 	for rows.Next() {
-		var d models.FloorMapDevice
-		if err := rows.Scan(&d.ID, &d.FloorMapID, &d.DeviceID, &d.XCoord, &d.YCoord, &d.CreatedAt, &d.UpdatedAt); err != nil {
+		var d models.FloorMapDeviceView
+		if err := rows.Scan(
+			&d.ID, &d.FloorMapID, &d.DeviceID, &d.XCoord, &d.YCoord,
+			&d.CreatedAt, &d.UpdatedAt, &d.DeviceName, &d.MACAddress,
+			&d.IPAddress, &d.Status,
+		); err != nil {
 			return nil, err
 		}
 		devices = append(devices, d)
@@ -245,8 +255,6 @@ func (r *AssetRepository) ListAssetDetails(ctx context.Context, orgID uuid.UUID)
 	}
 	return details, nil
 }
-
-
 
 func (r *AssetRepository) CreatePolicy(ctx context.Context, p *models.Policy) error {
 	configJSON, err := json.Marshal(p.Config)
@@ -349,6 +357,46 @@ func (r *AssetRepository) GetPoliciesForGroup(ctx context.Context, groupID uuid.
 		policies = append(policies, p)
 	}
 	return policies, nil
+}
+
+func (r *AssetRepository) ListAssignedPolicyDevices(ctx context.Context, orgID uuid.UUID) ([]models.AssignedPolicyDevice, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT DISTINCT p.id, p.organization_id, p.name, p.description, p.policy_type, p.config, p.is_active, p.created_at, p.updated_at,
+		       d.id, d.organization_id, d.name, d.hostname, d.ip_address, d.mac_address::text, d.device_type, d.status, d.vendor,
+		       d.model, d.serial_number, d.os_version, d.firmware_version, d.location, d.department, d.notes, d.custom_fields,
+		       d.first_seen, d.last_boot, d.last_seen, d.is_critical, d.is_monitored, d.created_at, d.updated_at
+		FROM policies p
+		JOIN policy_assignments pa ON pa.policy_id = p.id
+		JOIN device_group_members dgm ON dgm.group_id = pa.group_id
+		JOIN devices d ON d.id = dgm.device_id AND d.organization_id = p.organization_id
+		WHERE p.organization_id = $1 AND p.is_active = true
+		ORDER BY p.id, d.id`, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var targets []models.AssignedPolicyDevice
+	for rows.Next() {
+		var target models.AssignedPolicyDevice
+		var configJSON []byte
+		if err := rows.Scan(
+			&target.Policy.ID, &target.Policy.OrganizationID, &target.Policy.Name, &target.Policy.Description,
+			&target.Policy.PolicyType, &configJSON, &target.Policy.IsActive, &target.Policy.CreatedAt, &target.Policy.UpdatedAt,
+			&target.Device.ID, &target.Device.OrganizationID, &target.Device.Name, &target.Device.Hostname,
+			&target.Device.IPAddress, &target.Device.MACAddress, &target.Device.DeviceType, &target.Device.Status,
+			&target.Device.Vendor, &target.Device.Model, &target.Device.SerialNumber, &target.Device.OSVersion,
+			&target.Device.FirmwareVersion, &target.Device.Location, &target.Device.Department, &target.Device.Notes,
+			&target.Device.CustomFields, &target.Device.FirstSeen, &target.Device.LastBoot, &target.Device.LastSeen,
+			&target.Device.IsCritical, &target.Device.IsMonitored, &target.Device.CreatedAt, &target.Device.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal(configJSON, &target.Policy.Config); err != nil {
+			return nil, fmt.Errorf("decode policy %s config: %w", target.Policy.ID, err)
+		}
+		targets = append(targets, target)
+	}
+	return targets, rows.Err()
 }
 
 func (r *AssetRepository) CreateSyncLog(ctx context.Context, l *models.SyncLog) error {

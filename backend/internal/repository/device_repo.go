@@ -126,6 +126,21 @@ func (r *DeviceRepository) GetByIDForOrganization(ctx context.Context, orgID, id
 	return &d, nil
 }
 
+func (r *DeviceRepository) GetByMACForOrganization(ctx context.Context, orgID uuid.UUID, mac string) (*models.Device, error) {
+	query := `SELECT id, organization_id, name, hostname, ip_address, mac_address::text, device_type, status, vendor, model, serial_number, os_version, firmware_version, location, department, notes, custom_fields, first_seen, last_boot, last_seen, is_critical, is_monitored, created_at, updated_at FROM devices WHERE organization_id = $1 AND mac_address = $2::macaddr`
+	var d models.Device
+	if err := r.db.QueryRow(ctx, query, orgID, strings.TrimSpace(mac)).Scan(
+		&d.ID, &d.OrganizationID, &d.Name, &d.Hostname, &d.IPAddress, &d.MACAddress,
+		&d.DeviceType, &d.Status, &d.Vendor, &d.Model, &d.SerialNumber, &d.OSVersion,
+		&d.FirmwareVersion, &d.Location, &d.Department, &d.Notes, &d.CustomFields,
+		&d.FirstSeen, &d.LastBoot, &d.LastSeen, &d.IsCritical, &d.IsMonitored,
+		&d.CreatedAt, &d.UpdatedAt,
+	); err != nil {
+		return nil, fmt.Errorf("get organization device by MAC: %w", err)
+	}
+	return &d, nil
+}
+
 // UpsertDiscovered uses the stable MAC identity and updates a device's current IP.
 // Devices without a MAC are matched by IP only within the same organization.
 func (r *DeviceRepository) UpsertDiscovered(ctx context.Context, d *models.Device) (uuid.UUID, bool, error) {

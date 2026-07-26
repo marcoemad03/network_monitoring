@@ -2,7 +2,11 @@ package services
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -12,207 +16,205 @@ import (
 	"github.com/hospital/nms-backend/pkg/mikrotik"
 )
 
+const managedPolicyPrefix = "nms-policy-"
+
+var ErrPolicyUnsupported = errors.New("policy type is not safely enforceable on MikroTik")
+
+type routerCommander interface {
+	Command(string, ...string) ([]map[string]string, error)
+	Close() error
+}
+
+type desiredRouterEntry struct {
+	path  string
+	attrs map[string]string
+}
+
 type PolicySyncService struct {
-	assetRepo *repository.AssetRepository
-	deviceRepo *repository.DeviceRepository
-	cfg       *config.Config
+	assetRepo    *repository.AssetRepository
+	internetRepo *repository.InternetRepository
+	cfg          *config.Config
+	dialRouter   func(*models.VendorIntegration) (routerCommander, error)
 }
 
-func NewPolicySyncService(assetRepo *repository.AssetRepository, deviceRepo *repository.DeviceRepository, cfg *config.Config) *PolicySyncService {
-	return &PolicySyncService{
-		assetRepo:  assetRepo,
-		deviceRepo: deviceRepo,
-		cfg:        cfg,
-	}
+func NewPolicySyncService(assetRepo *repository.AssetRepository, internetRepo *repository.InternetRepository, cfg *config.Config) *PolicySyncService {
+	s := &PolicySyncService{assetRepo: assetRepo, internetRepo: internetRepo, cfg: cfg}
+	s.dialRouter = s.dial
+	return s
 }
 
-func (s *PolicySyncService) SyncPoliciesToMikroTik(ctx context.Context, orgID uuid.UUID, vendor *models.VendorIntegration) error {
-	log := &models.SyncLog{
-		OrganizationID:      orgID,
-		VendorIntegrationID: &vendor.ID,
-		Status:              "in_progress",
-		Details:             map[string]interface{}{"started_at": time.Now().Format(time.RFC3339)},
+func (s *PolicySyncService) SyncPoliciesToMikroTik(ctx context.Context, orgID uuid.UUID) error {
+	vendor, err := s.internetRepo.GetActiveMikroTikIntegration(ctx, orgID)
+	if err != nil {
+		return fmt.Errorf("active MikroTik integration is not configured: %w", err)
 	}
-	s.assetRepo.CreateSyncLog(ctx, log)
+	log := &models.SyncLog{ID: uuid.New(), OrganizationID: orgID, VendorIntegrationID: &vendor.ID, Status: "in_progress", Details: map[string]interface{}{"started_at": time.Now().Format(time.RFC3339)}}
+	_ = s.assetRepo.CreateSyncLog(ctx, log)
 
-	password := ""
-	if vendor.EncryptedPassword != nil {
-		password = *vendor.EncryptedPassword
+	targets, err := s.assetRepo.ListAssignedPolicyDevices(ctx, orgID)
+	if err != nil {
+		return s.fail(ctx, log, fmt.Errorf("resolve policy assignments: %w", err))
 	}
+	firewall, queues, err := desiredEntries(targets)
+	if err != nil {
+		return s.fail(ctx, log, err)
+	}
+	conn, err := s.dialRouter(vendor)
+	if err != nil {
+		return s.fail(ctx, log, fmt.Errorf("connect MikroTik: %w", err))
+	}
+	defer conn.Close()
+
+	if err := reconcileEntries(conn, "/ip/firewall/filter", firewall); err != nil {
+		return s.fail(ctx, log, fmt.Errorf("reconcile Internet access rules: %w", err))
+	}
+	if err := reconcileEntries(conn, "/queue/simple", queues); err != nil {
+		return s.fail(ctx, log, fmt.Errorf("reconcile bandwidth queues: %w", err))
+	}
+	log.ID = uuid.New()
+	log.Status = "completed"
+	log.Details = map[string]interface{}{"targets": len(targets), "firewall_rules": len(firewall), "queues": len(queues), "completed_at": time.Now().Format(time.RFC3339)}
+	_ = s.assetRepo.CreateSyncLog(ctx, log)
+	return nil
+}
+
+func (s *PolicySyncService) fail(ctx context.Context, log *models.SyncLog, err error) error {
+	log.ID = uuid.New()
+	log.Status = "failed"
+	log.Details = map[string]interface{}{"error": err.Error(), "failed_at": time.Now().Format(time.RFC3339)}
+	_ = s.assetRepo.CreateSyncLog(ctx, log)
+	return err
+}
+
+func (s *PolicySyncService) dial(vendor *models.VendorIntegration) (routerCommander, error) {
 	username := "admin"
 	if vendor.Username != nil {
 		username = *vendor.Username
 	}
-	host := extractHost(vendor.BaseURL)
-
-	client := mikrotik.NewClient(host, username, password, s.cfg.MikroTikAPITimeout)
-
-	policies, err := s.assetRepo.ListPolicies(ctx, orgID)
+	password := ""
+	if vendor.EncryptedPassword != nil {
+		password = *vendor.EncryptedPassword
+	}
+	client, err := mikrotik.NewClientFromEndpoint(vendor.BaseURL, username, password, s.cfg.MikroTikAPITimeout)
 	if err != nil {
-		log.Status = "failed"
-		log.Details = map[string]interface{}{"error": fmt.Sprintf("list policies: %v", err)}
-		s.assetRepo.CreateSyncLog(ctx, log)
-		return err
+		return nil, err
 	}
-
-	conn, err := s.dial(client)
-	if err != nil {
-		log.Status = "failed"
-		log.Details = map[string]interface{}{"error": fmt.Sprintf("connect mikrotik: %v", err)}
-		s.assetRepo.CreateSyncLog(ctx, log)
-		return err
-	}
-	defer conn.Close()
-
-	pushed := 0
-	failed := 0
-
-	for _, p := range policies {
-		if !p.IsActive {
-			continue
-		}
-		if err := s.pushPolicy(ctx, conn, &p); err != nil {
-			failed++
-			continue
-		}
-		pushed++
-	}
-
-	log.Status = "completed"
-	log.Details = map[string]interface{}{
-		"pushed": pushed,
-		"failed": failed,
-		"total":  len(policies),
-		"completed_at": time.Now().Format(time.RFC3339),
-	}
-	s.assetRepo.CreateSyncLog(ctx, log)
-	return nil
-}
-
-func (s *PolicySyncService) dial(client *mikrotik.Client) (*mikrotik.APIConnection, error) {
-	conn := mikrotik.NewAPIConnection(client.Host(), 8728, client.Username(), client.Password(), s.cfg.MikroTikAPITimeout)
+	conn := mikrotik.NewAPIConnection(client.Host(), client.Port(), client.Username(), client.Password(), s.cfg.MikroTikAPITimeout)
 	if err := conn.Connect(); err != nil {
-		return nil, fmt.Errorf("connect: %w", err)
+		return nil, err
 	}
 	if err := conn.Login(); err != nil {
 		conn.Close()
-		return nil, fmt.Errorf("login: %w", err)
+		return nil, err
 	}
 	return conn, nil
 }
 
-func (s *PolicySyncService) pushPolicy(_ context.Context, conn *mikrotik.APIConnection, p *models.Policy) error {
-	switch p.PolicyType {
-	case "website_blacklist":
-		return s.pushWebsiteBlacklist(conn, p)
-	case "website_whitelist":
-		return s.pushWebsiteWhitelist(conn, p)
-	case "bandwidth_limit", "upload_limit", "download_limit":
-		return s.pushBandwidthLimit(conn, p)
-	case "internet_access":
-		return s.pushInternetAccess(conn, p)
-	case "schedule":
-		return s.pushSchedule(conn, p)
-	}
-	return nil
-}
-
-func (s *PolicySyncService) pushWebsiteBlacklist(conn *mikrotik.APIConnection, p *models.Policy) error {
-	domains, _ := p.Config["domains"].([]interface{})
-	for _, d := range domains {
-		domain, _ := d.(string)
-		if domain == "" {
-			continue
+func desiredEntries(targets []models.AssignedPolicyDevice) (map[string]desiredRouterEntry, map[string]desiredRouterEntry, error) {
+	firewall := make(map[string]desiredRouterEntry)
+	queues := make(map[string]desiredRouterEntry)
+	for _, target := range targets {
+		p, d := target.Policy, target.Device
+		if d.MACAddress == nil || strings.TrimSpace(*d.MACAddress) == "" || d.IPAddress == nil || d.IPAddress.IsUnspecified() {
+			return nil, nil, fmt.Errorf("policy %s device %s has no current MAC/IP identity", p.ID, d.ID)
 		}
-		comment := fmt.Sprintf("nms-blacklist-%s", p.ID.String()[:8])
-		_, err := conn.Command(fmt.Sprintf("/ip/firewall/filter/add chain=forward dst-host=%s action=drop comment=%s", domain, comment))
-		if err != nil {
-			return fmt.Errorf("add blacklist rule for %s: %w", domain, err)
-		}
-	}
-	return nil
-}
-
-func (s *PolicySyncService) pushWebsiteWhitelist(conn *mikrotik.APIConnection, p *models.Policy) error {
-	domains, _ := p.Config["domains"].([]interface{})
-	for _, d := range domains {
-		domain, _ := d.(string)
-		if domain == "" {
-			continue
-		}
-		comment := fmt.Sprintf("nms-whitelist-%s", p.ID.String()[:8])
-		_, err := conn.Command(fmt.Sprintf("/ip/firewall/filter/add chain=forward dst-host=%s action=accept comment=%s", domain, comment))
-		if err != nil {
-			return fmt.Errorf("add whitelist rule for %s: %w", domain, err)
+		comment := managedPolicyPrefix + p.ID.String() + "-" + d.ID.String()
+		switch p.PolicyType {
+		case "internet_access":
+			enabled, ok := p.Config["enabled"].(bool)
+			if !ok {
+				return nil, nil, fmt.Errorf("policy %s: internet_access requires boolean enabled", p.ID)
+			}
+			if !enabled {
+				firewall[comment] = desiredRouterEntry{path: "/ip/firewall/filter", attrs: map[string]string{"chain": "forward", "action": "drop", "src-address": hostCIDR(d.IPAddress), "src-mac-address": strings.ToUpper(*d.MACAddress), "comment": comment}}
+			}
+		case "bandwidth_limit", "upload_limit", "download_limit":
+			upload, uok := positiveInt64(p.Config["upload_limit_bps"])
+			download, dok := positiveInt64(p.Config["download_limit_bps"])
+			if p.PolicyType == "upload_limit" && !uok || p.PolicyType == "download_limit" && !dok || p.PolicyType == "bandwidth_limit" && !uok && !dok {
+				return nil, nil, fmt.Errorf("policy %s: %s requires a positive applicable limit", p.ID, p.PolicyType)
+			}
+			queues[comment] = desiredRouterEntry{path: "/queue/simple", attrs: map[string]string{"name": comment, "target": hostCIDR(d.IPAddress), "max-limit": fmt.Sprintf("%d/%d", upload, download), "comment": comment}}
+		case "website_blacklist", "website_whitelist", "schedule":
+			return nil, nil, fmt.Errorf("%w: %s policy %s", ErrPolicyUnsupported, p.PolicyType, p.ID)
+		default:
+			return nil, nil, fmt.Errorf("%w: unknown policy type %q", ErrPolicyUnsupported, p.PolicyType)
 		}
 	}
-	if len(domains) > 0 {
-		comment := fmt.Sprintf("nms-whitelist-drop-%s", p.ID.String()[:8])
-		conn.Command(fmt.Sprintf("/ip/firewall/filter/add chain=forward action=drop comment=%s", comment))
-	}
-	return nil
+	return firewall, queues, nil
 }
 
-func (s *PolicySyncService) pushBandwidthLimit(conn *mikrotik.APIConnection, p *models.Policy) error {
-	uploadBps, _ := p.Config["upload_limit_bps"].(float64)
-	downloadBps, _ := p.Config["download_limit_bps"].(float64)
-	if u, ok := p.Config["upload_limit_bps"].(int); ok {
-		uploadBps = float64(u)
-	}
-	if d, ok := p.Config["download_limit_bps"].(int); ok {
-		downloadBps = float64(d)
-	}
-
-	uploadStr := fmt.Sprintf("%.0f", uploadBps)
-	downloadStr := fmt.Sprintf("%.0f", downloadBps)
-	if uploadBps == 0 && downloadBps == 0 {
-		return nil
-	}
-
-	target, _ := p.Config["target"].(string)
-	comment := fmt.Sprintf("nms-bwlimit-%s", p.ID.String()[:8])
-
-	cmd := fmt.Sprintf("/queue/simple/add name=%s target=%s max-limit=%s/%s comment=%s",
-		comment, target, uploadStr, downloadStr, comment)
-	_, err := conn.Command(cmd)
-	return err
-}
-
-func (s *PolicySyncService) pushInternetAccess(conn *mikrotik.APIConnection, p *models.Policy) error {
-	enabled, _ := p.Config["enabled"].(bool)
-	comment := fmt.Sprintf("nms-internet-%s", p.ID.String()[:8])
-
-	if !enabled {
-		_, err := conn.Command(fmt.Sprintf("/ip/firewall/filter/add chain=forward action=drop comment=%s", comment))
+func reconcileEntries(conn routerCommander, basePath string, desired map[string]desiredRouterEntry) error {
+	existing, err := conn.Command(basePath+"/print", "?comment="+managedPolicyPrefix)
+	if err != nil {
 		return err
 	}
-	_, err := conn.Command(fmt.Sprintf("/ip/firewall/filter/remove [find comment=%s]", comment))
-	return err
+	seen := make(map[string]bool)
+	for _, current := range existing {
+		comment := current["comment"]
+		if !strings.HasPrefix(comment, managedPolicyPrefix) {
+			continue
+		}
+		want, ok := desired[comment]
+		if !ok {
+			if _, err := conn.Command(basePath+"/remove", "=.id="+current[".id"]); err != nil {
+				return err
+			}
+			continue
+		}
+		seen[comment] = true
+		changed := false
+		for key, value := range want.attrs {
+			if current[key] != value {
+				changed = true
+				break
+			}
+		}
+		if changed {
+			attrs := attributeWords(want.attrs)
+			attrs = append([]string{"=.id=" + current[".id"]}, attrs...)
+			if _, err := conn.Command(basePath+"/set", attrs...); err != nil {
+				return err
+			}
+		}
+	}
+	for comment, want := range desired {
+		if seen[comment] {
+			continue
+		}
+		if _, err := conn.Command(want.path+"/add", attributeWords(want.attrs)...); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
-func (s *PolicySyncService) pushSchedule(conn *mikrotik.APIConnection, p *models.Policy) error {
-	startTime, _ := p.Config["start_time"].(string)
-	endTime, _ := p.Config["end_time"].(string)
-	days, _ := p.Config["days"].(string)
-	action, _ := p.Config["action"].(string)
-
-	if startTime == "" || endTime == "" {
-		return nil
+func attributeWords(attrs map[string]string) []string {
+	words := make([]string, 0, len(attrs))
+	for key, value := range attrs {
+		words = append(words, "="+key+"="+value)
 	}
-	if action == "" {
-		action = "drop"
-	}
-
-	comment := fmt.Sprintf("nms-schedule-%s", p.ID.String()[:8])
-	interval := fmt.Sprintf("%s-%s", startTime, endTime)
-	var dayFilter string
-	if days != "" {
-		dayFilter = fmt.Sprintf(" days=%s", days)
-	}
-	cmd := fmt.Sprintf("/ip/firewall/filter/add chain=forward action=%s time=%s%s comment=%s",
-		action, interval, dayFilter, comment)
-	_, err := conn.Command(cmd)
-	return err
+	return words
 }
 
+func positiveInt64(value interface{}) (int64, bool) {
+	var n int64
+	switch value := value.(type) {
+	case float64:
+		n = int64(value)
+	case int:
+		n = int64(value)
+	case int64:
+		n = value
+	case string:
+		n, _ = strconv.ParseInt(value, 10, 64)
+	}
+	return n, n > 0
+}
 
+func hostCIDR(ip net.IP) string {
+	if ip.To4() != nil {
+		return ip.String() + "/32"
+	}
+	return ip.String() + "/128"
+}

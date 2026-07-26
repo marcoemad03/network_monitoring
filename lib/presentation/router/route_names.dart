@@ -18,6 +18,7 @@ class RouteNames {
   static const String settings = '/settings';
   static const String userManagement = '/settings/users';
   static const String permissionManagement = '/settings/permissions';
+  static const String hotspotWelcome = '/settings/hotspot-welcome';
   static const String auditLog = '/audit';
   static const String about = '/about';
   static const String internetManagement = '/internet';
