@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../providers/auth/auth_provider.dart';
 import '../../router/route_names.dart';
+import '../../../core/config/build_config.dart';
+import '../../../core/config/environment.dart';
 
 class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
@@ -21,6 +23,11 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
   Future<void> _initialize() async {
     await Future.delayed(const Duration(milliseconds: 800));
     if (!mounted) return;
+
+    if (BuildConfig.environment == Environment.development) {
+      context.go(RouteNames.connectMikroTik);
+      return;
+    }
 
     final authNotifier = ref.read(authProvider.notifier);
     await authNotifier.checkAuth();

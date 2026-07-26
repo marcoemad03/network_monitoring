@@ -90,7 +90,9 @@ class AppLocalizations {
   String get help => _translate('help');
 
   String _translate(String key) {
-    return _translations[locale.languageCode]?[key] ?? _translations['en']![key] ?? key;
+    return _translations[locale.languageCode]?[key] ??
+        _translations['en']![key] ??
+        key;
   }
 
   static final Map<String, Map<String, String>> _translations = {
@@ -119,7 +121,7 @@ class AppLocalizations {
       'edit': 'Edit',
       'create': 'Create',
       'loading': 'Loading...',
-      'noData': 'No data available',
+      'noData': 'RouterOS returned no matching network data',
       'errorOccurred': 'An error occurred',
       'retry': 'Retry',
       'online': 'Online',
@@ -235,14 +237,14 @@ class AppLocalizations {
   };
 }
 
-class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {
+class _AppLocalizationsDelegate
+    extends LocalizationsDelegate<AppLocalizations> {
   const _AppLocalizationsDelegate();
 
   @override
-  bool isSupported(Locale locale) =>
-      AppLocalizations.supportedLocales.any(
-        (l) => l.languageCode == locale.languageCode,
-      );
+  bool isSupported(Locale locale) => AppLocalizations.supportedLocales.any(
+    (l) => l.languageCode == locale.languageCode,
+  );
 
   @override
   Future<AppLocalizations> load(Locale locale) async {
@@ -274,6 +276,9 @@ class LocaleNotifier extends StateNotifier<Locale> {
   Future<void> setLocale(Locale locale) async {
     state = locale;
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(AppConstants.localeKey, '${locale.languageCode}_${locale.countryCode}');
+    await prefs.setString(
+      AppConstants.localeKey,
+      '${locale.languageCode}_${locale.countryCode}',
+    );
   }
 }

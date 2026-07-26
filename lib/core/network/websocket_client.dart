@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:web_socket_channel/io.dart';
 import '../config/build_config.dart';
+import '../config/environment.dart';
 import '../utils/logger.dart';
 import '../security/jwt_manager.dart';
 
@@ -36,11 +37,14 @@ class WebSocketClient {
     _setState(WebSocketState.connecting);
 
     try {
-      final token = await _jwtManager.getAccessToken();
       final uri = Uri.parse('${BuildConfig.wsBaseUrl}$path');
-      final wsHeaders = <String, dynamic>{
-        'Authorization': 'Bearer $token',
-      };
+      final wsHeaders = <String, dynamic>{};
+      if (BuildConfig.environment != Environment.development) {
+        final token = await _jwtManager.getAccessToken();
+        if (token != null) {
+          wsHeaders['Authorization'] = 'Bearer $token';
+        }
+      }
 
       _channel = IOWebSocketChannel.connect(uri, headers: wsHeaders);
       await _channel!.ready;
@@ -90,15 +94,12 @@ class WebSocketClient {
     if (_reconnectAttempts >= _maxReconnectAttempts) return;
     _setState(WebSocketState.reconnecting);
     _reconnectAttempts++;
-    _reconnectTimer = Timer(
-      Duration(seconds: _getBackoffSeconds()),
-      () {
-        _reconnectTimer = null;
-        if (_currentPath != null) {
-          connect(_currentPath!);
-        }
-      },
-    );
+    _reconnectTimer = Timer(Duration(seconds: _getBackoffSeconds()), () {
+      _reconnectTimer = null;
+      if (_currentPath != null) {
+        connect(_currentPath!);
+      }
+    });
   }
 
   int _getBackoffSeconds() {

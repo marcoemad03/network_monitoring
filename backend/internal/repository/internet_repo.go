@@ -2,11 +2,13 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/hospital/nms-backend/internal/database"
 	"github.com/hospital/nms-backend/internal/models"
+	"github.com/jackc/pgx/v5"
 )
 
 type InternetRepository struct {
@@ -275,6 +277,31 @@ func (r *InternetRepository) CreateVendorIntegration(ctx context.Context, v *mod
 		`INSERT INTO vendor_integrations (org_id, vendor_type, name, base_url, username, encrypted_password, api_key, api_version, is_active) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id, created_at, updated_at`,
 		v.OrgID, v.VendorType, v.Name, v.BaseURL, v.Username, v.EncryptedPassword, v.APIKey, v.APIVersion, v.IsActive).
 		Scan(&v.ID, &v.CreatedAt, &v.UpdatedAt)
+}
+
+func (r *InternetRepository) SaveDevelopmentMikroTikIntegration(ctx context.Context, v *models.VendorIntegration) error {
+	err := r.db.QueryRow(ctx,
+		`UPDATE vendor_integrations
+		 SET name=$1, base_url=$2, username=$3, encrypted_password=$4, is_active=true,
+		     last_sync_at=NOW(), last_sync_status='connected', error_message=NULL, updated_at=NOW()
+		 WHERE id = (
+		     SELECT id FROM vendor_integrations
+		     WHERE org_id=$5 AND vendor_type='mikrotik'
+		     ORDER BY is_active DESC, created_at ASC LIMIT 1
+		 )
+		 RETURNING id, created_at, updated_at`,
+		v.Name, v.BaseURL, v.Username, v.EncryptedPassword, v.OrgID).
+		Scan(&v.ID, &v.CreatedAt, &v.UpdatedAt)
+	if err == nil {
+		return nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return err
+	}
+
+	v.VendorType = "mikrotik"
+	v.IsActive = true
+	return r.CreateVendorIntegration(ctx, v)
 }
 
 func (r *InternetRepository) GetVendorIntegrationByID(ctx context.Context, id uuid.UUID) (*models.VendorIntegration, error) {

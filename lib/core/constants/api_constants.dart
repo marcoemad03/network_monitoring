@@ -69,6 +69,8 @@ class ApiConstants {
       '$basePath/monitoring/connections';
   static const String monitoringConnectedDevices =
       '$basePath/monitoring/connected-devices';
+  static const String developmentMikroTikConnect =
+      '$basePath/development/mikrotik/connect';
 
   // Device Monitoring
   static String deviceLatestMetrics(String id) =>

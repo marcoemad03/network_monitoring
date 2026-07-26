@@ -1,8 +1,10 @@
-import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../../core/config/build_config.dart';
+import '../../core/config/environment.dart';
 import '../screens/splash/splash_screen.dart';
 import '../screens/auth/login_screen.dart';
 import '../screens/auth/forgot_password_screen.dart';
+import '../screens/connect/mikrotik_connect_screen.dart';
 import '../screens/dashboard/dashboard_screen.dart';
 import '../screens/devices/device_list_screen.dart';
 import '../screens/devices/device_detail_screen.dart';
@@ -47,7 +49,11 @@ class AppRouter {
 
   AppRouter()
     : router = GoRouter(
-        initialLocation: RouteNames.splash,
+        initialLocation:
+            BuildConfig.isInitialized &&
+                    BuildConfig.environment == Environment.development
+                ? RouteNames.connectMikroTik
+                : RouteNames.splash,
         debugLogDiagnostics: false,
         routes: [
           GoRoute(
@@ -61,6 +67,10 @@ class AppRouter {
           GoRoute(
             path: RouteNames.forgotPassword,
             builder: (context, state) => const ForgotPasswordScreen(),
+          ),
+          GoRoute(
+            path: RouteNames.connectMikroTik,
+            builder: (context, state) => const MikroTikConnectScreen(),
           ),
           ShellRoute(
             builder: (context, state, child) => AppScaffold(child: child),

@@ -1,6 +1,8 @@
 package routes
 
 import (
+	"strings"
+
 	"github.com/gin-gonic/gin"
 	"github.com/hospital/nms-backend/internal/api/handlers"
 	"github.com/hospital/nms-backend/internal/api/middleware"
@@ -87,7 +89,7 @@ func RegisterRoutes(router *gin.Engine, db *database.DB, hub *websocket.Hub, cfg
 	})
 
 	auth := api.Group("/auth")
-	{
+	if !strings.EqualFold(cfg.Environment, "development") {
 		auth.POST("/login", authHandler.Login)
 		auth.POST("/refresh", authHandler.RefreshToken)
 		auth.POST("/logout", authHandler.Logout)
@@ -96,7 +98,12 @@ func RegisterRoutes(router *gin.Engine, db *database.DB, hub *websocket.Hub, cfg
 	}
 
 	protected := api.Group("")
-	protected.Use(middleware.JWTAuth(cfg))
+	if strings.EqualFold(cfg.Environment, "development") {
+		protected.Use(middleware.DevelopmentAuthContext())
+		api.POST("/development/mikrotik/connect", middleware.DevelopmentAuthContext(), deviceCtrlHandler.ConnectDevelopmentMikroTik)
+	} else {
+		protected.Use(middleware.JWTAuth(cfg))
+	}
 	{
 		protected.GET("/auth/me", authHandler.GetCurrentUser)
 

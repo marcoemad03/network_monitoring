@@ -106,6 +106,40 @@ func (s *EnhancedDiscoveryService) GetConnectedDevices(ctx context.Context, orgI
 		return &models.ConnectedDevicesResult{Connection: models.RouterConnectionStatus{Code: code, Message: message, APIEndpoint: vendor.BaseURL, RouterName: identity.Name, RouterVersion: identity.Version, CheckedAt: time.Now()}, Devices: []models.ConnectedDeviceView{}}, nil
 	}
 
+	return connectedDevicesResult(vendor.BaseURL, identity, entries), nil
+}
+
+func (s *EnhancedDiscoveryService) ConnectDevelopmentMikroTik(ctx context.Context, orgID uuid.UUID, host, username, password string, port int) (*models.ConnectedDevicesResult, error) {
+	endpoint := net.JoinHostPort(host, fmt.Sprintf("%d", port))
+	client := mikrotik.NewClientWithPort(host, port, username, password, s.cfg.MikroTikAPITimeout)
+	identity, err := client.GetRouterIdentity()
+	if err != nil {
+		code, message := classifyRouterError(err)
+		return &models.ConnectedDevicesResult{Connection: models.RouterConnectionStatus{Code: code, Message: message, APIEndpoint: endpoint, CheckedAt: time.Now()}, Devices: []models.ConnectedDeviceView{}}, nil
+	}
+	entries, err := client.GetAllDevicesEnhanced()
+	if err != nil {
+		code, message := classifyRouterError(err)
+		return &models.ConnectedDevicesResult{Connection: models.RouterConnectionStatus{Code: code, Message: message, APIEndpoint: endpoint, RouterName: identity.Name, RouterVersion: identity.Version, CheckedAt: time.Now()}, Devices: []models.ConnectedDeviceView{}}, nil
+	}
+
+	vendor := &models.VendorIntegration{
+		OrgID:             orgID,
+		VendorType:        "mikrotik",
+		Name:              "Development MikroTik",
+		BaseURL:           endpoint,
+		Username:          &username,
+		EncryptedPassword: &password,
+		IsActive:          true,
+	}
+	if err := s.internetRepo.SaveDevelopmentMikroTikIntegration(ctx, vendor); err != nil {
+		return nil, fmt.Errorf("save MikroTik configuration: %w", err)
+	}
+
+	return connectedDevicesResult(endpoint, identity, entries), nil
+}
+
+func connectedDevicesResult(endpoint string, identity *mikrotik.RouterIdentity, entries []mikrotik.EnhancedDevice) *models.ConnectedDevicesResult {
 	now := time.Now()
 	devices := make([]models.ConnectedDeviceView, 0, len(entries))
 	for _, entry := range entries {
@@ -140,7 +174,7 @@ func (s *EnhancedDiscoveryService) GetConnectedDevices(ctx context.Context, orgI
 		devices = append(devices, models.ConnectedDeviceView{ID: id, DeviceName: name, Hostname: entry.Hostname, IPAddress: entry.IPAddress, MACAddress: strings.ToUpper(entry.MACAddress), IsOnline: entry.IsActive && !entry.Disabled, ConnectionType: connectionType, ConnectedAccessPoint: accessPoint, InterfaceName: entry.InterfaceName, CurrentUploadMbps: upload, CurrentDownloadMbps: download, SignalStrengthDbm: signal, LastSeen: now})
 	}
 	sort.Slice(devices, func(i, j int) bool { return bytesCompareIP(devices[i].IPAddress, devices[j].IPAddress) < 0 })
-	return &models.ConnectedDevicesResult{Connection: models.RouterConnectionStatus{Code: "CONNECTED", Message: "Connected to MikroTik RouterOS API", Reachable: true, APIEndpoint: vendor.BaseURL, RouterName: identity.Name, RouterVersion: identity.Version, CheckedAt: now}, Devices: devices}, nil
+	return &models.ConnectedDevicesResult{Connection: models.RouterConnectionStatus{Code: "CONNECTED", Message: "Connected to MikroTik RouterOS API", Reachable: true, APIEndpoint: endpoint, RouterName: identity.Name, RouterVersion: identity.Version, CheckedAt: now}, Devices: devices}
 }
 
 func classifyRouterError(err error) (string, string) {

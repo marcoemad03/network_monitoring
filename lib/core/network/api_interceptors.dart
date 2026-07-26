@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import '../config/build_config.dart';
+import '../config/environment.dart';
 import '../utils/logger.dart';
 import '../security/jwt_manager.dart';
 
@@ -13,9 +14,11 @@ class AuthInterceptor extends Interceptor {
     RequestOptions options,
     RequestInterceptorHandler handler,
   ) async {
-    final token = await _jwtManager.getAccessToken();
-    if (token != null) {
-      options.headers['Authorization'] = 'Bearer $token';
+    if (BuildConfig.environment != Environment.development) {
+      final token = await _jwtManager.getAccessToken();
+      if (token != null) {
+        options.headers['Authorization'] = 'Bearer $token';
+      }
     }
     options.headers['X-Correlation-ID'] = _generateCorrelationId();
     handler.next(options);
@@ -23,7 +26,8 @@ class AuthInterceptor extends Interceptor {
 
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) async {
-    if (err.response?.statusCode == 401) {
+    if (BuildConfig.environment != Environment.development &&
+        err.response?.statusCode == 401) {
       final refreshed = await _jwtManager.refreshToken();
       if (refreshed) {
         final token = await _jwtManager.getAccessToken();
@@ -60,11 +64,22 @@ class LoggingInterceptor extends Interceptor {
         data: {
           'headers': options.headers,
           'queryParams': options.queryParameters,
-          'body': options.data,
+          'body': _redactSecrets(options.data),
         },
       );
     }
     handler.next(options);
+  }
+
+  dynamic _redactSecrets(dynamic data) {
+    if (data is! Map) return data;
+    return data.map((key, value) {
+      final name = key.toString().toLowerCase();
+      return MapEntry(
+        key,
+        name.contains('password') || name.contains('token') ? '***' : value,
+      );
+    });
   }
 
   @override

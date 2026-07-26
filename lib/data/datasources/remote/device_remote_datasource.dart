@@ -44,6 +44,12 @@ abstract class DeviceRemoteDataSource {
   Future<List<DeviceClientModel>> getAllClients();
   Future<List<DeviceConnectionModel>> getConnections();
   Future<ConnectedDevicesResultModel> getConnectedDevices({String? vendorId});
+  Future<ConnectedDevicesResultModel> connectDevelopmentMikroTik({
+    required String routerIP,
+    required String username,
+    required String password,
+    required int apiPort,
+  });
   Future<DeviceMetricsModel> getLatestMetrics(String deviceId);
   Future<List<DeviceMetricsModel>> getMetricsHistory({
     required String deviceId,
@@ -107,6 +113,27 @@ class DeviceRemoteDataSourceImpl implements DeviceRemoteDataSource {
   final DioClient _client;
 
   DeviceRemoteDataSourceImpl(this._client);
+
+  @override
+  Future<ConnectedDevicesResultModel> connectDevelopmentMikroTik({
+    required String routerIP,
+    required String username,
+    required String password,
+    required int apiPort,
+  }) async {
+    final response = await _client.post(
+      ApiConstants.developmentMikroTikConnect,
+      data: {
+        'router_ip': routerIP,
+        'username': username,
+        'password': password,
+        'api_port': apiPort,
+      },
+    );
+    return ConnectedDevicesResultModel.fromJson(
+      (response.data['data'] as Map).cast<String, dynamic>(),
+    );
+  }
 
   @override
   Future<ConnectedDevicesResultModel> getConnectedDevices({

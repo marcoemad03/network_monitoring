@@ -5,6 +5,8 @@ class BuildConfig {
   static late final AppConfig config;
   static bool _initialized = false;
 
+  static bool get isInitialized => _initialized;
+
   static void initialize({Environment? environment}) {
     if (_initialized) return;
     config = switch (environment) {

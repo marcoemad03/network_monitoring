@@ -3,6 +3,7 @@ package mikrotik
 import (
 	"bytes"
 	"crypto/md5"
+	"crypto/tls"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -48,7 +49,16 @@ func (c *APIConnection) Connect() error {
 	c.log("[API] Dialing %s (timeout=%v)...", addr, c.timeout)
 
 	dialer := net.Dialer{Timeout: c.timeout}
-	conn, err := dialer.Dial("tcp", addr)
+	var conn net.Conn
+	var err error
+	if c.port == 8729 {
+		conn, err = tls.DialWithDialer(&dialer, "tcp", addr, &tls.Config{
+			MinVersion:         tls.VersionTLS12,
+			InsecureSkipVerify: true, // RouterOS commonly uses a local self-signed certificate.
+		})
+	} else {
+		conn, err = dialer.Dial("tcp", addr)
+	}
 	if err != nil {
 		c.log("[API] Dial ERROR: %v", err)
 		return fmt.Errorf("tcp dial %s: %w", addr, err)

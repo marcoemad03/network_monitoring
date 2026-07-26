@@ -14,7 +14,9 @@ class ServerException implements Exception {
 
 class NetworkException implements Exception {
   final String message;
-  const NetworkException([this.message = 'No internet connection']);
+  const NetworkException([
+    this.message = 'Hospital NMS server is unreachable on the local network',
+  ]);
 }
 
 class TimeoutException implements Exception {

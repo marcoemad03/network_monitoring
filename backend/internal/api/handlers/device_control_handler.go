@@ -2,8 +2,10 @@ package handlers
 
 import (
 	"context"
+	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -11,6 +13,42 @@ import (
 	"github.com/hospital/nms-backend/internal/models"
 	"github.com/hospital/nms-backend/internal/services"
 )
+
+func (h *DeviceControlHandler) ConnectDevelopmentMikroTik(c *gin.Context) {
+	orgID, err := parseUUID(c.GetString("org_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid development organization"})
+		return
+	}
+
+	var req struct {
+		RouterIP string `json:"router_ip" binding:"required"`
+		Username string `json:"username" binding:"required"`
+		Password string `json:"password"`
+		APIPort  int    `json:"api_port" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Router IP, username and API port are required"})
+		return
+	}
+	req.RouterIP = strings.TrimSpace(req.RouterIP)
+	req.Username = strings.TrimSpace(req.Username)
+	if net.ParseIP(req.RouterIP) == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Enter a valid router IP address"})
+		return
+	}
+	if req.APIPort != 8728 && req.APIPort != 8729 {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "API port must be 8728 or 8729"})
+		return
+	}
+
+	result, err := h.discoverySvc.ConnectDevelopmentMikroTik(c.Request.Context(), orgID, req.RouterIP, req.Username, req.Password, req.APIPort)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": result.Connection.Reachable, "data": result, "message": result.Connection.Message})
+}
 
 type DeviceControlHandler struct {
 	controlService *services.DeviceControlService

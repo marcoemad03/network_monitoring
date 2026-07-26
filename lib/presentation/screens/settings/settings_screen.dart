@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/config/build_config.dart';
+import '../../../core/config/environment.dart';
 import '../../../core/theme/theme_provider.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/constants/app_constants.dart';
@@ -28,9 +30,18 @@ class SettingsScreen extends ConsumerWidget {
             subtitle: Text(themeMode.name),
             trailing: SegmentedButton<AppThemeMode>(
               segments: const [
-                ButtonSegment(value: AppThemeMode.light, icon: Icon(Icons.light_mode)),
-                ButtonSegment(value: AppThemeMode.dark, icon: Icon(Icons.dark_mode)),
-                ButtonSegment(value: AppThemeMode.system, icon: Icon(Icons.settings_brightness)),
+                ButtonSegment(
+                  value: AppThemeMode.light,
+                  icon: Icon(Icons.light_mode),
+                ),
+                ButtonSegment(
+                  value: AppThemeMode.dark,
+                  icon: Icon(Icons.dark_mode),
+                ),
+                ButtonSegment(
+                  value: AppThemeMode.system,
+                  icon: Icon(Icons.settings_brightness),
+                ),
               ],
               selected: {themeMode},
               onSelectionChanged: (selected) {
@@ -42,11 +53,15 @@ class SettingsScreen extends ConsumerWidget {
           _buildSectionHeader(context, 'Account'),
           ListTile(
             leading: CircleAvatar(
-              child: Text(authState.user?.displayName?.isNotEmpty == true
-                  ? authState.user!.displayName![0].toUpperCase()
-                  : 'U'),
+              child: Text(
+                authState.user?.displayName?.isNotEmpty == true
+                    ? authState.user!.displayName![0].toUpperCase()
+                    : 'U',
+              ),
             ),
-            title: Text(authState.user?.displayName ?? authState.user?.username ?? 'User'),
+            title: Text(
+              authState.user?.displayName ?? authState.user?.username ?? 'User',
+            ),
             subtitle: Text(authState.user?.email ?? ''),
           ),
           const Divider(),
@@ -100,9 +115,9 @@ class SettingsScreen extends ConsumerWidget {
       child: Text(
         title,
         style: Theme.of(context).textTheme.titleSmall?.copyWith(
-              color: Theme.of(context).colorScheme.primary,
-              fontWeight: FontWeight.w600,
-            ),
+          color: Theme.of(context).colorScheme.primary,
+          fontWeight: FontWeight.w600,
+        ),
       ),
     );
   }
@@ -114,74 +129,105 @@ class SettingsScreen extends ConsumerWidget {
 
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Change Password'),
-        content: SizedBox(
-          width: 350,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: currentCtrl,
-                decoration: const InputDecoration(labelText: 'Current Password', prefixIcon: Icon(Icons.lock_outline)),
-                obscureText: true,
+      builder:
+          (ctx) => AlertDialog(
+            title: const Text('Change Password'),
+            content: SizedBox(
+              width: 350,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: currentCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Current Password',
+                      prefixIcon: Icon(Icons.lock_outline),
+                    ),
+                    obscureText: true,
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: newCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'New Password',
+                      prefixIcon: Icon(Icons.lock),
+                    ),
+                    obscureText: true,
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: confirmCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Confirm Password',
+                      prefixIcon: Icon(Icons.lock),
+                    ),
+                    obscureText: true,
+                  ),
+                ],
               ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: newCtrl,
-                decoration: const InputDecoration(labelText: 'New Password', prefixIcon: Icon(Icons.lock)),
-                obscureText: true,
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel'),
               ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: confirmCtrl,
-                decoration: const InputDecoration(labelText: 'Confirm Password', prefixIcon: Icon(Icons.lock)),
-                obscureText: true,
+              FilledButton(
+                onPressed: () async {
+                  if (newCtrl.text != confirmCtrl.text) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Passwords do not match')),
+                    );
+                    return;
+                  }
+                  if (newCtrl.text.length < 8) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Password must be at least 8 characters'),
+                      ),
+                    );
+                    return;
+                  }
+                  final authRepo = ref.read(authRepositoryProvider);
+                  final result = await authRepo.changePassword(
+                    currentPassword: currentCtrl.text,
+                    newPassword: newCtrl.text,
+                  );
+                  currentCtrl.dispose();
+                  newCtrl.dispose();
+                  confirmCtrl.dispose();
+                  Navigator.pop(ctx);
+                  result.fold(
+                    (failure) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text(failure.message)),
+                        );
+                      }
+                    },
+                    (_) async {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Password changed successfully'),
+                          ),
+                        );
+                      }
+                      final repo = ref.read(authProvider.notifier);
+                      await repo.logout();
+                      if (context.mounted) {
+                        context.go(
+                          BuildConfig.environment == Environment.development
+                              ? RouteNames.connectMikroTik
+                              : RouteNames.login,
+                        );
+                      }
+                    },
+                  );
+                },
+                child: const Text('Change'),
               ),
             ],
           ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(
-            onPressed: () async {
-              if (newCtrl.text != confirmCtrl.text) {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Passwords do not match')));
-                return;
-              }
-              if (newCtrl.text.length < 8) {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Password must be at least 8 characters')));
-                return;
-              }
-              final authRepo = ref.read(authRepositoryProvider);
-              final result = await authRepo.changePassword(
-                currentPassword: currentCtrl.text,
-                newPassword: newCtrl.text,
-              );
-              currentCtrl.dispose();
-              newCtrl.dispose();
-              confirmCtrl.dispose();
-              Navigator.pop(ctx);
-              result.fold(
-                (failure) {
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(failure.message)));
-                  }
-                },
-                (_) async {
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Password changed successfully')));
-                  }
-                  final repo = ref.read(authProvider.notifier);
-                  await repo.logout();
-                  if (context.mounted) context.go(RouteNames.login);
-                },
-              );
-            },
-            child: const Text('Change'),
-          ),
-        ],
-      ),
     );
   }
 
@@ -189,58 +235,68 @@ class SettingsScreen extends ConsumerWidget {
     final repo = ref.read(authRepositoryProvider);
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Active Sessions'),
-        content: FutureBuilder(
-          future: repo.getSessions(),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const SizedBox(height: 100, child: Center(child: CircularProgressIndicator()));
-            }
-            final sessions = snapshot.data?.getOrElse(() => []) ?? [];
-            if (sessions.isEmpty) {
-              return const Text('No active sessions');
-            }
-            return SizedBox(
-              width: 400,
-              child: ListView.builder(
-                shrinkWrap: true,
-                itemCount: sessions.length,
-                itemBuilder: (context, index) {
-                  final s = sessions[index];
-                  return ListTile(
-                    dense: true,
-                    leading: const Icon(Icons.devices, size: 20),
-                    title: Text(s.userAgent ?? 'Unknown device', style: const TextStyle(fontSize: 13)),
-                    subtitle: Text(
-                      '${s.ipAddress ?? 'Unknown IP'}  •  ${_formatDate(s.lastActivity)}',
-                      style: const TextStyle(fontSize: 11),
-                    ),
-                    trailing: IconButton(
-                      icon: const Icon(Icons.logout, size: 18),
-                      onPressed: () async {
-                        await repo.revokeSession(s.id);
-                        if (ctx.mounted) Navigator.pop(ctx);
-                        _showSessionsDialog(context, ref);
-                      },
-                    ),
+      builder:
+          (ctx) => AlertDialog(
+            title: const Text('Active Sessions'),
+            content: FutureBuilder(
+              future: repo.getSessions(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const SizedBox(
+                    height: 100,
+                    child: Center(child: CircularProgressIndicator()),
                   );
+                }
+                final sessions = snapshot.data?.getOrElse(() => []) ?? [];
+                if (sessions.isEmpty) {
+                  return const Text('No active sessions');
+                }
+                return SizedBox(
+                  width: 400,
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: sessions.length,
+                    itemBuilder: (context, index) {
+                      final s = sessions[index];
+                      return ListTile(
+                        dense: true,
+                        leading: const Icon(Icons.devices, size: 20),
+                        title: Text(
+                          s.userAgent ?? 'Unknown device',
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                        subtitle: Text(
+                          '${s.ipAddress ?? 'Unknown IP'}  •  ${_formatDate(s.lastActivity)}',
+                          style: const TextStyle(fontSize: 11),
+                        ),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.logout, size: 18),
+                          onPressed: () async {
+                            await repo.revokeSession(s.id);
+                            if (ctx.mounted) Navigator.pop(ctx);
+                            _showSessionsDialog(context, ref);
+                          },
+                        ),
+                      );
+                    },
+                  ),
+                );
+              },
+            ),
+            actions: [
+              TextButton(
+                onPressed: () async {
+                  await repo.revokeAllSessions();
+                  if (ctx.mounted) Navigator.pop(ctx);
                 },
+                child: const Text('Revoke All'),
               ),
-            );
-          },
-        ),
-        actions: [
-          TextButton(
-            onPressed: () async {
-              await repo.revokeAllSessions();
-              if (ctx.mounted) Navigator.pop(ctx);
-            },
-            child: const Text('Revoke All'),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Close'),
+              ),
+            ],
           ),
-          FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('Close')),
-        ],
-      ),
     );
   }
 

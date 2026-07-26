@@ -4,6 +4,7 @@ class RouteNames {
   static const String splash = '/';
   static const String login = '/login';
   static const String forgotPassword = '/forgot-password';
+  static const String connectMikroTik = '/connect-mikrotik';
   static const String dashboard = '/dashboard';
   static const String devices = '/devices';
   static const String deviceDetail = '/devices/:id';

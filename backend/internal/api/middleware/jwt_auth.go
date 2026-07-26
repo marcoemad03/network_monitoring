@@ -9,6 +9,20 @@ import (
 	"github.com/hospital/nms-backend/internal/security"
 )
 
+const (
+	DevelopmentOrganizationID = "00000000-0000-0000-0000-000000000001"
+	DevelopmentUserID         = "00000000-0000-0000-0000-000000000002"
+)
+
+func DevelopmentAuthContext() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Set("user_id", DevelopmentUserID)
+		c.Set("role", "super_admin")
+		c.Set("org_id", DevelopmentOrganizationID)
+		c.Next()
+	}
+}
+
 func JWTAuth(cfg *config.Config) gin.HandlerFunc {
 	jwtManager := security.NewJWTManager(cfg)
 
@@ -16,8 +30,8 @@ func JWTAuth(cfg *config.Config) gin.HandlerFunc {
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"success": false,
-				"message": "Authorization header is required",
+				"success":    false,
+				"message":    "Authorization header is required",
 				"error_code": "MISSING_AUTH",
 			})
 			return
@@ -26,8 +40,8 @@ func JWTAuth(cfg *config.Config) gin.HandlerFunc {
 		parts := strings.SplitN(authHeader, " ", 2)
 		if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"success": false,
-				"message": "Invalid authorization header format",
+				"success":    false,
+				"message":    "Invalid authorization header format",
 				"error_code": "INVALID_AUTH_FORMAT",
 			})
 			return
@@ -36,8 +50,8 @@ func JWTAuth(cfg *config.Config) gin.HandlerFunc {
 		claims, err := jwtManager.ValidateAccessToken(parts[1])
 		if err != nil {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"success": false,
-				"message": "Invalid or expired token",
+				"success":    false,
+				"message":    "Invalid or expired token",
 				"error_code": "INVALID_TOKEN",
 			})
 			return
@@ -56,8 +70,8 @@ func RoleAuthorization(requiredRoles ...string) gin.HandlerFunc {
 		userRole, exists := c.Get("role")
 		if !exists {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
-				"success": false,
-				"message": "Access denied",
+				"success":    false,
+				"message":    "Access denied",
 				"error_code": "FORBIDDEN",
 			})
 			return
@@ -74,8 +88,8 @@ func RoleAuthorization(requiredRoles ...string) gin.HandlerFunc {
 
 		if !hasRole {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
-				"success": false,
-				"message": "Insufficient permissions",
+				"success":    false,
+				"message":    "Insufficient permissions",
 				"error_code": "INSUFFICIENT_PERMISSIONS",
 			})
 			return
