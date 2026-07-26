@@ -45,4 +45,9 @@ class RouteNames {
   static String assetPolicyDetail(String id) => '/asset/policies/$id';
   static const String assetList = '/asset/list';
   static String assetDeviceDetail(String deviceId) => '/asset/list/$deviceId';
+
+  // Enterprise Features
+  static const String deviceEvents = '/devices/:id/events';
+  static const String enhancedDeviceList = '/devices/enhanced';
+  static const String connectedDevices = '/devices/connected';
 }

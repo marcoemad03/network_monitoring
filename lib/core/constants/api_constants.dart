@@ -39,7 +39,8 @@ class ApiConstants {
   // Users
   static const String users = '$basePath/users';
   static String userDetail(String id) => '$basePath/users/$id';
-  static String userResetPassword(String id) => '$basePath/users/$id/reset-password';
+  static String userResetPassword(String id) =>
+      '$basePath/users/$id/reset-password';
 
   // Sessions
   static const String sessions = '$basePath/sessions';
@@ -47,7 +48,8 @@ class ApiConstants {
 
   // Permissions
   static const String permissions = '$basePath/permissions';
-  static const String permissionsAllWithRoles = '$basePath/permissions/all-with-roles';
+  static const String permissionsAllWithRoles =
+      '$basePath/permissions/all-with-roles';
   static const String roles = '$basePath/roles';
   static String roleDetail(String id) => '$basePath/roles/$id';
   static String rolePermissions(String id) => '$basePath/roles/$id/permissions';
@@ -63,13 +65,19 @@ class ApiConstants {
   static const String dashboardSummary = '$basePath/dashboard/summary';
   static const String monitoringDashboard = '$basePath/monitoring/dashboard';
   static const String monitoringClients = '$basePath/monitoring/clients';
-  static const String monitoringConnections = '$basePath/monitoring/connections';
+  static const String monitoringConnections =
+      '$basePath/monitoring/connections';
+  static const String monitoringConnectedDevices =
+      '$basePath/monitoring/connected-devices';
 
   // Device Monitoring
-  static String deviceLatestMetrics(String id) => '$basePath/devices/$id/metrics/latest';
-  static String deviceMetricsHistory(String id) => '$basePath/devices/$id/metrics/history';
+  static String deviceLatestMetrics(String id) =>
+      '$basePath/devices/$id/metrics/latest';
+  static String deviceMetricsHistory(String id) =>
+      '$basePath/devices/$id/metrics/history';
   static String devicePingHistory(String id) => '$basePath/devices/$id/ping';
-  static String deviceTrafficHistory(String id) => '$basePath/devices/$id/traffic';
+  static String deviceTrafficHistory(String id) =>
+      '$basePath/devices/$id/traffic';
   static String deviceClients(String id) => '$basePath/devices/$id/clients';
 
   // WebSocket
@@ -89,23 +97,33 @@ class ApiConstants {
 
   // Internet Management
   static const String internetPolicies = '$basePath/internet-policies';
-  static String internetPolicyDetail(String id) => '$basePath/internet-policies/$id';
-  static String internetPolicyBandwidthRules(String id) => '$basePath/internet-policies/$id/bandwidth-rules';
-  static String internetPolicyFilteringRules(String id) => '$basePath/internet-policies/$id/filtering-rules';
-  static String internetPolicySchedules(String id) => '$basePath/internet-policies/$id/schedules';
+  static String internetPolicyDetail(String id) =>
+      '$basePath/internet-policies/$id';
+  static String internetPolicyBandwidthRules(String id) =>
+      '$basePath/internet-policies/$id/bandwidth-rules';
+  static String internetPolicyFilteringRules(String id) =>
+      '$basePath/internet-policies/$id/filtering-rules';
+  static String internetPolicySchedules(String id) =>
+      '$basePath/internet-policies/$id/schedules';
   static const String bandwidthRules = '$basePath/bandwidth-rules';
-  static String bandwidthRuleDetail(String id) => '$basePath/bandwidth-rules/$id';
-  static String bandwidthRuleTemporary(String id) => '$basePath/bandwidth-rules/$id/temporary';
+  static String bandwidthRuleDetail(String id) =>
+      '$basePath/bandwidth-rules/$id';
+  static String bandwidthRuleTemporary(String id) =>
+      '$basePath/bandwidth-rules/$id/temporary';
   static const String filteringRules = '$basePath/filtering-rules';
-  static String filteringRuleDetail(String id) => '$basePath/filtering-rules/$id';
+  static String filteringRuleDetail(String id) =>
+      '$basePath/filtering-rules/$id';
   static const String schedules = '$basePath/schedules';
   static String scheduleDetail(String id) => '$basePath/schedules/$id';
   static const String deviceBlocks = '$basePath/device-blocks';
   static String deviceBlockDetail(String id) => '$basePath/device-blocks/$id';
   static const String vendorIntegrations = '$basePath/vendor-integrations';
-  static String vendorIntegrationDetail(String id) => '$basePath/vendor-integrations/$id';
-  static String vendorIntegrationTest(String id) => '$basePath/vendor-integrations/$id/test';
-  static String vendorIntegrationSync(String id) => '$basePath/vendor-integrations/$id/sync';
+  static String vendorIntegrationDetail(String id) =>
+      '$basePath/vendor-integrations/$id';
+  static String vendorIntegrationTest(String id) =>
+      '$basePath/vendor-integrations/$id/test';
+  static String vendorIntegrationSync(String id) =>
+      '$basePath/vendor-integrations/$id/sync';
 
   // Reporting & Analytics
   static const String webLogs = '$basePath/logs/web';
@@ -130,32 +148,43 @@ class ApiConstants {
   static const String alertRules = '$basePath/alerts/rules';
   static String alertRuleDetail(String id) => '$basePath/alerts/rules/$id';
   static const String notifications = '$basePath/alerts/notifications';
-  static const String unreadCount = '$basePath/alerts/notifications/unread-count';
-  static String markNotificationRead(String id) => '$basePath/alerts/notifications/$id/read';
-  static String acknowledgeNotification(String id) => '$basePath/alerts/notifications/$id/acknowledge';
+  static const String unreadCount =
+      '$basePath/alerts/notifications/unread-count';
+  static String markNotificationRead(String id) =>
+      '$basePath/alerts/notifications/$id/read';
+  static String acknowledgeNotification(String id) =>
+      '$basePath/alerts/notifications/$id/acknowledge';
   static const String dashboardWidgets = '$basePath/dashboard/widgets';
-  static String dashboardWidgetDetail(String id) => '$basePath/dashboard/widgets/$id';
-  static const String dashboardWidgetReorder = '$basePath/dashboard/widgets/reorder';
+  static String dashboardWidgetDetail(String id) =>
+      '$basePath/dashboard/widgets/$id';
+  static const String dashboardWidgetReorder =
+      '$basePath/dashboard/widgets/reorder';
 
   // Asset & Policy Management
   static const String groups = '$basePath/groups';
   static String groupDetail(String id) => '$basePath/groups/$id';
   static String groupDevices(String id) => '$basePath/groups/$id/devices';
-  static String groupDeviceItem(String groupId, String deviceId) => '$basePath/groups/$groupId/devices/$deviceId';
+  static String groupDeviceItem(String groupId, String deviceId) =>
+      '$basePath/groups/$groupId/devices/$deviceId';
   static String groupPolicies(String id) => '$basePath/groups/$id/policies';
-  static String deviceGroups(String deviceId) => '$basePath/devices/$deviceId/groups';
-  static String deviceAssetDetail(String deviceId) => '$basePath/devices/$deviceId/asset';
+  static String deviceGroups(String deviceId) =>
+      '$basePath/devices/$deviceId/groups';
+  static String deviceAssetDetail(String deviceId) =>
+      '$basePath/devices/$deviceId/asset';
   static const String floorMaps = '$basePath/floor-maps';
   static String floorMapDetail(String id) => '$basePath/floor-maps/$id';
   static const String floorMapDevices = '$basePath/floor-maps/devices';
-  static String floorMapDevicesList(String id) => '$basePath/floor-maps/$id/devices';
-  static String floorMapDeviceItem(String floorMapId, String deviceId) => '$basePath/floor-maps/$floorMapId/devices/$deviceId';
+  static String floorMapDevicesList(String id) =>
+      '$basePath/floor-maps/$id/devices';
+  static String floorMapDeviceItem(String floorMapId, String deviceId) =>
+      '$basePath/floor-maps/$floorMapId/devices/$deviceId';
   static const String assets = '$basePath/assets';
   static String assetDetail(String deviceId) => '$basePath/assets/$deviceId';
   static const String policies = '$basePath/policies';
   static String policyDetail(String id) => '$basePath/policies/$id';
   static String policyGroups(String id) => '$basePath/policies/$id/groups';
-  static String policyGroupItem(String policyId, String groupId) => '$basePath/policies/$policyId/groups/$groupId';
+  static String policyGroupItem(String policyId, String groupId) =>
+      '$basePath/policies/$policyId/groups/$groupId';
   static const String policySync = '$basePath/policies/sync';
   static const String policySyncLogs = '$basePath/policies/sync-logs';
 

@@ -2,6 +2,10 @@ package mikrotik
 
 import (
 	"fmt"
+	"net"
+	"net/url"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -25,13 +29,54 @@ type Client struct {
 }
 
 func NewClient(host, username, password string, timeout time.Duration) *Client {
+	return NewClientWithPort(host, 8728, username, password, timeout)
+}
+
+func NewClientWithPort(host string, port int, username, password string, timeout time.Duration) *Client {
 	return &Client{
 		host:     host,
-		port:     8728,
+		port:     port,
 		username: username,
 		password: password,
 		timeout:  timeout,
 	}
+}
+
+func NewClientFromEndpoint(endpoint, username, password string, timeout time.Duration) (*Client, error) {
+	host, port, err := ParseEndpoint(endpoint)
+	if err != nil {
+		return nil, err
+	}
+	return NewClientWithPort(host, port, username, password, timeout), nil
+}
+
+func ParseEndpoint(endpoint string) (string, int, error) {
+	value := strings.TrimSpace(endpoint)
+	if value == "" {
+		return "", 0, fmt.Errorf("RouterOS API endpoint is empty")
+	}
+	if !strings.Contains(value, "://") {
+		value = "routeros://" + value
+	}
+	u, err := url.Parse(value)
+	if err != nil {
+		return "", 0, fmt.Errorf("invalid RouterOS API endpoint: %w", err)
+	}
+	host := u.Hostname()
+	if host == "" {
+		return "", 0, fmt.Errorf("invalid RouterOS API host")
+	}
+	port := 8728
+	if u.Port() != "" {
+		port, err = strconv.Atoi(u.Port())
+		if err != nil || port < 1 || port > 65535 {
+			return "", 0, fmt.Errorf("invalid RouterOS API port")
+		}
+	}
+	if net.ParseIP(host) == nil && strings.ContainsAny(host, "/?#") {
+		return "", 0, fmt.Errorf("invalid RouterOS API host")
+	}
+	return host, port, nil
 }
 
 func (c *Client) Host() string {

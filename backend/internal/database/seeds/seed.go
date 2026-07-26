@@ -2,6 +2,7 @@ package seeds
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -19,7 +20,8 @@ func Run(db *database.DB) error {
 	var count int
 	db.QueryRow(ctx, `SELECT COUNT(*) FROM organizations`).Scan(&count)
 	if count > 0 {
-		logger.Info("Database already seeded, skipping")
+		logger.Info("Database already seeded, skipping main seed")
+		SeedAssetData(db, orgID)
 		return nil
 	}
 
@@ -115,5 +117,117 @@ func Run(db *database.DB) error {
 		"devices", len(devices),
 		"alerts", len(alerts),
 	)
+
+	SeedAssetData(db, orgID)
 	return nil
+}
+
+func SeedAssetData(db *database.DB, orgID uuid.UUID) {
+	ctx := context.Background()
+
+	var policyCount int
+	db.QueryRow(ctx, `SELECT COUNT(*) FROM policies`).Scan(&policyCount)
+	if policyCount > 0 {
+		return
+	}
+
+	logger.Info("Seeding asset management data...")
+
+	now := time.Now()
+
+	// Seed device groups
+	groups := []struct {
+		id   string
+		name string
+		desc string
+	}{
+		{"a1000000-0000-0000-0000-000000000001", "IT Infrastructure", "Core network infrastructure devices"},
+		{"a1000000-0000-0000-0000-000000000002", "Medical Equipment", "Patient-facing medical devices"},
+		{"a1000000-0000-0000-0000-000000000003", "Admin Staff", "Administrative workstations and printers"},
+		{"a1000000-0000-0000-0000-000000000004", "Security Systems", "Cameras and access control devices"},
+	}
+	for _, g := range groups {
+		db.Exec(ctx,
+			`INSERT INTO device_groups (id, organization_id, name, description, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING`,
+			g.id, orgID, g.name, g.desc, now, now,
+		)
+	}
+
+	// Seed floor maps
+	maps := []struct {
+		id     string
+		name   string
+		width  int
+		height int
+	}{
+		{"b1000000-0000-0000-0000-000000000001", "Ground Floor - Reception & Admin", 1200, 900},
+		{"b1000000-0000-0000-0000-000000000002", "First Floor - Wards A & B", 1200, 900},
+		{"b1000000-0000-0000-0000-000000000003", "Second Floor - Surgery & ICU", 1200, 900},
+	}
+	for _, m := range maps {
+		db.Exec(ctx,
+			`INSERT INTO floor_maps (id, organization_id, name, image_path, width, height, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING`,
+			m.id, orgID, m.name, "default.png", m.width, m.height, now, now,
+		)
+	}
+
+	// Seed policies
+	blConfig, _ := json.Marshal(map[string]interface{}{
+		"domains": []string{"facebook.com", "twitter.com", "tiktok.com", "instagram.com"},
+	})
+	bwConfig, _ := json.Marshal(map[string]interface{}{
+		"upload_limit_bps":   5000000,
+		"download_limit_bps": 20000000,
+	})
+	inetConfig, _ := json.Marshal(map[string]interface{}{
+		"enabled": false,
+	})
+	whitelistConfig, _ := json.Marshal(map[string]interface{}{
+		"domains": []string{"hospital.com", "health.gov"},
+	})
+	policies := []struct {
+		id     string
+		name   string
+		pType  string
+		config string
+	}{
+		{"c1000000-0000-0000-0000-000000000001", "Block Social Media", "blacklist", string(blConfig)},
+		{"c1000000-0000-0000-0000-000000000002", "Medical Staff Bandwidth", "bandwidth_limit", string(bwConfig)},
+		{"c1000000-0000-0000-0000-000000000003", "Internet Off - Night Shift", "internet_access", string(inetConfig)},
+		{"c1000000-0000-0000-0000-000000000004", "Whitelist Hospital Sites", "website_whitelist", string(whitelistConfig)},
+		{"c1000000-0000-0000-0000-000000000005", "Upload Limit - 2Mbps", "upload_limit", string(bwConfig)},
+		{"c1000000-0000-0000-0000-000000000006", "Download Limit - 5Mbps", "download_limit", string(bwConfig)},
+	}
+	for _, p := range policies {
+		db.Exec(ctx,
+			`INSERT INTO policies (id, organization_id, name, policy_type, config, is_active, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING`,
+			p.id, orgID, p.name, p.pType, p.config, true, now, now,
+		)
+	}
+
+	// Assign policies to groups
+	policyGroupPairs := []struct {
+		policyID string
+		groupID  string
+	}{
+		{"c1000000-0000-0000-0000-000000000001", "a1000000-0000-0000-0000-000000000001"},
+		{"c1000000-0000-0000-0000-000000000002", "a1000000-0000-0000-0000-000000000002"},
+		{"c1000000-0000-0000-0000-000000000003", "a1000000-0000-0000-0000-000000000003"},
+		{"c1000000-0000-0000-0000-000000000004", "a1000000-0000-0000-0000-000000000001"},
+		{"c1000000-0000-0000-0000-000000000005", "a1000000-0000-0000-0000-000000000004"},
+		{"c1000000-0000-0000-0000-000000000006", "a1000000-0000-0000-0000-000000000003"},
+	}
+	for _, pair := range policyGroupPairs {
+		db.Exec(ctx,
+			`INSERT INTO policy_assignments (id, policy_id, group_id, created_at) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING`,
+			uuid.New(), pair.policyID, pair.groupID, now,
+		)
+	}
+
+	logger.Info("Asset management data seeded",
+		"groups", len(groups),
+		"floor_maps", len(maps),
+		"policies", len(policies),
+		"policy_assignments", len(policyGroupPairs),
+	)
 }

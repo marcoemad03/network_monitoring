@@ -271,10 +271,10 @@ func (r *InternetRepository) UnblockDevice(ctx context.Context, id uuid.UUID) er
 // VendorIntegration CRUD
 
 func (r *InternetRepository) CreateVendorIntegration(ctx context.Context, v *models.VendorIntegration) error {
-	_, err := r.db.Exec(ctx,
-		`INSERT INTO vendor_integrations (org_id, vendor_type, name, base_url, username, encrypted_password, api_key, api_version, is_active) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-		v.OrgID, v.VendorType, v.Name, v.BaseURL, v.Username, v.EncryptedPassword, v.APIKey, v.APIVersion, v.IsActive)
-	return err
+	return r.db.QueryRow(ctx,
+		`INSERT INTO vendor_integrations (org_id, vendor_type, name, base_url, username, encrypted_password, api_key, api_version, is_active) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id, created_at, updated_at`,
+		v.OrgID, v.VendorType, v.Name, v.BaseURL, v.Username, v.EncryptedPassword, v.APIKey, v.APIVersion, v.IsActive).
+		Scan(&v.ID, &v.CreatedAt, &v.UpdatedAt)
 }
 
 func (r *InternetRepository) GetVendorIntegrationByID(ctx context.Context, id uuid.UUID) (*models.VendorIntegration, error) {
@@ -283,6 +283,26 @@ func (r *InternetRepository) GetVendorIntegrationByID(ctx context.Context, id uu
 	var v models.VendorIntegration
 	err := row.Scan(&v.ID, &v.OrgID, &v.VendorType, &v.Name, &v.BaseURL, &v.Username, &v.EncryptedPassword, &v.APIKey, &v.APIVersion, &v.IsActive, &v.LastSyncAt, &v.LastSyncStatus, &v.ErrorMessage, &v.CreatedAt, &v.UpdatedAt)
 	if err != nil {
+		return nil, err
+	}
+	return &v, nil
+}
+
+func (r *InternetRepository) GetVendorIntegrationForOrganization(ctx context.Context, id, orgID uuid.UUID) (*models.VendorIntegration, error) {
+	row := r.db.QueryRow(ctx,
+		`SELECT id, org_id, vendor_type, name, base_url, username, encrypted_password, api_key, api_version, is_active, last_sync_at, last_sync_status, error_message, created_at, updated_at FROM vendor_integrations WHERE id = $1 AND org_id = $2`, id, orgID)
+	var v models.VendorIntegration
+	if err := row.Scan(&v.ID, &v.OrgID, &v.VendorType, &v.Name, &v.BaseURL, &v.Username, &v.EncryptedPassword, &v.APIKey, &v.APIVersion, &v.IsActive, &v.LastSyncAt, &v.LastSyncStatus, &v.ErrorMessage, &v.CreatedAt, &v.UpdatedAt); err != nil {
+		return nil, err
+	}
+	return &v, nil
+}
+
+func (r *InternetRepository) GetActiveMikroTikIntegration(ctx context.Context, orgID uuid.UUID) (*models.VendorIntegration, error) {
+	row := r.db.QueryRow(ctx,
+		`SELECT id, org_id, vendor_type, name, base_url, username, encrypted_password, api_key, api_version, is_active, last_sync_at, last_sync_status, error_message, created_at, updated_at FROM vendor_integrations WHERE org_id = $1 AND vendor_type = 'mikrotik' AND is_active = true ORDER BY last_sync_at DESC NULLS LAST, created_at ASC LIMIT 1`, orgID)
+	var v models.VendorIntegration
+	if err := row.Scan(&v.ID, &v.OrgID, &v.VendorType, &v.Name, &v.BaseURL, &v.Username, &v.EncryptedPassword, &v.APIKey, &v.APIVersion, &v.IsActive, &v.LastSyncAt, &v.LastSyncStatus, &v.ErrorMessage, &v.CreatedAt, &v.UpdatedAt); err != nil {
 		return nil, err
 	}
 	return &v, nil

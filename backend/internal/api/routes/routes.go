@@ -25,6 +25,8 @@ func RegisterRoutes(router *gin.Engine, db *database.DB, hub *websocket.Hub, cfg
 	monRepo := repository.NewMonitoringRepository(db)
 	internetRepo := repository.NewInternetRepository(db)
 	assetRepo := repository.NewAssetRepository(db)
+	deviceCtrlRepo := repository.NewDeviceControlRepository(db)
+	deviceEventRepo := repository.NewDeviceEventRepository(db)
 
 	// Reporting repositories
 	webLogRepo := repository.NewWebLogRepository(db)
@@ -45,6 +47,9 @@ func RegisterRoutes(router *gin.Engine, db *database.DB, hub *websocket.Hub, cfg
 	discoveryService := services.NewDiscoveryService(deviceRepo, scanRepo, cfg)
 	assetService := services.NewAssetService(assetRepo)
 	policySyncService := services.NewPolicySyncService(assetRepo, deviceRepo, cfg)
+	deviceControlService := services.NewDeviceControlService(deviceRepo, deviceCtrlRepo, monRepo, auditRepo)
+	deviceEventService := services.NewDeviceEventService(deviceEventRepo, deviceRepo, alertRepo)
+	enhancedDiscoverySvc := services.NewEnhancedDiscoveryService(deviceRepo, scanRepo, deviceEventRepo, deviceCtrlRepo, internetRepo, hub, cfg)
 
 	// Reporting services
 	loggingService := services.NewLoggingService(webLogRepo, connLogRepo, downLogRepo)
@@ -62,6 +67,7 @@ func RegisterRoutes(router *gin.Engine, db *database.DB, hub *websocket.Hub, cfg
 	monitoringHandler := handlers.NewMonitoringHandler(monitoringService)
 	internetHandler := handlers.NewInternetHandler(internetService, scanRepo, discoveryService)
 	assetHandler := handlers.NewAssetHandler(assetService, policySyncService)
+	deviceCtrlHandler := handlers.NewDeviceControlHandler(deviceControlService, deviceEventService, enhancedDiscoverySvc)
 
 	// Reporting handlers
 	logsHandler := handlers.NewLogsHandler(loggingService)
@@ -341,6 +347,51 @@ func RegisterRoutes(router *gin.Engine, db *database.DB, hub *websocket.Hub, cfg
 			policies.POST("/sync", assetHandler.SyncPolicies)
 			policies.GET("/sync-logs", assetHandler.ListSyncLogs)
 		}
+
+		// Device Control
+		deviceControl := protected.Group("/devices/:id/control")
+		{
+			deviceControl.POST("/disconnect", deviceCtrlHandler.DisconnectDevice)
+			deviceControl.POST("/reconnect", deviceCtrlHandler.ReconnectDevice)
+			deviceControl.POST("/block", deviceCtrlHandler.BlockInternet)
+			deviceControl.POST("/unblock", deviceCtrlHandler.UnblockInternet)
+			deviceControl.POST("/limit-speed", deviceCtrlHandler.LimitSpeed)
+			deviceControl.POST("/unlimited-speed", deviceCtrlHandler.UnlimitedSpeed)
+			deviceControl.POST("/rename", deviceCtrlHandler.RenameDevice)
+			deviceControl.POST("/department", deviceCtrlHandler.ChangeDepartment)
+			deviceControl.POST("/room", deviceCtrlHandler.ChangeRoom)
+			deviceControl.POST("/move-group", deviceCtrlHandler.MoveToGroup)
+			deviceControl.POST("/pin", deviceCtrlHandler.PinDevice)
+			deviceControl.POST("/unpin", deviceCtrlHandler.UnpinDevice)
+			deviceControl.POST("/mark-critical", deviceCtrlHandler.MarkCritical)
+			deviceControl.POST("/unmark-critical", deviceCtrlHandler.UnmarkCritical)
+			deviceControl.POST("/notes", deviceCtrlHandler.AddNotes)
+			deviceControl.GET("/history", deviceCtrlHandler.GetDeviceHistory)
+			deviceControl.POST("/reserve-dhcp", deviceCtrlHandler.ReserveDHCPIP)
+			deviceControl.GET("/connections", deviceCtrlHandler.ViewActiveConnections)
+			deviceControl.GET("/bandwidth", deviceCtrlHandler.ViewCurrentBandwidth)
+			deviceControl.GET("/usage", deviceCtrlHandler.ViewHistoricalUsage)
+		}
+
+		// Device Events
+		deviceEvents := protected.Group("/devices/:id/events")
+		{
+			deviceEvents.GET("", deviceCtrlHandler.GetDeviceEvents)
+			deviceEvents.GET("/summary", deviceCtrlHandler.GetDeviceEventSummary)
+		}
+		protected.GET("/events", deviceCtrlHandler.GetOrganizationEvents)
+
+		// Enhanced Discovery
+		protected.GET("/monitoring/connected-devices", deviceCtrlHandler.GetConnectedDevices)
+		protected.POST("/vendors/:vendorId/discover", deviceCtrlHandler.DiscoverDevices)
+		protected.POST("/vendors/:vendorId/polling/start", deviceCtrlHandler.StartPolling)
+		protected.POST("/vendors/:vendorId/polling/stop", deviceCtrlHandler.StopPolling)
+		protected.GET("/vendors/:vendorId/interfaces", deviceCtrlHandler.GetMikroTikInterfaces)
+		protected.GET("/vendors/:vendorId/queues", deviceCtrlHandler.GetMikroTikQueues)
+		protected.GET("/vendors/:vendorId/firewall", deviceCtrlHandler.GetMikroTikFirewallRules)
+		protected.GET("/vendors/:vendorId/address-lists", deviceCtrlHandler.GetMikroTikAddressLists)
+		protected.GET("/vendors/:vendorId/dns", deviceCtrlHandler.GetMikroTikDNS)
+		protected.GET("/vendors/:vendorId/identity", deviceCtrlHandler.GetMikroTikRouterIdentity)
 	}
 
 	router.GET("/ws/alerts", func(c *gin.Context) {

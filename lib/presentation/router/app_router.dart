@@ -7,6 +7,9 @@ import '../screens/dashboard/dashboard_screen.dart';
 import '../screens/devices/device_list_screen.dart';
 import '../screens/devices/device_detail_screen.dart';
 import '../screens/devices/device_form_screen.dart';
+import '../screens/devices/device_events_screen.dart';
+import '../screens/devices/enhanced_device_list_screen.dart';
+import '../screens/devices/connected_devices_screen.dart';
 import '../screens/alerts/alert_list_screen.dart';
 import '../screens/alerts/alert_detail_screen.dart';
 import '../screens/network/network_map_screen.dart';
@@ -43,203 +46,227 @@ class AppRouter {
   final GoRouter router;
 
   AppRouter()
-      : router = GoRouter(
-          initialLocation: RouteNames.splash,
-          debugLogDiagnostics: false,
-          routes: [
-            GoRoute(
-              path: RouteNames.splash,
-              builder: (context, state) => const SplashScreen(),
-            ),
-            GoRoute(
-              path: RouteNames.login,
-              builder: (context, state) => const LoginScreen(),
-            ),
-            GoRoute(
-              path: RouteNames.forgotPassword,
-              builder: (context, state) => const ForgotPasswordScreen(),
-            ),
-            ShellRoute(
-              builder: (context, state, child) => AppScaffold(child: child),
-              routes: [
-                GoRoute(
-                  path: RouteNames.dashboard,
-                  builder: (context, state) => const DashboardScreen(),
-                ),
-                GoRoute(
-                  path: RouteNames.devices,
-                  builder: (context, state) => const DeviceListScreen(),
-                  routes: [
-                    GoRoute(
-                      path: 'create',
-                      builder: (context, state) => const DeviceFormScreen(),
-                    ),
-                    GoRoute(
-                      path: ':id',
-                      builder: (context, state) => DeviceDetailScreen(
-                        id: state.pathParameters['id']!,
+    : router = GoRouter(
+        initialLocation: RouteNames.splash,
+        debugLogDiagnostics: false,
+        routes: [
+          GoRoute(
+            path: RouteNames.splash,
+            builder: (context, state) => const SplashScreen(),
+          ),
+          GoRoute(
+            path: RouteNames.login,
+            builder: (context, state) => const LoginScreen(),
+          ),
+          GoRoute(
+            path: RouteNames.forgotPassword,
+            builder: (context, state) => const ForgotPasswordScreen(),
+          ),
+          ShellRoute(
+            builder: (context, state, child) => AppScaffold(child: child),
+            routes: [
+              GoRoute(
+                path: RouteNames.dashboard,
+                builder: (context, state) => const DashboardScreen(),
+              ),
+              GoRoute(
+                path: RouteNames.devices,
+                builder: (context, state) => const DeviceListScreen(),
+                routes: [
+                  GoRoute(
+                    path: 'create',
+                    builder: (context, state) => const DeviceFormScreen(),
+                  ),
+                  GoRoute(
+                    path: 'enhanced',
+                    builder:
+                        (context, state) => const EnhancedDeviceListScreen(),
+                  ),
+                  GoRoute(
+                    path: 'connected',
+                    builder: (context, state) => const ConnectedDevicesScreen(),
+                  ),
+                  GoRoute(
+                    path: ':id',
+                    builder:
+                        (context, state) =>
+                            DeviceDetailScreen(id: state.pathParameters['id']!),
+                    routes: [
+                      GoRoute(
+                        path: 'edit',
+                        builder:
+                            (context, state) => DeviceFormScreen(
+                              deviceId: state.pathParameters['id'],
+                            ),
                       ),
-                      routes: [
-                        GoRoute(
-                          path: 'edit',
-                          builder: (context, state) => DeviceFormScreen(
-                            deviceId: state.pathParameters['id'],
-                          ),
+                      GoRoute(
+                        path: 'events',
+                        builder:
+                            (context, state) => DeviceEventsScreen(
+                              deviceId: state.pathParameters['id']!,
+                            ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              GoRoute(
+                path: RouteNames.alerts,
+                builder: (context, state) => const AlertListScreen(),
+                routes: [
+                  GoRoute(
+                    path: ':id',
+                    builder:
+                        (context, state) =>
+                            AlertDetailScreen(id: state.pathParameters['id']!),
+                  ),
+                ],
+              ),
+              GoRoute(
+                path: RouteNames.networkMap,
+                builder: (context, state) => const NetworkMapScreen(),
+              ),
+              GoRoute(
+                path: RouteNames.networkScan,
+                builder: (context, state) => const ScanScreen(),
+              ),
+              GoRoute(
+                path: RouteNames.internetManagement,
+                builder: (context, state) => const InternetManagementScreen(),
+              ),
+              GoRoute(
+                path: RouteNames.internetPolicies,
+                builder: (context, state) => const InternetPolicyListScreen(),
+                routes: [
+                  GoRoute(
+                    path: 'create',
+                    builder:
+                        (context, state) => const InternetPolicyDetailScreen(),
+                  ),
+                  GoRoute(
+                    path: ':id',
+                    builder:
+                        (context, state) => InternetPolicyDetailScreen(
+                          policyId: state.pathParameters['id'],
                         ),
-                      ],
-                    ),
-                  ],
-                ),
-                GoRoute(
-                  path: RouteNames.alerts,
-                  builder: (context, state) => const AlertListScreen(),
-                  routes: [
-                    GoRoute(
-                      path: ':id',
-                      builder: (context, state) => AlertDetailScreen(
-                        id: state.pathParameters['id']!,
-                      ),
-                    ),
-                  ],
-                ),
-                GoRoute(
-                  path: RouteNames.networkMap,
-                  builder: (context, state) => const NetworkMapScreen(),
-                ),
-                GoRoute(
-                  path: RouteNames.networkScan,
-                  builder: (context, state) => const ScanScreen(),
-                ),
-                GoRoute(
-                  path: RouteNames.internetManagement,
-                  builder: (context, state) => const InternetManagementScreen(),
-                ),
-                GoRoute(
-                  path: RouteNames.internetPolicies,
-                  builder: (context, state) => const InternetPolicyListScreen(),
-                  routes: [
-                    GoRoute(
-                      path: 'create',
-                      builder: (context, state) => const InternetPolicyDetailScreen(),
-                    ),
-                    GoRoute(
-                      path: ':id',
-                      builder: (context, state) => InternetPolicyDetailScreen(
-                        policyId: state.pathParameters['id'],
-                      ),
-                    ),
-                  ],
-                ),
-                GoRoute(
-                  path: RouteNames.deviceBlocks,
-                  builder: (context, state) => const DeviceBlocksScreen(),
-                ),
-                GoRoute(
-                  path: RouteNames.vendorIntegrations,
-                  builder: (context, state) => const VendorIntegrationsScreen(),
-                ),
-                GoRoute(
-                  path: RouteNames.settings,
-                  builder: (context, state) => const SettingsScreen(),
-                ),
-                GoRoute(
-                  path: RouteNames.userManagement,
-                  builder: (context, state) => const UserManagementScreen(),
-                ),
-                GoRoute(
-                  path: RouteNames.permissionManagement,
-                  builder: (context, state) => const PermissionManagementScreen(),
-                ),
-                GoRoute(
-                  path: RouteNames.auditLog,
-                  builder: (context, state) => const AuditLogScreen(),
-                ),
-                GoRoute(
-                  path: RouteNames.reporting,
-                  builder: (context, state) => const ReportingHubScreen(),
-                ),
-                GoRoute(
-                  path: RouteNames.webLogs,
-                  builder: (context, state) => const WebLogsScreen(),
-                ),
-                GoRoute(
-                  path: RouteNames.connectionLogs,
-                  builder: (context, state) => const ConnectionLogsScreen(),
-                ),
-                GoRoute(
-                  path: RouteNames.downloadLogs,
-                  builder: (context, state) => const DownloadLogsScreen(),
-                ),
-                GoRoute(
-                  path: RouteNames.reports,
-                  builder: (context, state) => const ReportsScreen(),
-                ),
-                GoRoute(
-                  path: RouteNames.alertRules,
-                  builder: (context, state) => const AlertRulesScreen(),
-                ),
-                GoRoute(
-                  path: RouteNames.widgets,
-                  builder: (context, state) => const DashboardWidgetsScreen(),
-                ),
-                GoRoute(
-                  path: RouteNames.assetGroups,
-                  builder: (context, state) => const GroupListScreen(),
-                  routes: [
-                    GoRoute(
-                      path: ':id',
-                      builder: (context, state) => GroupDetailScreen(
-                        groupId: state.pathParameters['id']!,
-                      ),
-                    ),
-                  ],
-                ),
-                GoRoute(
-                  path: RouteNames.floorMaps,
-                  builder: (context, state) => const FloorMapListScreen(),
-                  routes: [
-                    GoRoute(
-                      path: ':id',
-                      builder: (context, state) => FloorMapViewerScreen(
-                        mapId: state.pathParameters['id']!,
-                      ),
-                      routes: [
-                        GoRoute(
-                          path: 'edit',
-                          builder: (context, state) => FloorMapEditorScreen(
-                            mapId: state.pathParameters['id']!,
-                          ),
+                  ),
+                ],
+              ),
+              GoRoute(
+                path: RouteNames.deviceBlocks,
+                builder: (context, state) => const DeviceBlocksScreen(),
+              ),
+              GoRoute(
+                path: RouteNames.vendorIntegrations,
+                builder: (context, state) => const VendorIntegrationsScreen(),
+              ),
+              GoRoute(
+                path: RouteNames.settings,
+                builder: (context, state) => const SettingsScreen(),
+              ),
+              GoRoute(
+                path: RouteNames.userManagement,
+                builder: (context, state) => const UserManagementScreen(),
+              ),
+              GoRoute(
+                path: RouteNames.permissionManagement,
+                builder: (context, state) => const PermissionManagementScreen(),
+              ),
+              GoRoute(
+                path: RouteNames.auditLog,
+                builder: (context, state) => const AuditLogScreen(),
+              ),
+              GoRoute(
+                path: RouteNames.reporting,
+                builder: (context, state) => const ReportingHubScreen(),
+              ),
+              GoRoute(
+                path: RouteNames.webLogs,
+                builder: (context, state) => const WebLogsScreen(),
+              ),
+              GoRoute(
+                path: RouteNames.connectionLogs,
+                builder: (context, state) => const ConnectionLogsScreen(),
+              ),
+              GoRoute(
+                path: RouteNames.downloadLogs,
+                builder: (context, state) => const DownloadLogsScreen(),
+              ),
+              GoRoute(
+                path: RouteNames.reports,
+                builder: (context, state) => const ReportsScreen(),
+              ),
+              GoRoute(
+                path: RouteNames.alertRules,
+                builder: (context, state) => const AlertRulesScreen(),
+              ),
+              GoRoute(
+                path: RouteNames.widgets,
+                builder: (context, state) => const DashboardWidgetsScreen(),
+              ),
+              GoRoute(
+                path: RouteNames.assetGroups,
+                builder: (context, state) => const GroupListScreen(),
+                routes: [
+                  GoRoute(
+                    path: ':id',
+                    builder:
+                        (context, state) => GroupDetailScreen(
+                          groupId: state.pathParameters['id']!,
                         ),
-                      ],
-                    ),
-                  ],
-                ),
-                GoRoute(
-                  path: RouteNames.assetPolicies,
-                  builder: (context, state) => const PolicyListScreen(),
-                  routes: [
-                    GoRoute(
-                      path: ':id',
-                      builder: (context, state) => PolicyDetailScreen(
-                        policyId: state.pathParameters['id'],
+                  ),
+                ],
+              ),
+              GoRoute(
+                path: RouteNames.floorMaps,
+                builder: (context, state) => const FloorMapListScreen(),
+                routes: [
+                  GoRoute(
+                    path: ':id',
+                    builder:
+                        (context, state) => FloorMapViewerScreen(
+                          mapId: state.pathParameters['id']!,
+                        ),
+                    routes: [
+                      GoRoute(
+                        path: 'edit',
+                        builder:
+                            (context, state) => FloorMapEditorScreen(
+                              mapId: state.pathParameters['id']!,
+                            ),
                       ),
-                    ),
-                  ],
-                ),
-                GoRoute(
-                  path: RouteNames.assetList,
-                  builder: (context, state) => const AssetListScreen(),
-                  routes: [
-                    GoRoute(
-                      path: ':id',
-                      builder: (context, state) => AssetDetailScreen(
-                        deviceId: state.pathParameters['id']!,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ],
-        );
+                    ],
+                  ),
+                ],
+              ),
+              GoRoute(
+                path: RouteNames.assetPolicies,
+                builder: (context, state) => const PolicyListScreen(),
+                routes: [
+                  GoRoute(
+                    path: ':id',
+                    builder:
+                        (context, state) => PolicyDetailScreen(
+                          policyId: state.pathParameters['id'],
+                        ),
+                  ),
+                ],
+              ),
+              GoRoute(
+                path: RouteNames.assetList,
+                builder: (context, state) => const AssetListScreen(),
+                routes: [
+                  GoRoute(
+                    path: ':id',
+                    builder:
+                        (context, state) => AssetDetailScreen(
+                          deviceId: state.pathParameters['id']!,
+                        ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ],
+      );
 }

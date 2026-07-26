@@ -16,8 +16,24 @@ class Device extends Equatable {
   final String? osVersion;
   final String? firmwareVersion;
   final String? location;
+  final String? building;
+  final String? floor;
+  final String? room;
   final String? department;
   final String? notes;
+  final String? connectionType;
+  final String? connectedInterface;
+  final String? ap;
+  final String? switchInfo;
+  final String? switchPort;
+  final String? dhcpStatus;
+  final int? leaseTime;
+  final int? signalStrength;
+  final int? currentDlSpeed;
+  final int? currentUlSpeed;
+  final int? totalDlBytes;
+  final int? totalUlBytes;
+  final bool isPinned;
   final Map<String, String> customFields;
   final DateTime firstSeen;
   final DateTime? lastBoot;
@@ -41,8 +57,24 @@ class Device extends Equatable {
     this.osVersion,
     this.firmwareVersion,
     this.location,
+    this.building,
+    this.floor,
+    this.room,
     this.department,
     this.notes,
+    this.connectionType,
+    this.connectedInterface,
+    this.ap,
+    this.switchInfo,
+    this.switchPort,
+    this.dhcpStatus,
+    this.leaseTime,
+    this.signalStrength,
+    this.currentDlSpeed,
+    this.currentUlSpeed,
+    this.totalDlBytes,
+    this.totalUlBytes,
+    this.isPinned = false,
     this.customFields = const {},
     required this.firstSeen,
     this.lastBoot,
@@ -67,8 +99,24 @@ class Device extends Equatable {
     String? osVersion,
     String? firmwareVersion,
     String? location,
+    String? building,
+    String? floor,
+    String? room,
     String? department,
     String? notes,
+    String? connectionType,
+    String? connectedInterface,
+    String? ap,
+    String? switchInfo,
+    String? switchPort,
+    String? dhcpStatus,
+    int? leaseTime,
+    int? signalStrength,
+    int? currentDlSpeed,
+    int? currentUlSpeed,
+    int? totalDlBytes,
+    int? totalUlBytes,
+    bool? isPinned,
     Map<String, String>? customFields,
     DateTime? firstSeen,
     DateTime? lastBoot,
@@ -92,8 +140,24 @@ class Device extends Equatable {
       osVersion: osVersion ?? this.osVersion,
       firmwareVersion: firmwareVersion ?? this.firmwareVersion,
       location: location ?? this.location,
+      building: building ?? this.building,
+      floor: floor ?? this.floor,
+      room: room ?? this.room,
       department: department ?? this.department,
       notes: notes ?? this.notes,
+      connectionType: connectionType ?? this.connectionType,
+      connectedInterface: connectedInterface ?? this.connectedInterface,
+      ap: ap ?? this.ap,
+      switchInfo: switchInfo ?? this.switchInfo,
+      switchPort: switchPort ?? this.switchPort,
+      dhcpStatus: dhcpStatus ?? this.dhcpStatus,
+      leaseTime: leaseTime ?? this.leaseTime,
+      signalStrength: signalStrength ?? this.signalStrength,
+      currentDlSpeed: currentDlSpeed ?? this.currentDlSpeed,
+      currentUlSpeed: currentUlSpeed ?? this.currentUlSpeed,
+      totalDlBytes: totalDlBytes ?? this.totalDlBytes,
+      totalUlBytes: totalUlBytes ?? this.totalUlBytes,
+      isPinned: isPinned ?? this.isPinned,
       customFields: customFields ?? this.customFields,
       firstSeen: firstSeen ?? this.firstSeen,
       lastBoot: lastBoot ?? this.lastBoot,
@@ -120,8 +184,24 @@ class Device extends Equatable {
         osVersion,
         firmwareVersion,
         location,
+        building,
+        floor,
+        room,
         department,
         notes,
+        connectionType,
+        connectedInterface,
+        ap,
+        switchInfo,
+        switchPort,
+        dhcpStatus,
+        leaseTime,
+        signalStrength,
+        currentDlSpeed,
+        currentUlSpeed,
+        totalDlBytes,
+        totalUlBytes,
+        isPinned,
         customFields,
         firstSeen,
         lastBoot,

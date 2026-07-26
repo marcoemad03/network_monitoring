@@ -5,6 +5,7 @@ import 'package:fl_chart/fl_chart.dart';
 import '../../providers/device/device_provider.dart';
 import '../../widgets/common/status_badge.dart';
 import '../../widgets/common/app_error_widget.dart';
+import '../../widgets/device/device_control_panel.dart';
 import '../../../core/enums/device_type.dart';
 import '../../router/route_names.dart';
 import '../../../domain/entities/device.dart';
@@ -43,6 +44,11 @@ class _DeviceDetailScreenState extends ConsumerState<DeviceDetailScreen> {
       appBar: AppBar(
         title: const Text('Device Details'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.history),
+            tooltip: 'View Events',
+            onPressed: () => context.push('/devices/${widget.id}/events'),
+          ),
           IconButton(
             icon: const Icon(Icons.edit),
             onPressed: () => context.push(
@@ -106,11 +112,18 @@ class _DeviceDetailContent extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: 16),
+          _buildLocationInfo(theme),
+          const SizedBox(height: 16),
+          _buildConnectionInfo(theme),
+          const SizedBox(height: 16),
           _buildPingLatencySection(theme, metricsAsync),
           const SizedBox(height: 16),
           _buildTrafficSection(theme),
           const SizedBox(height: 16),
           _buildClientsSection(theme, clientsAsync),
+          const SizedBox(height: 16),
+          DeviceControlPanel(deviceId: deviceId),
+          const SizedBox(height: 16),
         ],
       ),
     );
@@ -262,6 +275,100 @@ class _DeviceDetailContent extends ConsumerWidget {
             _infoRow('Vendor', device.vendor ?? 'N/A'),
             _infoRow('Model', device.model ?? 'N/A'),
             _infoRow('OS', device.osVersion ?? 'N/A'),
+            _infoRow('Serial', device.serialNumber ?? 'N/A'),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLocationInfo(ThemeData theme) {
+    final hasLocation = device.building != null || device.floor != null || device.room != null;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.location_on, size: 16, color: theme.colorScheme.primary),
+                const SizedBox(width: 8),
+                Text('Location', style: theme.textTheme.titleSmall
+                    ?.copyWith(fontWeight: FontWeight.w600)),
+              ],
+            ),
+            const SizedBox(height: 12),
+            if (hasLocation) ...[
+              if (device.building != null) _infoRow('Building', device.building!),
+              if (device.floor != null) _infoRow('Floor', device.floor!),
+              if (device.room != null) _infoRow('Room', device.room!),
+            ],
+            _infoRow('Department', device.department ?? 'N/A'),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildConnectionInfo(ThemeData theme) {
+    final signalStrength = device.signalStrength;
+    final signalColor = signalStrength != null
+        ? (signalStrength >= -60 ? Colors.green : signalStrength >= -75 ? Colors.orange : Colors.red)
+        : Colors.grey;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.settings_ethernet, size: 16, color: theme.colorScheme.primary),
+                const SizedBox(width: 8),
+                Text('Connection', style: theme.textTheme.titleSmall
+                    ?.copyWith(fontWeight: FontWeight.w600)),
+              ],
+            ),
+            const SizedBox(height: 12),
+            _infoRow('Type', device.connectionType ?? 'N/A'),
+            if (device.connectedInterface != null) _infoRow('Interface', device.connectedInterface!),
+            if (device.ap != null) _infoRow('Access Point', device.ap!),
+            if (device.switchInfo != null) _infoRow('Switch', device.switchInfo!),
+            if (device.switchPort != null) _infoRow('Switch Port', device.switchPort!),
+            if (device.dhcpStatus != null) _infoRow('DHCP', device.dhcpStatus!),
+            if (signalStrength != null) ...[
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  SizedBox(width: 80,
+                      child: Text('Signal', style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 12))),
+                  Icon(Icons.wifi, size: 16, color: signalColor),
+                  const SizedBox(width: 4),
+                  Text('$signalStrength dBm', style: TextStyle(fontSize: 12, color: signalColor)),
+                ],
+              ),
+            ],
+            if (device.isPinned) ...[
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Icon(Icons.push_pin, size: 14, color: theme.colorScheme.primary),
+                  const SizedBox(width: 4),
+                  Text('Pinned device', style: TextStyle(fontSize: 12, color: theme.colorScheme.primary)),
+                ],
+              ),
+            ],
+            if (device.isCritical) ...[
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  Icon(Icons.warning, size: 14, color: Colors.red),
+                  const SizedBox(width: 4),
+                  Text('Critical device', style: TextStyle(fontSize: 12, color: Colors.red)),
+                ],
+              ),
+            ],
           ],
         ),
       ),

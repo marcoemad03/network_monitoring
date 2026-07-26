@@ -7,6 +7,8 @@ class VendorIntegration extends Equatable {
   final String name;
   final String baseUrl;
   final String? username;
+  final String? password;
+  final String? apiKey;
   final String? apiVersion;
   final bool isActive;
   final DateTime? lastSyncAt;
@@ -22,6 +24,8 @@ class VendorIntegration extends Equatable {
     required this.name,
     required this.baseUrl,
     this.username,
+    this.password,
+    this.apiKey,
     this.apiVersion,
     this.isActive = true,
     this.lastSyncAt,
@@ -38,6 +42,8 @@ class VendorIntegration extends Equatable {
     String? name,
     String? baseUrl,
     String? username,
+    String? password,
+    String? apiKey,
     String? apiVersion,
     bool? isActive,
     DateTime? lastSyncAt,
@@ -53,6 +59,8 @@ class VendorIntegration extends Equatable {
       name: name ?? this.name,
       baseUrl: baseUrl ?? this.baseUrl,
       username: username ?? this.username,
+      password: password ?? this.password,
+      apiKey: apiKey ?? this.apiKey,
       apiVersion: apiVersion ?? this.apiVersion,
       isActive: isActive ?? this.isActive,
       lastSyncAt: lastSyncAt ?? this.lastSyncAt,
@@ -65,18 +73,20 @@ class VendorIntegration extends Equatable {
 
   @override
   List<Object?> get props => [
-        id,
-        organizationId,
-        vendorType,
-        name,
-        baseUrl,
-        username,
-        apiVersion,
-        isActive,
-        lastSyncAt,
-        lastSyncStatus,
-        errorMessage,
-        createdAt,
-        updatedAt,
-      ];
+    id,
+    organizationId,
+    vendorType,
+    name,
+    baseUrl,
+    username,
+    password,
+    apiKey,
+    apiVersion,
+    isActive,
+    lastSyncAt,
+    lastSyncStatus,
+    errorMessage,
+    createdAt,
+    updatedAt,
+  ];
 }

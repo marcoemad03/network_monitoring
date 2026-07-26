@@ -3,7 +3,6 @@ package mikrotik
 import (
 	"bytes"
 	"crypto/md5"
-	"crypto/sha1"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -45,7 +44,7 @@ func (c *APIConnection) log(format string, args ...interface{}) {
 // - Length encoding: if MSB set, combine with next byte
 
 func (c *APIConnection) Connect() error {
-	addr := fmt.Sprintf("%s:%d", c.host, c.port)
+	addr := net.JoinHostPort(c.host, fmt.Sprintf("%d", c.port))
 	c.log("[API] Dialing %s (timeout=%v)...", addr, c.timeout)
 
 	dialer := net.Dialer{Timeout: c.timeout}
@@ -56,6 +55,9 @@ func (c *APIConnection) Connect() error {
 	}
 	c.conn = conn
 	c.reader = conn
+	if c.timeout > 0 {
+		_ = conn.SetDeadline(time.Now().Add(c.timeout))
+	}
 	c.log("[API] TCP connection ESTABLISHED to %s", addr)
 	return nil
 }
@@ -92,27 +94,71 @@ func (c *APIConnection) writeSentence(words ...string) error {
 }
 
 func writeLength(buf *bytes.Buffer, length int) {
-	if length < 0x80 {
+	switch {
+	case length < 0x80:
 		buf.WriteByte(byte(length))
-	} else {
-		buf.WriteByte(byte(length | 0x80))
-		buf.WriteByte(byte(length >> 7))
+	case length < 0x4000:
+		length |= 0x8000
+		buf.WriteByte(byte(length >> 8))
+		buf.WriteByte(byte(length))
+	case length < 0x200000:
+		length |= 0xC00000
+		buf.WriteByte(byte(length >> 16))
+		buf.WriteByte(byte(length >> 8))
+		buf.WriteByte(byte(length))
+	case length < 0x10000000:
+		length |= 0xE0000000
+		buf.WriteByte(byte(length >> 24))
+		buf.WriteByte(byte(length >> 16))
+		buf.WriteByte(byte(length >> 8))
+		buf.WriteByte(byte(length))
+	default:
+		buf.WriteByte(0xF0)
+		buf.WriteByte(byte(length >> 24))
+		buf.WriteByte(byte(length >> 16))
+		buf.WriteByte(byte(length >> 8))
+		buf.WriteByte(byte(length))
 	}
 }
 
 func (c *APIConnection) readLength() (int, error) {
-	b := make([]byte, 1)
-	if _, err := io.ReadFull(c.reader, b); err != nil {
+	var first [1]byte
+	if _, err := io.ReadFull(c.reader, first[:]); err != nil {
 		return 0, err
 	}
-	if b[0] < 0x80 {
-		return int(b[0]), nil
+	b := first[0]
+	if b&0x80 == 0 {
+		return int(b), nil
 	}
-	b2 := make([]byte, 1)
-	if _, err := io.ReadFull(c.reader, b2); err != nil {
-		return 0, err
+	if b&0xC0 == 0x80 {
+		var rest [1]byte
+		if _, err := io.ReadFull(c.reader, rest[:]); err != nil {
+			return 0, err
+		}
+		return int(b&0x3F)<<8 | int(rest[0]), nil
 	}
-	return int(b[0]&0x7f) | (int(b2[0]) << 7), nil
+	if b&0xE0 == 0xC0 {
+		var rest [2]byte
+		if _, err := io.ReadFull(c.reader, rest[:]); err != nil {
+			return 0, err
+		}
+		return int(b&0x1F)<<16 | int(rest[0])<<8 | int(rest[1]), nil
+	}
+	if b&0xF0 == 0xE0 {
+		var rest [3]byte
+		if _, err := io.ReadFull(c.reader, rest[:]); err != nil {
+			return 0, err
+		}
+		return int(b&0x0F)<<24 | int(rest[0])<<16 | int(rest[1])<<8 | int(rest[2]), nil
+	}
+	if b == 0xF0 {
+		var rest [4]byte
+		if _, err := io.ReadFull(c.reader, rest[:]); err != nil {
+			return 0, err
+		}
+		return int(rest[0])<<24 | int(rest[1])<<16 | int(rest[2])<<8 | int(rest[3]), nil
+	}
+	return 0, fmt.Errorf("unsupported RouterOS word length prefix 0x%x", b)
 }
 
 func (c *APIConnection) readSentence() (string, []string, error) {
@@ -178,10 +224,9 @@ func (c *APIConnection) Login() error {
 	case "!trap":
 		c.log("[LOGIN] Plain login REJECTED (%v)", words)
 		if isChallengeResponse(words) {
-			c.log("[LOGIN] Detected challenge-response required (RouterOS < v6.43)")
+			return c.challengeLoginWithWords(words)
 		}
-		c.log("[LOGIN] Step 2: Trying challenge-response login...")
-		return c.challengeLogin()
+		return fmt.Errorf("authentication failed: %s", extractMessage(words))
 
 	case "!fatal":
 		c.log("[LOGIN] FATAL error: %v", words)
@@ -236,48 +281,42 @@ func (c *APIConnection) challengeLogin() error {
 	}
 
 	if challenge == "" {
-		c.log("[CHALLENGE] No challenge found in response, trying MD5(password) hash...")
-
-		hash := md5.Sum([]byte(c.password))
-		response := hex.EncodeToString(hash[:])
-		c.log("[CHALLENGE] MD5 hash: %s", response)
-
-		if err := c.writeSentence("/login", fmt.Sprintf("=name=%s", c.username), fmt.Sprintf("=response=%s", response)); err != nil {
-			return fmt.Errorf("response send: %w", err)
-		}
-
-		sentenceType, words, err = c.readSentence()
-		if err != nil {
-			return fmt.Errorf("response read: %w", err)
-		}
-		c.log("[CHALLENGE] Response: %s %v", sentenceType, words)
-
-		if sentenceType == "!done" {
-			c.log("[CHALLENGE] LOGIN SUCCESS via MD5 hash!")
-			return nil
-		}
-		return fmt.Errorf("login failed: %s %v", sentenceType, words)
+		return fmt.Errorf("legacy login challenge was not returned")
 	}
+	return c.sendChallengeResponse(challenge)
+}
 
-	c.log("[CHALLENGE] Challenge received: %s", challenge)
+func (c *APIConnection) challengeLoginWithWords(words []string) error {
+	for _, w := range words {
+		if strings.HasPrefix(w, "=ret=") {
+			return c.sendChallengeResponse(strings.TrimPrefix(w, "=ret="))
+		}
+	}
+	return fmt.Errorf("authentication failed: %s", extractMessage(words))
+}
 
-	// SHA1 challenge-response: SHA1(challenge + "\x00" + password)
-	hash := sha1.Sum([]byte(challenge + "\x00" + c.password))
+func (c *APIConnection) sendChallengeResponse(challenge string) error {
+	challengeBytes, err := hex.DecodeString(challenge)
+	if err != nil {
+		return fmt.Errorf("invalid RouterOS login challenge: %w", err)
+	}
+	payload := append([]byte{0}, []byte(c.password)...)
+	payload = append(payload, challengeBytes...)
+	hash := md5.Sum(payload)
 	response := "00" + hex.EncodeToString(hash[:])
-	c.log("[CHALLENGE] Computed response: %s", response)
 
 	if err := c.writeSentence("/login", fmt.Sprintf("=name=%s", c.username), fmt.Sprintf("=response=%s", response)); err != nil {
 		return fmt.Errorf("challenge response send: %w", err)
 	}
 
-	sentenceType, words, err = c.readSentence()
+	sentenceType, words, err := c.readSentence()
 	if err != nil {
 		return fmt.Errorf("challenge response read: %w", err)
 	}
 	c.log("[CHALLENGE] Response: %s %v", sentenceType, words)
 
 	if sentenceType == "!done" {
-		c.log("[CHALLENGE] LOGIN SUCCESS via SHA1 challenge-response!")
+		c.log("[CHALLENGE] LOGIN SUCCESS via MD5 challenge-response")
 		return nil
 	}
 

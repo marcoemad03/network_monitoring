@@ -12,6 +12,7 @@ import '../../../domain/entities/device_block.dart';
 import '../../../domain/entities/vendor_integration.dart';
 import '../../../core/network/dio_client.dart';
 import '../../../core/constants/api_constants.dart';
+import '../../../core/errors/exceptions.dart';
 
 abstract class InternetRemoteDataSource {
   // Internet Policies
@@ -30,7 +31,9 @@ abstract class InternetRemoteDataSource {
   // Bandwidth Rules
   Future<List<BandwidthRuleModel>> getBandwidthRules(String policyId);
   Future<BandwidthRuleModel> createBandwidthRule(
-      String policyId, BandwidthRule rule);
+    String policyId,
+    BandwidthRule rule,
+  );
   Future<BandwidthRuleModel> updateBandwidthRule(BandwidthRule rule);
   Future<void> deleteBandwidthRule(String id);
   Future<BandwidthRuleModel> setTemporaryBandwidth(
@@ -44,14 +47,18 @@ abstract class InternetRemoteDataSource {
   // Filtering Rules
   Future<List<FilteringRuleModel>> getFilteringRules(String policyId);
   Future<FilteringRuleModel> createFilteringRule(
-      String policyId, FilteringRule rule);
+    String policyId,
+    FilteringRule rule,
+  );
   Future<FilteringRuleModel> updateFilteringRule(FilteringRule rule);
   Future<void> deleteFilteringRule(String id);
 
   // Time Schedules
   Future<List<TimeScheduleModel>> getSchedules(String policyId);
   Future<TimeScheduleModel> createSchedule(
-      String policyId, TimeSchedule schedule);
+    String policyId,
+    TimeSchedule schedule,
+  );
   Future<TimeScheduleModel> updateSchedule(TimeSchedule schedule);
   Future<void> deleteSchedule(String id);
 
@@ -68,9 +75,11 @@ abstract class InternetRemoteDataSource {
   Future<List<VendorIntegrationModel>> getVendorIntegrations();
   Future<VendorIntegrationModel> getVendorIntegrationById(String id);
   Future<VendorIntegrationModel> createVendorIntegration(
-      VendorIntegration integration);
+    VendorIntegration integration,
+  );
   Future<VendorIntegrationModel> updateVendorIntegration(
-      VendorIntegration integration);
+    VendorIntegration integration,
+  );
   Future<void> deleteVendorIntegration(String id);
   Future<void> testVendorConnection(String id);
   Future<VendorIntegrationModel> syncVendor(String id);
@@ -110,24 +119,32 @@ class InternetRemoteDataSourceImpl implements InternetRemoteDataSource {
   Future<InternetPolicyModel> getPolicyById(String id) async {
     final response = await _client.get(ApiConstants.internetPolicyDetail(id));
     return InternetPolicyModel.fromJson(
-        response.data['data'] as Map<String, dynamic>);
+      response.data['data'] as Map<String, dynamic>,
+    );
   }
 
   @override
   Future<InternetPolicyModel> createPolicy(InternetPolicy policy) async {
     final data = InternetPolicyModel.fromEntity(policy).toJson();
-    final response = await _client.post(ApiConstants.internetPolicies, data: data);
+    final response = await _client.post(
+      ApiConstants.internetPolicies,
+      data: data,
+    );
     return InternetPolicyModel.fromJson(
-        response.data['data'] as Map<String, dynamic>);
+      response.data['data'] as Map<String, dynamic>,
+    );
   }
 
   @override
   Future<InternetPolicyModel> updatePolicy(InternetPolicy policy) async {
     final data = InternetPolicyModel.fromEntity(policy).toJson();
-    final response =
-        await _client.put(ApiConstants.internetPolicyDetail(policy.id), data: data);
+    final response = await _client.put(
+      ApiConstants.internetPolicyDetail(policy.id),
+      data: data,
+    );
     return InternetPolicyModel.fromJson(
-        response.data['data'] as Map<String, dynamic>);
+      response.data['data'] as Map<String, dynamic>,
+    );
   }
 
   @override
@@ -137,8 +154,9 @@ class InternetRemoteDataSourceImpl implements InternetRemoteDataSource {
 
   @override
   Future<List<BandwidthRuleModel>> getBandwidthRules(String policyId) async {
-    final response =
-        await _client.get(ApiConstants.internetPolicyBandwidthRules(policyId));
+    final response = await _client.get(
+      ApiConstants.internetPolicyBandwidthRules(policyId),
+    );
     final data = response.data['data'] as List;
     return data
         .map((e) => BandwidthRuleModel.fromJson(e as Map<String, dynamic>))
@@ -147,21 +165,29 @@ class InternetRemoteDataSourceImpl implements InternetRemoteDataSource {
 
   @override
   Future<BandwidthRuleModel> createBandwidthRule(
-      String policyId, BandwidthRule rule) async {
+    String policyId,
+    BandwidthRule rule,
+  ) async {
     final data = BandwidthRuleModel.fromEntity(rule).toJson();
-    final response =
-        await _client.post(ApiConstants.internetPolicyBandwidthRules(policyId), data: data);
+    final response = await _client.post(
+      ApiConstants.internetPolicyBandwidthRules(policyId),
+      data: data,
+    );
     return BandwidthRuleModel.fromJson(
-        response.data['data'] as Map<String, dynamic>);
+      response.data['data'] as Map<String, dynamic>,
+    );
   }
 
   @override
   Future<BandwidthRuleModel> updateBandwidthRule(BandwidthRule rule) async {
     final data = BandwidthRuleModel.fromEntity(rule).toJson();
-    final response =
-        await _client.put(ApiConstants.bandwidthRuleDetail(rule.id), data: data);
+    final response = await _client.put(
+      ApiConstants.bandwidthRuleDetail(rule.id),
+      data: data,
+    );
     return BandwidthRuleModel.fromJson(
-        response.data['data'] as Map<String, dynamic>);
+      response.data['data'] as Map<String, dynamic>,
+    );
   }
 
   @override
@@ -185,7 +211,8 @@ class InternetRemoteDataSourceImpl implements InternetRemoteDataSource {
       },
     );
     return BandwidthRuleModel.fromJson(
-        response.data['data'] as Map<String, dynamic>);
+      response.data['data'] as Map<String, dynamic>,
+    );
   }
 
   @override
@@ -195,8 +222,9 @@ class InternetRemoteDataSourceImpl implements InternetRemoteDataSource {
 
   @override
   Future<List<FilteringRuleModel>> getFilteringRules(String policyId) async {
-    final response =
-        await _client.get(ApiConstants.internetPolicyFilteringRules(policyId));
+    final response = await _client.get(
+      ApiConstants.internetPolicyFilteringRules(policyId),
+    );
     final data = response.data['data'] as List;
     return data
         .map((e) => FilteringRuleModel.fromJson(e as Map<String, dynamic>))
@@ -205,21 +233,29 @@ class InternetRemoteDataSourceImpl implements InternetRemoteDataSource {
 
   @override
   Future<FilteringRuleModel> createFilteringRule(
-      String policyId, FilteringRule rule) async {
+    String policyId,
+    FilteringRule rule,
+  ) async {
     final data = FilteringRuleModel.fromEntity(rule).toJson();
-    final response =
-        await _client.post(ApiConstants.internetPolicyFilteringRules(policyId), data: data);
+    final response = await _client.post(
+      ApiConstants.internetPolicyFilteringRules(policyId),
+      data: data,
+    );
     return FilteringRuleModel.fromJson(
-        response.data['data'] as Map<String, dynamic>);
+      response.data['data'] as Map<String, dynamic>,
+    );
   }
 
   @override
   Future<FilteringRuleModel> updateFilteringRule(FilteringRule rule) async {
     final data = FilteringRuleModel.fromEntity(rule).toJson();
-    final response =
-        await _client.put(ApiConstants.filteringRuleDetail(rule.id), data: data);
+    final response = await _client.put(
+      ApiConstants.filteringRuleDetail(rule.id),
+      data: data,
+    );
     return FilteringRuleModel.fromJson(
-        response.data['data'] as Map<String, dynamic>);
+      response.data['data'] as Map<String, dynamic>,
+    );
   }
 
   @override
@@ -229,8 +265,9 @@ class InternetRemoteDataSourceImpl implements InternetRemoteDataSource {
 
   @override
   Future<List<TimeScheduleModel>> getSchedules(String policyId) async {
-    final response =
-        await _client.get(ApiConstants.internetPolicySchedules(policyId));
+    final response = await _client.get(
+      ApiConstants.internetPolicySchedules(policyId),
+    );
     final data = response.data['data'] as List;
     return data
         .map((e) => TimeScheduleModel.fromJson(e as Map<String, dynamic>))
@@ -239,21 +276,29 @@ class InternetRemoteDataSourceImpl implements InternetRemoteDataSource {
 
   @override
   Future<TimeScheduleModel> createSchedule(
-      String policyId, TimeSchedule schedule) async {
+    String policyId,
+    TimeSchedule schedule,
+  ) async {
     final data = TimeScheduleModel.fromEntity(schedule).toJson();
-    final response =
-        await _client.post(ApiConstants.internetPolicySchedules(policyId), data: data);
+    final response = await _client.post(
+      ApiConstants.internetPolicySchedules(policyId),
+      data: data,
+    );
     return TimeScheduleModel.fromJson(
-        response.data['data'] as Map<String, dynamic>);
+      response.data['data'] as Map<String, dynamic>,
+    );
   }
 
   @override
   Future<TimeScheduleModel> updateSchedule(TimeSchedule schedule) async {
     final data = TimeScheduleModel.fromEntity(schedule).toJson();
-    final response =
-        await _client.put(ApiConstants.scheduleDetail(schedule.id), data: data);
+    final response = await _client.put(
+      ApiConstants.scheduleDetail(schedule.id),
+      data: data,
+    );
     return TimeScheduleModel.fromJson(
-        response.data['data'] as Map<String, dynamic>);
+      response.data['data'] as Map<String, dynamic>,
+    );
   }
 
   @override
@@ -287,7 +332,8 @@ class InternetRemoteDataSourceImpl implements InternetRemoteDataSource {
     final data = DeviceBlockModel.fromEntity(block).toJson();
     final response = await _client.post(ApiConstants.deviceBlocks, data: data);
     return DeviceBlockModel.fromJson(
-        response.data['data'] as Map<String, dynamic>);
+      response.data['data'] as Map<String, dynamic>,
+    );
   }
 
   @override
@@ -306,30 +352,40 @@ class InternetRemoteDataSourceImpl implements InternetRemoteDataSource {
 
   @override
   Future<VendorIntegrationModel> getVendorIntegrationById(String id) async {
-    final response =
-        await _client.get(ApiConstants.vendorIntegrationDetail(id));
+    final response = await _client.get(
+      ApiConstants.vendorIntegrationDetail(id),
+    );
     return VendorIntegrationModel.fromJson(
-        response.data['data'] as Map<String, dynamic>);
+      response.data['data'] as Map<String, dynamic>,
+    );
   }
 
   @override
   Future<VendorIntegrationModel> createVendorIntegration(
-      VendorIntegration integration) async {
-    final data = VendorIntegrationModel.fromEntity(integration).toJson();
-    final response =
-        await _client.post(ApiConstants.vendorIntegrations, data: data);
+    VendorIntegration integration,
+  ) async {
+    final data = _vendorRequest(integration);
+    final response = await _client.post(
+      ApiConstants.vendorIntegrations,
+      data: data,
+    );
     return VendorIntegrationModel.fromJson(
-        response.data['data'] as Map<String, dynamic>);
+      response.data['data'] as Map<String, dynamic>,
+    );
   }
 
   @override
   Future<VendorIntegrationModel> updateVendorIntegration(
-      VendorIntegration integration) async {
-    final data = VendorIntegrationModel.fromEntity(integration).toJson();
-    final response =
-        await _client.put(ApiConstants.vendorIntegrationDetail(integration.id), data: data);
+    VendorIntegration integration,
+  ) async {
+    final data = _vendorRequest(integration);
+    final response = await _client.put(
+      ApiConstants.vendorIntegrationDetail(integration.id),
+      data: data,
+    );
     return VendorIntegrationModel.fromJson(
-        response.data['data'] as Map<String, dynamic>);
+      response.data['data'] as Map<String, dynamic>,
+    );
   }
 
   @override
@@ -339,14 +395,34 @@ class InternetRemoteDataSourceImpl implements InternetRemoteDataSource {
 
   @override
   Future<void> testVendorConnection(String id) async {
-    await _client.post(ApiConstants.vendorIntegrationTest(id));
+    final response = await _client.post(ApiConstants.vendorIntegrationTest(id));
+    if (response.data is Map && response.data['success'] != true) {
+      throw ServerException(
+        message:
+            response.data['message']?.toString() ??
+            'RouterOS connection failed',
+      );
+    }
   }
+
+  Map<String, dynamic> _vendorRequest(VendorIntegration integration) => {
+    'vendor_type': integration.vendorType,
+    'name': integration.name,
+    'base_url': integration.baseUrl,
+    if (integration.username != null) 'username': integration.username,
+    if (integration.password != null && integration.password!.isNotEmpty)
+      'encrypted_password': integration.password,
+    if (integration.apiKey != null && integration.apiKey!.isNotEmpty)
+      'api_key': integration.apiKey,
+    if (integration.apiVersion != null) 'api_version': integration.apiVersion,
+    'is_active': integration.isActive,
+  };
 
   @override
   Future<VendorIntegrationModel> syncVendor(String id) async {
-    final response =
-        await _client.post(ApiConstants.vendorIntegrationSync(id));
+    final response = await _client.post(ApiConstants.vendorIntegrationSync(id));
     return VendorIntegrationModel.fromJson(
-        response.data['data'] as Map<String, dynamic>);
+      response.data['data'] as Map<String, dynamic>,
+    );
   }
 }

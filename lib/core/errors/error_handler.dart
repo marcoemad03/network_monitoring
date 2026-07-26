@@ -43,7 +43,7 @@ class ErrorHandler {
         return TimeoutFailure();
 
       case DioExceptionType.connectionError:
-        return NetworkFailure();
+        return const NetworkFailure();
 
       case DioExceptionType.badResponse:
         return _handleStatusCode(error.response);
@@ -73,7 +73,8 @@ class ErrorHandler {
     }
 
     final data = response.data;
-    final message = data is Map ? data['message'] as String? : null;
+    final message = data is Map ? data['message']?.toString() : null;
+    final code = data is Map ? data['error_code']?.toString() : null;
 
     switch (statusCode) {
       case 400:
@@ -113,7 +114,7 @@ class ErrorHandler {
         return ServerFailure(
           message: message ?? 'Internal server error',
           statusCode: statusCode,
-          code: 'SERVER_ERROR',
+          code: code ?? 'SERVER_ERROR',
         );
       default:
         return ServerFailure(

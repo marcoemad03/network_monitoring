@@ -14,8 +14,8 @@ class AppScaffold extends StatelessWidget {
         children: [
           NavigationRail(
             selectedIndex: _calculateSelectedIndex(context),
-            onDestinationSelected: (index) =>
-                _onDestinationSelected(context, index),
+            onDestinationSelected:
+                (index) => _onDestinationSelected(context, index),
             labelType: NavigationRailLabelType.all,
             leading: Padding(
               padding: const EdgeInsets.symmetric(vertical: 16),
@@ -35,6 +35,11 @@ class AppScaffold extends StatelessWidget {
                 icon: Icon(Icons.devices_outlined),
                 selectedIcon: Icon(Icons.devices),
                 label: Text('Devices'),
+              ),
+              NavigationRailDestination(
+                icon: Icon(Icons.lan_outlined),
+                selectedIcon: Icon(Icons.lan),
+                label: Text('Connected'),
               ),
               NavigationRailDestination(
                 icon: Icon(Icons.warning_amber_outlined),
@@ -83,14 +88,15 @@ class AppScaffold extends StatelessWidget {
   int _calculateSelectedIndex(BuildContext context) {
     final location = GoRouterState.of(context).uri.toString();
     if (location.startsWith(RouteNames.dashboard)) return 0;
+    if (location.startsWith(RouteNames.connectedDevices)) return 2;
     if (location.startsWith('/devices')) return 1;
-    if (location.startsWith('/alerts')) return 2;
-    if (location.startsWith('/network')) return 3;
-    if (location.startsWith('/reporting')) return 4;
-    if (location.startsWith('/internet')) return 5;
-    if (location.startsWith('/asset')) return 6;
+    if (location.startsWith('/alerts')) return 3;
+    if (location.startsWith('/network')) return 4;
+    if (location.startsWith('/reporting')) return 5;
+    if (location.startsWith('/internet')) return 6;
     if (location.startsWith('/settings')) return 7;
-    if (location.startsWith('/audit')) return 8;
+    if (location.startsWith('/asset')) return 8;
+    if (location.startsWith('/audit')) return 9;
     return 0;
   }
 
@@ -101,18 +107,20 @@ class AppScaffold extends StatelessWidget {
       case 1:
         context.go(RouteNames.devices);
       case 2:
-        context.go(RouteNames.alerts);
+        context.go(RouteNames.connectedDevices);
       case 3:
-        context.go(RouteNames.networkMap);
+        context.go(RouteNames.alerts);
       case 4:
-        context.go(RouteNames.reporting);
+        context.go(RouteNames.networkMap);
       case 5:
-        context.go(RouteNames.internetManagement);
+        context.go(RouteNames.reporting);
       case 6:
-        context.go(RouteNames.assetList);
+        context.go(RouteNames.internetManagement);
       case 7:
         context.go(RouteNames.settings);
       case 8:
+        context.go(RouteNames.assetList);
+      case 9:
         context.go(RouteNames.auditLog);
     }
   }

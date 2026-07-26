@@ -2,6 +2,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../domain/entities/device.dart';
 import '../../../domain/entities/device_client.dart';
 import '../../../domain/entities/device_connection.dart';
+import '../../../domain/entities/connected_device.dart';
+import '../../../domain/entities/router_connection_status.dart';
 import '../../../domain/entities/dashboard_live.dart';
 import '../../../domain/usecases/device/get_devices_usecase.dart';
 import '../../../domain/usecases/device/get_device_detail_usecase.dart';
@@ -53,23 +55,21 @@ final deviceLocalDataSourceProvider = Provider<DeviceLocalDataSource>((ref) {
   return DeviceLocalDataSourceImpl(ref.watch(sharedPreferencesProvider));
 });
 
-final deviceListProvider =
-    FutureProvider.autoDispose.family<List<Device>, DeviceFilter>(
-  (ref, filter) async {
-    final useCase = ref.watch(getDevicesUseCaseProvider);
-    final result = await useCase(
-      page: filter.page,
-      limit: filter.limit,
-      search: filter.search,
-      status: filter.status,
-      type: filter.type,
-      department: filter.department,
-      sortBy: filter.sortBy,
-      ascending: filter.ascending,
-    );
-    return result.fold((failure) => [], (devices) => devices);
-  },
-);
+final deviceListProvider = FutureProvider.autoDispose
+    .family<List<Device>, DeviceFilter>((ref, filter) async {
+      final useCase = ref.watch(getDevicesUseCaseProvider);
+      final result = await useCase(
+        page: filter.page,
+        limit: filter.limit,
+        search: filter.search,
+        status: filter.status,
+        type: filter.type,
+        department: filter.department,
+        sortBy: filter.sortBy,
+        ascending: filter.ascending,
+      );
+      return result.fold((failure) => [], (devices) => devices);
+    });
 
 class DeviceFilter {
   final int page;
@@ -117,8 +117,8 @@ class DeviceFilter {
 
 final deviceFilterProvider =
     StateNotifierProvider<DeviceFilterNotifier, DeviceFilter>(
-  (ref) => DeviceFilterNotifier(),
-);
+      (ref) => DeviceFilterNotifier(),
+    );
 
 class DeviceFilterNotifier extends StateNotifier<DeviceFilter> {
   DeviceFilterNotifier() : super(const DeviceFilter());
@@ -152,21 +152,40 @@ final webSocketManagerProvider = Provider<WebSocketManager>((ref) {
   return manager;
 });
 
-final allDevicesProvider = FutureProvider.autoDispose<List<Device>>((ref) async {
+final allDevicesProvider = FutureProvider.autoDispose<List<Device>>((
+  ref,
+) async {
   final useCase = ref.watch(getDevicesUseCaseProvider);
   final result = await useCase(page: 1, limit: 500);
   return result.fold((_) => [], (devices) => devices);
 });
 
-final dashboardSummaryProvider = StreamProvider.autoDispose<DashboardLive?>((ref) async* {
+DashboardLive? _cachedDashboardSummary = null;
+
+final dashboardSummaryProvider = StreamProvider<DashboardLive?>((ref) async* {
   final repo = ref.watch(deviceRepositoryProvider);
 
   try {
     final result = await repo.getDashboardSummary();
-    yield result.fold((_) => null, (s) => s);
+    final data = result.fold(
+      (failure) => throw Exception(failure.message),
+      (s) => s,
+    );
+    if (data != null) {
+      _cachedDashboardSummary = data;
+      yield data;
+    } else if (_cachedDashboardSummary != null) {
+      yield _cachedDashboardSummary;
+    } else {
+      yield null;
+    }
   } catch (e) {
     AppLogger.error('Failed to fetch dashboard summary', error: e);
-    yield null;
+    if (_cachedDashboardSummary != null) {
+      yield _cachedDashboardSummary;
+    } else {
+      rethrow;
+    }
   }
 
   try {
@@ -176,9 +195,14 @@ final dashboardSummaryProvider = StreamProvider.autoDispose<DashboardLive?>((ref
       if (message['type'] == 'dashboard_summary') {
         try {
           final data = message['data'] as Map<String, dynamic>;
-          yield DashboardLiveModel.fromJson(data).toEntity();
+          final parsed = DashboardLiveModel.fromJson(data).toEntity();
+          _cachedDashboardSummary = parsed;
+          yield parsed;
         } catch (e) {
-          AppLogger.error('Failed to parse WebSocket dashboard update', error: e);
+          AppLogger.error(
+            'Failed to parse WebSocket dashboard update',
+            error: e,
+          );
         }
       }
     }
@@ -187,39 +211,55 @@ final dashboardSummaryProvider = StreamProvider.autoDispose<DashboardLive?>((ref
   }
 });
 
-final deviceClientsProvider = FutureProvider.autoDispose.family<List<DeviceClient>, String>(
-  (ref, deviceId) async {
-    final repo = ref.watch(deviceRepositoryProvider);
-    final result = await repo.getDeviceClients(deviceId);
-    return result.fold((_) => [], (clients) => clients);
-  },
-);
+final deviceClientsProvider = FutureProvider.autoDispose
+    .family<List<DeviceClient>, String>((ref, deviceId) async {
+      final repo = ref.watch(deviceRepositoryProvider);
+      final result = await repo.getDeviceClients(deviceId);
+      return result.fold((_) => [], (clients) => clients);
+    });
 
-final allClientsProvider = FutureProvider.autoDispose<List<DeviceClient>>((ref) async {
+final allClientsProvider = FutureProvider.autoDispose<List<DeviceClient>>((
+  ref,
+) async {
   final repo = ref.watch(deviceRepositoryProvider);
   final result = await repo.getAllClients();
   return result.fold((_) => [], (clients) => clients);
 });
 
-final connectionsProvider = FutureProvider.autoDispose<List<DeviceConnection>>((ref) async {
+final connectionsProvider = FutureProvider.autoDispose<List<DeviceConnection>>((
+  ref,
+) async {
   final repo = ref.watch(deviceRepositoryProvider);
   final result = await repo.getConnections();
   return result.fold((_) => [], (conns) => conns);
 });
 
-final deviceUpdateStreamProvider = StreamProvider.autoDispose<Map<String, dynamic>>((ref) {
-  final manager = ref.watch(webSocketManagerProvider);
-
-  return () async* {
-    try {
-      await manager.start();
-      await for (final message in manager.messages) {
-        if (message['type'] == 'device_update' && message['data'] is Map<String, dynamic>) {
-          yield message['data'] as Map<String, dynamic>;
-        }
-      }
-    } finally {
-      AppLogger.debug('deviceUpdateStreamProvider stream ended');
-    }
-  }();
+final connectedDevicesProvider = FutureProvider.autoDispose<
+  ({RouterConnectionStatus connection, List<ConnectedDevice> devices})
+>((ref) async {
+  final result =
+      await ref.watch(deviceRepositoryProvider).getConnectedDevices();
+  return result.fold(
+    (failure) => throw Exception(failure.message),
+    (data) => data,
+  );
 });
+
+final deviceUpdateStreamProvider =
+    StreamProvider.autoDispose<Map<String, dynamic>>((ref) {
+      final manager = ref.watch(webSocketManagerProvider);
+
+      return () async* {
+        try {
+          await manager.start();
+          await for (final message in manager.messages) {
+            if (message['type'] == 'device_update' &&
+                message['data'] is Map<String, dynamic>) {
+              yield message['data'] as Map<String, dynamic>;
+            }
+          }
+        } finally {
+          AppLogger.debug('deviceUpdateStreamProvider stream ended');
+        }
+      }();
+    });

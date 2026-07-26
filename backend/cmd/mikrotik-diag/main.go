@@ -286,7 +286,7 @@ func tryRESTAPI(host string, port int, useTLS bool, username, password string, t
 }
 
 func testTCPPort(host string, port int, timeout time.Duration) {
-	addr := fmt.Sprintf("%s:%d", host, port)
+	addr := net.JoinHostPort(host, fmt.Sprintf("%d", port))
 	fmt.Printf("  %-22s ... ", addr)
 	conn, err := net.DialTimeout("tcp", addr, timeout)
 	if err != nil {

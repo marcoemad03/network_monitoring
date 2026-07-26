@@ -43,6 +43,10 @@ func main() {
 	}
 	defer db.Close()
 
+	if err := db.RunMigrations(context.Background(), "internal/database/migrations"); err != nil {
+		logger.Warn("Failed to run migrations", "error", err)
+	}
+
 	if err := seeds.Run(db); err != nil {
 		logger.Warn("Failed to seed database", "error", err)
 	}

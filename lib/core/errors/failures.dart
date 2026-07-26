@@ -12,17 +12,13 @@ abstract class Failure extends Equatable {
 }
 
 class ServerFailure extends Failure {
-  const ServerFailure({
-    required super.message,
-    super.statusCode,
-    super.code,
-  });
+  const ServerFailure({required super.message, super.statusCode, super.code});
 }
 
 class NetworkFailure extends Failure {
   const NetworkFailure({
-    super.message = 'No internet connection',
-    super.code = 'NETWORK_ERROR',
+    super.message = 'Hospital NMS server is unreachable on the local network',
+    super.code = 'LOCAL_SERVER_UNREACHABLE',
   });
 }
 
@@ -79,10 +75,7 @@ class CacheFailure extends Failure {
 }
 
 class DatabaseFailure extends Failure {
-  const DatabaseFailure({
-    required super.message,
-    super.code = 'DB_ERROR',
-  });
+  const DatabaseFailure({required super.message, super.code = 'DB_ERROR'});
 }
 
 class UnknownFailure extends Failure {

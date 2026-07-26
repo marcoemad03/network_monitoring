@@ -86,30 +86,46 @@ type UserSession struct {
 }
 
 type Device struct {
-	ID              uuid.UUID         `json:"id" db:"id"`
-	OrganizationID  uuid.UUID         `json:"organization_id" db:"organization_id"`
-	Name            string            `json:"name" db:"name"`
-	Hostname        *string           `json:"hostname,omitempty" db:"hostname"`
-	IPAddress       net.IP            `json:"ip_address" db:"ip_address"`
-	MACAddress      *string           `json:"mac_address,omitempty" db:"mac_address"`
-	DeviceType      string            `json:"device_type" db:"device_type"`
-	Status          string            `json:"status" db:"status"`
-	Vendor          *string           `json:"vendor,omitempty" db:"vendor"`
-	Model           *string           `json:"model,omitempty" db:"model"`
-	SerialNumber    *string           `json:"serial_number,omitempty" db:"serial_number"`
-	OSVersion       *string           `json:"os_version,omitempty" db:"os_version"`
-	FirmwareVersion *string           `json:"firmware_version,omitempty" db:"firmware_version"`
-	Location        *string           `json:"location,omitempty" db:"location"`
-	Department      *string           `json:"department,omitempty" db:"department"`
-	Notes           *string           `json:"notes,omitempty" db:"notes"`
-	CustomFields    map[string]string `json:"custom_fields,omitempty" db:"custom_fields"`
-	FirstSeen       time.Time         `json:"first_seen" db:"first_seen"`
-	LastBoot        *time.Time        `json:"last_boot,omitempty" db:"last_boot"`
-	LastSeen        time.Time         `json:"last_seen" db:"last_seen"`
-	IsCritical      bool              `json:"is_critical" db:"is_critical"`
-	IsMonitored     bool              `json:"is_monitored" db:"is_monitored"`
-	CreatedAt       time.Time         `json:"created_at" db:"created_at"`
-	UpdatedAt       time.Time         `json:"updated_at" db:"updated_at"`
+	ID                  uuid.UUID         `json:"id" db:"id"`
+	OrganizationID      uuid.UUID         `json:"organization_id" db:"organization_id"`
+	Name                string            `json:"name" db:"name"`
+	Hostname            *string           `json:"hostname,omitempty" db:"hostname"`
+	IPAddress           net.IP            `json:"ip_address" db:"ip_address"`
+	MACAddress          *string           `json:"mac_address,omitempty" db:"mac_address"`
+	DeviceType          string            `json:"device_type" db:"device_type"`
+	Status              string            `json:"status" db:"status"`
+	Vendor              *string           `json:"vendor,omitempty" db:"vendor"`
+	Model               *string           `json:"model,omitempty" db:"model"`
+	SerialNumber        *string           `json:"serial_number,omitempty" db:"serial_number"`
+	OSVersion           *string           `json:"os_version,omitempty" db:"os_version"`
+	FirmwareVersion     *string           `json:"firmware_version,omitempty" db:"firmware_version"`
+	Location            *string           `json:"location,omitempty" db:"location"`
+	Department          *string           `json:"department,omitempty" db:"department"`
+	Notes               *string           `json:"notes,omitempty" db:"notes"`
+	CustomFields        map[string]string `json:"custom_fields,omitempty" db:"custom_fields"`
+	Building            string            `json:"building" db:"building"`
+	FloorName           string            `json:"floor_name" db:"floor_name"`
+	Room                string            `json:"room" db:"room"`
+	ConnectionType      string            `json:"connection_type" db:"connection_type"`
+	ConnectedInterface  string            `json:"connected_interface" db:"connected_interface"`
+	ConnectedAP         string            `json:"connected_ap" db:"connected_ap"`
+	ConnectedSwitch     string            `json:"connected_switch" db:"connected_switch"`
+	SwitchPort          string            `json:"switch_port" db:"switch_port"`
+	DHCPStatus          string            `json:"dhcp_status" db:"dhcp_status"`
+	LeaseTimeSeconds    int               `json:"lease_time_seconds" db:"lease_time_seconds"`
+	SignalStrengthDbm   int               `json:"signal_strength_dbm" db:"signal_strength_dbm"`
+	CurrentDownloadSpeed int64            `json:"current_download_speed" db:"current_download_speed"`
+	CurrentUploadSpeed   int64            `json:"current_upload_speed" db:"current_upload_speed"`
+	TotalDownloadBytes  int64             `json:"total_download_bytes" db:"total_download_bytes"`
+	TotalUploadBytes    int64             `json:"total_upload_bytes" db:"total_upload_bytes"`
+	IsPinned            bool              `json:"is_pinned" db:"is_pinned"`
+	IsCritical          bool              `json:"is_critical" db:"is_critical"`
+	IsMonitored         bool              `json:"is_monitored" db:"is_monitored"`
+	FirstSeen           time.Time         `json:"first_seen" db:"first_seen"`
+	LastBoot            *time.Time        `json:"last_boot,omitempty" db:"last_boot"`
+	LastSeen            time.Time         `json:"last_seen" db:"last_seen"`
+	CreatedAt           time.Time         `json:"created_at" db:"created_at"`
+	UpdatedAt           time.Time         `json:"updated_at" db:"updated_at"`
 }
 
 type Interface struct {
