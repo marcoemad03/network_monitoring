@@ -2,7 +2,9 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../../core/services/marco_state_service.dart';
 import '../../../domain/entities/connected_device.dart';
 import '../../../shared/extensions/datetime_extensions.dart';
 import '../../providers/device/device_provider.dart';
@@ -29,6 +31,7 @@ class _ConnectedDevicesScreenState
   bool _ascending = true;
   bool _autoRefresh = true;
   int _refreshSeconds = 15;
+  final Set<String> _selectedDeviceIds = <String>{};
 
   @override
   void initState() {
@@ -110,6 +113,7 @@ class _ConnectedDevicesScreenState
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(liveNotificationProvider, (_, __) {});
     final state = ref.watch(connectedDevicesProvider);
     return Scaffold(
       appBar: AppBar(
@@ -159,6 +163,7 @@ class _ConnectedDevicesScreenState
               onRetry: _refresh,
             ),
         data: (result) {
+          unawaited(ref.read(marcoStateServiceProvider).updateDeviceSnapshot(result.devices));
           final devices = _visibleDevices(result.devices);
           return RefreshIndicator(
             onRefresh: _refresh,
@@ -172,6 +177,8 @@ class _ConnectedDevicesScreenState
                   ),
                 ),
                 SliverToBoxAdapter(child: _buildToolbar()),
+                if (_selectedDeviceIds.isNotEmpty)
+                  SliverToBoxAdapter(child: _buildBulkActions()),
                 if (!result.connection.reachable)
                   SliverFillRemaining(
                     hasScrollBody: false,
@@ -269,12 +276,48 @@ class _ConnectedDevicesScreenState
     _ConnectedDeviceSort.lastSeen => 'Last Seen',
   };
 
+  Widget _buildBulkActions() => Container(
+    margin: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+    padding: const EdgeInsets.all(12),
+    decoration: BoxDecoration(
+      color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+      borderRadius: BorderRadius.circular(12),
+    ),
+    child: Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        FilledButton.tonalIcon(
+          onPressed: () => _bulkAction('block_internet'),
+          icon: const Icon(Icons.block),
+          label: const Text('Block'),
+        ),
+        FilledButton.tonalIcon(
+          onPressed: () => _bulkAction('unblock_internet'),
+          icon: const Icon(Icons.check_circle),
+          label: const Text('Unblock'),
+        ),
+        FilledButton.tonalIcon(
+          onPressed: () => _bulkAction('pin'),
+          icon: const Icon(Icons.push_pin),
+          label: const Text('Pin'),
+        ),
+        OutlinedButton.icon(
+          onPressed: () => setState(() => _selectedDeviceIds.clear()),
+          icon: const Icon(Icons.clear),
+          label: const Text('Clear'),
+        ),
+      ],
+    ),
+  );
+
   Widget _buildTable(List<ConnectedDevice> devices) => SingleChildScrollView(
     scrollDirection: Axis.horizontal,
     padding: const EdgeInsets.all(16),
     child: DataTable(
-      columns: const [
-        DataColumn(label: Text('Device')),
+      columns: [
+        DataColumn(label: Text('')),
+        const DataColumn(label: Text('Device')),
         DataColumn(label: Text('IP Address')),
         DataColumn(label: Text('MAC Address')),
         DataColumn(label: Text('Status')),
@@ -284,12 +327,16 @@ class _ConnectedDevicesScreenState
         DataColumn(label: Text('Upload')),
         DataColumn(label: Text('Download')),
         DataColumn(label: Text('Last Seen')),
+        const DataColumn(label: Text('Actions')),
       ],
       rows:
           devices
               .map(
                 (device) => DataRow(
+                  selected: _selectedDeviceIds.contains(device.id),
+                  onSelectChanged: (_) => _toggleSelection(device.id),
                   cells: [
+                    DataCell(Checkbox(value: _selectedDeviceIds.contains(device.id), onChanged: (_) => _toggleSelection(device.id))),
                     DataCell(_DeviceName(device: device)),
                     DataCell(_MonoText(device.ipAddress)),
                     DataCell(
@@ -304,6 +351,22 @@ class _ConnectedDevicesScreenState
                     DataCell(Text(_speed(device.currentUploadMbps))),
                     DataCell(Text(_speed(device.currentDownloadMbps))),
                     DataCell(Text(device.lastSeen.timeAgo())),
+                    DataCell(PopupMenuButton<String>(
+                      onSelected: (value) => _handleDeviceAction(value, device),
+                      itemBuilder: (context) => [
+                        const PopupMenuItem(value: 'rename', child: Text('Rename')),
+                        const PopupMenuItem(value: 'comment', child: Text('Comment')),
+                        const PopupMenuItem(value: 'assign', child: Text('Assign to Marco Group')),
+                        const PopupMenuItem(value: 'block_internet', child: Text('Block Internet')),
+                        const PopupMenuItem(value: 'unblock_internet', child: Text('Unblock Internet')),
+                        const PopupMenuItem(value: 'disconnect', child: Text('Disconnect')),
+                        const PopupMenuItem(value: 'limit_speed', child: Text('Limit Speed')),
+                        const PopupMenuItem(value: 'details', child: Text('View Details')),
+                        const PopupMenuItem(value: 'history', child: Text('View History')),
+                        const PopupMenuItem(value: 'pin', child: Text('Pin Device')),
+                      ],
+                      child: const Icon(Icons.more_vert),
+                    )),
                   ],
                 ),
               )
@@ -327,6 +390,7 @@ class _ConnectedDevicesScreenState
             children: [
               Row(
                 children: [
+                  Checkbox(value: _selectedDeviceIds.contains(device.id), onChanged: (_) => _toggleSelection(device.id)),
                   Expanded(child: _DeviceName(device: device)),
                   _StatusChip(online: device.isOnline),
                 ],
@@ -354,12 +418,203 @@ class _ConnectedDevicesScreenState
                   _detail(Icons.schedule, device.lastSeen.timeAgo()),
                 ],
               ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  FilledButton.tonalIcon(
+                    onPressed: () => _handleDeviceAction('rename', device),
+                    icon: const Icon(Icons.edit_outlined),
+                    label: const Text('Rename'),
+                  ),
+                  FilledButton.tonalIcon(
+                    onPressed: () => _handleDeviceAction('comment', device),
+                    icon: const Icon(Icons.note_alt_outlined),
+                    label: const Text('Comment'),
+                  ),
+                  FilledButton.tonalIcon(
+                    onPressed: () => _handleDeviceAction('assign', device),
+                    icon: const Icon(Icons.group_add_outlined),
+                    label: const Text('Assign'),
+                  ),
+                  FilledButton.tonalIcon(
+                    onPressed: () => _handleDeviceAction('block_internet', device),
+                    icon: const Icon(Icons.block),
+                    label: const Text('Block'),
+                  ),
+                ],
+              ),
             ],
           ),
         ),
       );
     },
   );
+
+  void _toggleSelection(String deviceId) {
+    setState(() {
+      if (_selectedDeviceIds.contains(deviceId)) {
+        _selectedDeviceIds.remove(deviceId);
+      } else {
+        _selectedDeviceIds.add(deviceId);
+      }
+    });
+  }
+
+  Future<void> _bulkAction(String action) async {
+    for (final deviceId in _selectedDeviceIds.toList()) {
+      final device = (ref.read(connectedDevicesProvider).valueOrNull?.devices ?? []).firstWhere((entry) => entry.id == deviceId, orElse: () => null as dynamic);
+      if (device != null) {
+        await _handleDeviceAction(action, device);
+      }
+    }
+    if (mounted) {
+      setState(() => _selectedDeviceIds.clear());
+    }
+  }
+
+  Future<void> _handleDeviceAction(String action, ConnectedDevice device) async {
+    if (action == 'rename') {
+      final controller = TextEditingController(text: device.deviceName);
+      final result = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Rename Device'),
+          content: TextField(controller: controller, decoration: const InputDecoration(labelText: 'New Name')),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, controller.text.trim()), child: const Text('Save')),
+          ],
+        ),
+      );
+      if (result != null && result.isNotEmpty) {
+        await ref.read(marcoStateServiceProvider).saveProfile(MarcoDeviceProfile(deviceId: device.id, displayName: result, updatedAt: DateTime.now()));
+        await _applyControlAction(device, 'rename', params: {'name': result});
+      }
+      return;
+    }
+
+    if (action == 'comment') {
+      final controller = TextEditingController();
+      final existing = ref.read(marcoStateServiceProvider).profileFor(device.id);
+      if (existing != null) {
+        controller.text = existing.comment ?? '';
+      }
+      final result = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Add Comment'),
+          content: TextField(controller: controller, decoration: const InputDecoration(labelText: 'Comment')),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, controller.text.trim()), child: const Text('Save')),
+          ],
+        ),
+      );
+      if (result != null) {
+        final profile = ref.read(marcoStateServiceProvider).profileFor(device.id);
+        await ref.read(marcoStateServiceProvider).saveProfile(MarcoDeviceProfile(deviceId: device.id, displayName: profile?.displayName, comment: result, groupId: profile?.groupId, pinned: profile?.pinned ?? false, updatedAt: DateTime.now()));
+      }
+      return;
+    }
+
+    if (action == 'assign') {
+      final groups = ref.read(marcoStateServiceProvider).groups ?? const <MarcoGroup>[];
+      if (groups.isEmpty) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Create a Marco Group first')));
+        return;
+      }
+      final selected = await showDialog<String>(
+        context: context,
+        builder: (ctx) => SimpleDialog(
+          title: const Text('Assign to Marco Group'),
+          children: groups.map((group) => SimpleDialogOption(
+            onPressed: () => Navigator.pop(ctx, group.id),
+            child: Text(group.name),
+          )).toList(),
+        ),
+      );
+      if (selected != null) {
+        final profile = ref.read(marcoStateServiceProvider).profileFor(device.id);
+        await ref.read(marcoStateServiceProvider).saveProfile(MarcoDeviceProfile(deviceId: device.id, displayName: profile?.displayName, comment: profile?.comment, groupId: selected, pinned: profile?.pinned ?? false, updatedAt: DateTime.now()));
+        await ref.read(marcoStateServiceProvider).addNotification(title: 'Device assigned', message: '${device.deviceName} moved to a Marco Group', type: 'group_assignment', deviceId: device.id);
+      }
+      return;
+    }
+
+    if (action == 'pin') {
+      await ref.read(marcoStateServiceProvider).togglePin(device.id);
+      await ref.read(marcoStateServiceProvider).addNotification(title: 'Device pinned', message: '${device.deviceName} is pinned', type: 'pin_device', deviceId: device.id);
+      return;
+    }
+
+    if (action == 'details') {
+      if (mounted) context.push('/devices/${device.id}');
+      return;
+    }
+
+    if (action == 'history') {
+      if (mounted) context.push('/devices/${device.id}/events');
+      return;
+    }
+
+    if (action == 'disconnect') {
+      await _applyControlAction(device, 'disconnect');
+      await ref.read(marcoStateServiceProvider).addNotification(title: 'Device disconnected', message: '${device.deviceName} was disconnected', type: 'device_disconnected', deviceId: device.id);
+      return;
+    }
+
+    if (action == 'block_internet') {
+      await _applyControlAction(device, 'block_internet');
+      await ref.read(marcoStateServiceProvider).addNotification(title: 'Internet blocked', message: '${device.deviceName} internet access blocked', type: 'internet_blocked', deviceId: device.id);
+      return;
+    }
+
+    if (action == 'unblock_internet') {
+      await _applyControlAction(device, 'unblock_internet');
+      await ref.read(marcoStateServiceProvider).addNotification(title: 'Internet unblocked', message: '${device.deviceName} internet access restored', type: 'internet_unblocked', deviceId: device.id);
+      return;
+    }
+
+    if (action == 'limit_speed') {
+      final controller = TextEditingController();
+      final result = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Limit Speed'),
+          content: TextField(controller: controller, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Mbps')),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, controller.text.trim()), child: const Text('Apply')),
+          ],
+        ),
+      );
+      if (result != null && result.isNotEmpty) {
+        await _applyControlAction(device, 'limit_speed', params: {'download_limit_mbps': int.tryParse(result)});
+      }
+      return;
+    }
+
+    await ref.read(marcoStateServiceProvider).addNotification(title: 'Action applied', message: 'Action ${action} sent for ${device.deviceName}', type: 'device_action', deviceId: device.id);
+  }
+
+  Future<void> _applyControlAction(ConnectedDevice device, String action, {Map<String, dynamic>? params}) async {
+    final repo = ref.read(deviceRepositoryProvider);
+    final result = await repo.controlDevice(device.id, action, params: params);
+    result.fold(
+      (failure) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Control action failed: ${failure.message}')));
+        }
+      },
+      (_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${action.replaceAll('_', ' ')} applied')));
+        }
+      },
+    );
+  }
 
   Widget _detail(IconData icon, String text, {bool mono = false}) => Row(
     mainAxisSize: MainAxisSize.min,

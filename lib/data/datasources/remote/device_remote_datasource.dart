@@ -1,3 +1,5 @@
+import 'package:dio/dio.dart';
+
 import '../../models/device_model.dart';
 import '../../models/interface_model.dart';
 import '../../models/device_metrics_model.dart';
@@ -109,10 +111,80 @@ abstract class DeviceRemoteDataSource {
   Future<void> stopPolling(String vendorId);
 }
 
+class ControlRequest {
+  const ControlRequest({required this.path, this.data});
+
+  final String path;
+  final Map<String, dynamic>? data;
+}
+
 class DeviceRemoteDataSourceImpl implements DeviceRemoteDataSource {
   final DioClient _client;
 
   DeviceRemoteDataSourceImpl(this._client);
+
+  ControlRequest buildControlRequest(
+    String deviceId,
+    String action, {
+    Map<String, dynamic>? params,
+  }) {
+    final normalizedAction = action.toLowerCase();
+    final endpoint = switch (normalizedAction) {
+      'disconnect' => '${ApiConstants.basePath}/devices/$deviceId/control/disconnect',
+      'reconnect' => '${ApiConstants.basePath}/devices/$deviceId/control/reconnect',
+      'block_internet' => '${ApiConstants.basePath}/devices/$deviceId/control/block',
+      'unblock_internet' => '${ApiConstants.basePath}/devices/$deviceId/control/unblock',
+      'limit_speed' => '${ApiConstants.basePath}/devices/$deviceId/control/limit-speed',
+      'unlimited_speed' => '${ApiConstants.basePath}/devices/$deviceId/control/unlimited-speed',
+      'rename' => '${ApiConstants.basePath}/devices/$deviceId/control/rename',
+      'change_department' => '${ApiConstants.basePath}/devices/$deviceId/control/department',
+      'change_room' => '${ApiConstants.basePath}/devices/$deviceId/control/room',
+      'move_group' => '${ApiConstants.basePath}/devices/$deviceId/control/move-group',
+      'pin' => '${ApiConstants.basePath}/devices/$deviceId/control/pin',
+      'unpin' => '${ApiConstants.basePath}/devices/$deviceId/control/unpin',
+      'mark_critical' => '${ApiConstants.basePath}/devices/$deviceId/control/mark-critical',
+      'unmark_critical' => '${ApiConstants.basePath}/devices/$deviceId/control/unmark-critical',
+      'notes' => '${ApiConstants.basePath}/devices/$deviceId/control/notes',
+      _ => '${ApiConstants.basePath}/devices/$deviceId/control/$normalizedAction',
+    };
+
+    final payload = switch (normalizedAction) {
+      'limit_speed' => _buildLimitSpeedPayload(params),
+      'rename' => {'name': params?['name'] ?? params?['new_name']},
+      'change_department' => {'department': params?['department']},
+      'change_room' => {'room': params?['room']},
+      'move_group' => {'group_id': params?['group_id'] ?? params?['groupId']},
+      'notes' => {'notes': params?['notes']},
+      _ => params,
+    };
+
+    return ControlRequest(path: endpoint, data: payload);
+  }
+
+  Map<String, dynamic>? _buildLimitSpeedPayload(Map<String, dynamic>? params) {
+    final downloadLimit = _coerceInt(
+      params?['download_limit'] ??
+          params?['download_limit_kbps'] ??
+          params?['download_limit_mbps'],
+    );
+    final uploadLimit = _coerceInt(
+      params?['upload_limit'] ??
+          params?['upload_limit_kbps'] ??
+          params?['upload_limit_mbps'],
+    );
+    final payload = <String, dynamic>{};
+    if (downloadLimit != null) payload['download_limit'] = downloadLimit;
+    if (uploadLimit != null) payload['upload_limit'] = uploadLimit;
+    return payload.isEmpty ? null : payload;
+  }
+
+  int? _coerceInt(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    if (value is String) return int.tryParse(value);
+    return null;
+  }
 
   @override
   Future<ConnectedDevicesResultModel> connectDevelopmentMikroTik({
@@ -371,10 +443,9 @@ class DeviceRemoteDataSourceImpl implements DeviceRemoteDataSource {
     String action, {
     Map<String, dynamic>? params,
   }) async {
-    await _client.post(
-      '${ApiConstants.basePath}/devices/$deviceId/control/$action',
-      data: params,
-    );
+    final request = buildControlRequest(deviceId, action, params: params);
+    final options = request.data == null ? null : Options(contentType: Headers.jsonContentType);
+    await _client.post(request.path, data: request.data, options: options);
   }
 
   @override

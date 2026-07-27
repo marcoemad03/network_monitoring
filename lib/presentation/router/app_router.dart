@@ -20,6 +20,7 @@ import '../screens/settings/settings_screen.dart';
 import '../screens/settings/user_management_screen.dart';
 import '../screens/settings/permission_management_screen.dart';
 import '../screens/settings/hotspot_welcome_screen.dart';
+import '../screens/settings/telegram_settings_screen.dart';
 import '../screens/audit/audit_log_screen.dart';
 import '../screens/internet/internet_management_screen.dart';
 import '../screens/internet/policy_list_screen.dart';
@@ -40,6 +41,8 @@ import '../screens/floor_map/floor_map_viewer_screen.dart';
 import '../screens/floor_map/floor_map_editor_screen.dart';
 import '../screens/policies/policy_list_screen.dart';
 import '../screens/policies/policy_detail_screen.dart';
+import '../screens/marco/marco_groups_screen.dart';
+import '../screens/marco/marco_group_detail_screen.dart';
 import '../screens/assets/asset_list_screen.dart';
 import '../screens/assets/asset_detail_screen.dart';
 import 'route_names.dart';
@@ -188,6 +191,10 @@ class AppRouter {
                 builder: (context, state) => const HotspotWelcomeScreen(),
               ),
               GoRoute(
+                path: RouteNames.telegramSettings,
+                builder: (context, state) => const TelegramSettingsScreen(),
+              ),
+              GoRoute(
                 path: RouteNames.auditLog,
                 builder: (context, state) => const AuditLogScreen(),
               ),
@@ -263,6 +270,19 @@ class AppRouter {
                     builder:
                         (context, state) => PolicyDetailScreen(
                           policyId: state.pathParameters['id'],
+                        ),
+                  ),
+                ],
+              ),
+              GoRoute(
+                path: RouteNames.marcoGroups,
+                builder: (context, state) => const MarcoGroupsScreen(),
+                routes: [
+                  GoRoute(
+                    path: ':id',
+                    builder:
+                        (context, state) => MarcoGroupDetailScreen(
+                          groupId: state.pathParameters['id']!,
                         ),
                   ),
                 ],

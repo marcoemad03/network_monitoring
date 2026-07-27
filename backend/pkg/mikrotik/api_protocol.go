@@ -68,6 +68,7 @@ func (c *APIConnection) Connect() error {
 	if c.timeout > 0 {
 		_ = conn.SetDeadline(time.Now().Add(c.timeout))
 	}
+	c.log("[API] Deadline set to %v", time.Now().Add(c.timeout))
 	c.log("[API] TCP connection ESTABLISHED to %s", addr)
 	return nil
 }
@@ -77,6 +78,12 @@ func (c *APIConnection) Close() error {
 		return c.conn.Close()
 	}
 	return nil
+}
+
+func (c *APIConnection) refreshDeadline() {
+	if c.conn != nil && c.timeout > 0 {
+		_ = c.conn.SetDeadline(time.Now().Add(c.timeout))
+	}
 }
 
 func (c *APIConnection) writeSentence(words ...string) error {
@@ -89,13 +96,22 @@ func (c *APIConnection) writeSentence(words ...string) error {
 	// Empty word = end of sentence
 	buf.WriteByte(0)
 
-	c.log("[API] >> SEND sentence (%d bytes):", buf.Len())
-	c.log("[API] >>   Words: %s", strings.Join(words, " | "))
+	redacted := make([]string, len(words))
 	for i, w := range words {
-		c.log("[API] >>   [%d] length=%d content=%q", i, len(w), w)
+		if strings.HasPrefix(w, "=password=") || strings.HasPrefix(w, "=response=") {
+			redacted[i] = strings.SplitN(w, "=", 2)[0] + "=***"
+		} else {
+			redacted[i] = w
+		}
+	}
+	c.log("[API] >> SEND sentence (%d bytes):", buf.Len())
+	c.log("[API] >>   Words: %s", strings.Join(redacted, " | "))
+	for i, w := range words {
+		c.log("[API] >>   [%d] length=%d content=%q", i, len(w), redacted[i])
 	}
 	c.log("[API] >>   Raw hex: % x", buf.Bytes())
 
+	c.refreshDeadline()
 	if _, err := c.conn.Write(buf.Bytes()); err != nil {
 		c.log("[API] >> WRITE ERROR: %v", err)
 		return fmt.Errorf("write sentence: %w", err)
@@ -172,6 +188,7 @@ func (c *APIConnection) readLength() (int, error) {
 }
 
 func (c *APIConnection) readSentence() (string, []string, error) {
+	c.refreshDeadline()
 	var words []string
 	var rawBytes []byte
 
@@ -220,7 +237,17 @@ func (c *APIConnection) Login() error {
 	sentenceType, words, err := c.readSentence()
 	if err != nil {
 		c.log("[LOGIN] ERROR reading login response: %v", err)
-		c.log("[LOGIN] Step 2 (fallback): Trying challenge-response login...")
+		if isChallengeResponse(words) {
+			c.log("[LOGIN] Challenge detected in partial response, retrying with challenge...")
+			return c.challengeLoginWithWords(words)
+		}
+		if c.conn != nil {
+			c.conn.Close()
+		}
+		if err := c.Connect(); err != nil {
+			return fmt.Errorf("reconnect after login error: %w", err)
+		}
+		c.log("[LOGIN] Step 2 (fallback): Trying challenge-response login on new connection...")
 		return c.challengeLogin()
 	}
 
@@ -247,7 +274,16 @@ func (c *APIConnection) Login() error {
 
 	default:
 		c.log("[LOGIN] Unexpected response: %s %v", sentenceType, words)
-		c.log("[LOGIN] Step 2 (fallback): Trying challenge-response login...")
+		if isChallengeResponse(words) {
+			return c.challengeLoginWithWords(words)
+		}
+		if c.conn != nil {
+			c.conn.Close()
+		}
+		if err := c.Connect(); err != nil {
+			return fmt.Errorf("reconnect after unexpected login response: %w", err)
+		}
+		c.log("[LOGIN] Step 2 (fallback): Trying challenge-response login on new connection...")
 		return c.challengeLogin()
 	}
 }

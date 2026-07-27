@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -13,8 +14,20 @@ import (
 	"github.com/hospital/nms-backend/internal/config"
 	"github.com/hospital/nms-backend/internal/models"
 	"github.com/hospital/nms-backend/internal/repository"
+	"github.com/hospital/nms-backend/internal/websocket"
 	"github.com/hospital/nms-backend/pkg/mikrotik"
 )
+
+// platformDomains maps known platform names to a list of relevant address patterns
+// that RouterOS firewall can match via dst-address-list or content.
+var platformDomains = map[string][]string{
+	"youtube":    {"googlevideo.com", "youtube.com", "ytimg.com", "youtu.be"},
+	"facebook":   {"facebook.com", "fbcdn.net", "fb.com", "messenger.com"},
+	"tiktok":     {"tiktok.com", "tiktokcdn.com", "tiktokv.com"},
+	"instagram":  {"instagram.com", "cdninstagram.com"},
+}
+
+const managedPlatformAddressList = "nms-blocked-platforms"
 
 const managedPolicyPrefix = "nms-policy-"
 
@@ -34,11 +47,13 @@ type PolicySyncService struct {
 	assetRepo    *repository.AssetRepository
 	internetRepo *repository.InternetRepository
 	cfg          *config.Config
+	hub          *websocket.Hub
+	telegramSvc  *TelegramService
 	dialRouter   func(*models.VendorIntegration) (routerCommander, error)
 }
 
-func NewPolicySyncService(assetRepo *repository.AssetRepository, internetRepo *repository.InternetRepository, cfg *config.Config) *PolicySyncService {
-	s := &PolicySyncService{assetRepo: assetRepo, internetRepo: internetRepo, cfg: cfg}
+func NewPolicySyncService(assetRepo *repository.AssetRepository, internetRepo *repository.InternetRepository, cfg *config.Config, hub *websocket.Hub, telegramSvc *TelegramService) *PolicySyncService {
+	s := &PolicySyncService{assetRepo: assetRepo, internetRepo: internetRepo, cfg: cfg, hub: hub, telegramSvc: telegramSvc}
 	s.dialRouter = s.dial
 	return s
 }
@@ -71,10 +86,39 @@ func (s *PolicySyncService) SyncPoliciesToMikroTik(ctx context.Context, orgID uu
 	if err := reconcileEntries(conn, "/queue/simple", queues); err != nil {
 		return s.fail(ctx, log, fmt.Errorf("reconcile bandwidth queues: %w", err))
 	}
+	if err := s.reconcilePlatformAddressLists(ctx, conn, targets); err != nil {
+		return s.fail(ctx, log, fmt.Errorf("reconcile platform address lists: %w", err))
+	}
 	log.ID = uuid.New()
 	log.Status = "completed"
 	log.Details = map[string]interface{}{"targets": len(targets), "firewall_rules": len(firewall), "queues": len(queues), "completed_at": time.Now().Format(time.RFC3339)}
 	_ = s.assetRepo.CreateSyncLog(ctx, log)
+
+	if len(targets) > 0 {
+		if s.hub != nil {
+			s.hub.BroadcastMessage("notification", models.LiveNotification{
+				Title:   "Policy sync completed",
+				Message: fmt.Sprintf("Synced %d policy rules to MikroTik (%d firewall, %d bandwidth queues)", len(targets), len(firewall), len(queues)),
+				Type:    "policy_sync",
+			})
+		}
+		if s.telegramSvc != nil {
+			go func() {
+				for _, target := range targets {
+					d := target.Device
+					mac := ""
+					if d.MACAddress != nil {
+						mac = *d.MACAddress
+					}
+					ip := ""
+					if d.IPAddress != nil {
+						ip = d.IPAddress.String()
+					}
+					_ = s.telegramSvc.Notify(context.Background(), target.Policy.OrganizationID, models.TelegramEventPolicyViolation, mac, d.Name, ip, "")
+				}
+			}()
+		}
+	}
 	return nil
 }
 
@@ -135,8 +179,57 @@ func desiredEntries(targets []models.AssignedPolicyDevice) (map[string]desiredRo
 				return nil, nil, fmt.Errorf("policy %s: %s requires a positive applicable limit", p.ID, p.PolicyType)
 			}
 			queues[comment] = desiredRouterEntry{path: "/queue/simple", attrs: map[string]string{"name": comment, "target": hostCIDR(d.IPAddress), "max-limit": fmt.Sprintf("%d/%d", upload, download), "comment": comment}}
-		case "website_blacklist", "website_whitelist", "schedule":
-			return nil, nil, fmt.Errorf("%w: %s policy %s", ErrPolicyUnsupported, p.PolicyType, p.ID)
+		case "website_blacklist":
+			platforms, ok := p.Config["platforms"].([]interface{})
+			if !ok {
+				return nil, nil, fmt.Errorf("policy %s: website_blacklist requires platforms array", p.ID)
+			}
+			for _, raw := range platforms {
+				name, ok2 := raw.(string)
+				if !ok2 || name == "" {
+					continue
+				}
+				name = strings.ToLower(name)
+				_, found := platformDomains[name]
+				if !found {
+					continue
+				}
+				ruleComment := comment + "-block-" + name
+				firewall[ruleComment] = desiredRouterEntry{
+					path:  "/ip/firewall/filter",
+					attrs: map[string]string{"chain": "forward", "action": "drop", "dst-address-list": managedPlatformAddressList + "-" + name, "comment": ruleComment},
+				}
+			}
+		case "website_whitelist":
+			return nil, nil, fmt.Errorf("%w: %s policy requires allowlist-first mode on RouterOS", ErrPolicyUnsupported, p.PolicyType)
+		case "schedule":
+			enabled, ok := p.Config["enabled"].(bool)
+			if !ok {
+				enabled = true
+			}
+			scheduleType, _ := p.Config["type"].(string)
+			startTime, _ := p.Config["start_time"].(string)
+			endTime, _ := p.Config["end_time"].(string)
+			days, _ := p.Config["days"].(string)
+			var action string
+			switch scheduleType {
+			case "internet_off":
+				action = "drop"
+			default:
+				action = "accept"
+			}
+			if !enabled {
+				continue
+			}
+			scheduleComment := comment + "-schedule"
+			ruleAttrs := map[string]string{"chain": "forward", "action": action, "comment": scheduleComment}
+			if startTime != "" && endTime != "" {
+				ruleAttrs["time"] = startTime + "-" + endTime
+			}
+			if days != "" {
+				ruleAttrs["days"] = days
+			}
+			firewall[scheduleComment] = desiredRouterEntry{path: "/ip/firewall/filter", attrs: ruleAttrs}
 		default:
 			return nil, nil, fmt.Errorf("%w: unknown policy type %q", ErrPolicyUnsupported, p.PolicyType)
 		}
@@ -217,4 +310,85 @@ func hostCIDR(ip net.IP) string {
 		return ip.String() + "/32"
 	}
 	return ip.String() + "/128"
+}
+
+func (s *PolicySyncService) reconcilePlatformAddressLists(ctx context.Context, conn routerCommander, targets []models.AssignedPolicyDevice) error {
+	activePlatforms := make(map[string]bool)
+	for _, target := range targets {
+		if target.Policy.PolicyType != "website_blacklist" {
+			continue
+		}
+		enabled, ok := target.Policy.Config["enabled"].(bool)
+		if ok && !enabled {
+			continue
+		}
+		platforms, ok := target.Policy.Config["platforms"].([]interface{})
+		if !ok {
+			continue
+		}
+		for _, raw := range platforms {
+			name, ok2 := raw.(string)
+			if !ok2 || name == "" {
+				continue
+			}
+			activePlatforms[strings.ToLower(name)] = true
+		}
+	}
+
+	existing, err := conn.Command("/ip/firewall/address-list/print")
+	if err != nil {
+		return err
+	}
+
+	managedPrefix := managedPlatformAddressList + "-"
+	seen := make(map[string]bool)
+	for _, entry := range existing {
+		listName := entry["list"]
+		if !strings.HasPrefix(listName, managedPrefix) {
+			continue
+		}
+		platform := strings.TrimPrefix(listName, managedPrefix)
+		if !activePlatforms[platform] {
+			if _, err := conn.Command("/ip/firewall/address-list/remove", "=.id="+entry[".id"]); err != nil {
+				return err
+			}
+			continue
+		}
+		seen[platform] = true
+	}
+
+	for name := range activePlatforms {
+		if seen[name] {
+			continue
+		}
+		domains, ok := platformDomains[name]
+		if !ok {
+			continue
+		}
+		sort.Strings(domains)
+		for _, domain := range domains {
+			listName := fmt.Sprintf("%s-%s", managedPlatformAddressList, name)
+			content := fmt.Sprintf("nms-%s-%s", name, domain)
+			if _, err := conn.Command("/ip/firewall/address-list/add",
+				"=list="+listName,
+				"=address="+domain,
+				"=comment="+content,
+			); err != nil {
+				_ = s.fail(ctx, &models.SyncLog{ID: uuid.New(), OrganizationID: uuid.Nil, Status: "failed",
+					Details: map[string]interface{}{"error": err.Error(), "platform": name, "domain": domain}},
+					fmt.Errorf("add address-list entry: %w", err))
+			}
+		}
+
+		layer7Name := "nms-" + name
+		if _, err := conn.Command("/ip/firewall/layer7-protocol/add",
+			"=name="+layer7Name,
+			"=regexp=.*\\.("+strings.Join(domains, "|")+")$",
+		); err != nil {
+			_ = s.fail(ctx, &models.SyncLog{ID: uuid.New(), OrganizationID: uuid.Nil, Status: "failed",
+				Details: map[string]interface{}{"error": err.Error(), "platform": name}},
+				fmt.Errorf("add layer7 protocol: %w", err))
+		}
+	}
+	return nil
 }

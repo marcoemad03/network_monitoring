@@ -110,6 +110,13 @@ class SettingsScreen extends ConsumerWidget {
               trailing: const Icon(Icons.chevron_right),
               onTap: () => context.push(RouteNames.hotspotWelcome),
             ),
+            ListTile(
+              leading: const Icon(Icons.telegram),
+              title: const Text('Telegram Notifications'),
+              subtitle: const Text('Configure bot token, chat ID, and notification rules'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => context.push(RouteNames.telegramSettings),
+            ),
           ],
           const Divider(),
           _buildSectionHeader(context, 'About'),

@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:network_monitorong/core/di/injection_container.dart';
+import 'package:network_monitorong/core/services/marco_state_service.dart';
 import 'package:network_monitorong/domain/entities/connected_device.dart';
 import 'package:network_monitorong/domain/entities/router_connection_status.dart';
 import 'package:network_monitorong/presentation/providers/device/device_provider.dart';
@@ -34,29 +37,37 @@ void main() {
     ),
   ];
 
-  Widget buildScreen() => ProviderScope(
-    overrides: [
-      connectedDevicesProvider.overrideWith(
-        (ref) async => (
-          connection: RouterConnectionStatus(
-            code: 'CONNECTED',
-            message: 'Connected to MikroTik RouterOS API',
-            reachable: true,
-            routerName: 'Hospital Router',
-            routerVersion: '7.47.8',
-            checkedAt: checkedAt,
-          ),
-          devices: devices,
+  ProviderScope buildScreen(SharedPreferences prefs) {
+    return ProviderScope(
+      overrides: [
+        sharedPreferencesProvider.overrideWithValue(prefs),
+        marcoStateServiceProvider.overrideWith(
+          (ref) => MarcoStateService(prefs),
         ),
-      ),
-    ],
-    child: const MaterialApp(home: ConnectedDevicesScreen()),
-  );
+        connectedDevicesProvider.overrideWith(
+          (ref) async => (
+            connection: RouterConnectionStatus(
+              code: 'CONNECTED',
+              message: 'Connected to MikroTik RouterOS API',
+              reachable: true,
+              routerName: 'Hospital Router',
+              routerVersion: '7.47.8',
+              checkedAt: checkedAt,
+            ),
+            devices: devices,
+          ),
+        ),
+      ],
+      child: const MaterialApp(home: ConnectedDevicesScreen()),
+    );
+  }
 
   testWidgets('renders RouterOS status and connected devices', (tester) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    final prefs = await SharedPreferences.getInstance();
     await tester.binding.setSurfaceSize(const Size(1400, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(buildScreen());
+    await tester.pumpWidget(buildScreen(prefs));
     await tester.pumpAndSettle();
 
     expect(find.text('Connected to MikroTik RouterOS API'), findsOneWidget);
@@ -71,9 +82,11 @@ void main() {
   testWidgets('search and connection filter update visible devices', (
     tester,
   ) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    final prefs = await SharedPreferences.getInstance();
     await tester.binding.setSurfaceSize(const Size(1400, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(buildScreen());
+    await tester.pumpWidget(buildScreen(prefs));
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextField), 'scanner-01');
@@ -91,9 +104,11 @@ void main() {
   });
 
   testWidgets('IP sorting direction changes row order', (tester) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    final prefs = await SharedPreferences.getInstance();
     await tester.binding.setSurfaceSize(const Size(1400, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(buildScreen());
+    await tester.pumpWidget(buildScreen(prefs));
     await tester.pumpAndSettle();
 
     expect(

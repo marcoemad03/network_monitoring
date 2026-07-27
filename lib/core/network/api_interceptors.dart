@@ -95,11 +95,20 @@ class LoggingInterceptor extends Interceptor {
 
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) {
-    AppLogger.error(
-      '${err.response?.statusCode} ${err.requestOptions.path}',
-      error: err,
-      data: {'response': err.response?.data},
-    );
+    if (err.type == DioExceptionType.connectionError ||
+        err.type == DioExceptionType.connectionTimeout ||
+        err.type == DioExceptionType.receiveTimeout) {
+      AppLogger.warning(
+        '${err.response?.statusCode} ${err.requestOptions.path}',
+        error: err,
+      );
+    } else {
+      AppLogger.error(
+        '${err.response?.statusCode} ${err.requestOptions.path}',
+        error: err,
+        data: {'response': err.response?.data},
+      );
+    }
     handler.next(err);
   }
 }

@@ -5,10 +5,12 @@ import 'app.dart';
 import 'core/config/build_config.dart';
 import 'core/config/environment.dart';
 import 'core/di/injection_container.dart';
+import 'core/services/marco_state_service.dart';
 import 'core/theme/theme_provider.dart';
 import 'core/localization/app_localizations.dart';
 import 'core/utils/logger.dart';
 import 'presentation/router/app_router.dart';
+import 'presentation/providers/device/device_provider.dart';
 
 class AppBootstrap {
   static Future<void> initialize({
@@ -30,6 +32,9 @@ class AppBootstrap {
       ProviderScope(
         overrides: [
           sharedPreferencesProvider.overrideWithValue(prefs),
+          marcoStateServiceProvider.overrideWith(
+            (ref) => MarcoStateService(prefs),
+          ),
         ],
         child: Builder(
           builder: (context) {

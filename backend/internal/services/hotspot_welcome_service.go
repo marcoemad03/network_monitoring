@@ -124,8 +124,28 @@ func GenerateHotspotLoginHTML(config *models.HotspotWelcomeConfig) ([]byte, erro
 const hotspotLoginTemplate = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{{.HospitalName}} Wi-Fi</title><style>
-:root{--primary:{{.PrimaryColor}};--accent:{{.AccentColor}}}*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(145deg,var(--primary),#102a43);color:#17324d;min-height:100vh;display:grid;place-items:center;padding:20px}.card{width:min(440px,100%);background:#fff;border-radius:18px;padding:30px;box-shadow:0 20px 60px #0005}.logo{display:block;max-width:180px;max-height:72px;margin:0 auto 18px}h1{margin:0;text-align:center;color:var(--primary);font-size:25px}.meta,.greeting{text-align:center}.meta{color:#60758a;font-size:13px}.greeting{font-size:17px;font-weight:bold;margin:18px 0 6px}.message{line-height:1.5}.announcements{border-left:4px solid var(--accent);background:#fff8e5;padding:10px 14px;margin:18px 0}.announcements p{margin:6px 0}.error{background:#fee2e2;color:#991b1b;padding:10px;border-radius:8px}label{display:block;font-size:13px;font-weight:bold;margin:14px 0 6px}input{width:100%;padding:12px;border:1px solid #bdc9d4;border-radius:9px;font-size:16px}button{width:100%;margin-top:20px;padding:13px;border:0;border-radius:9px;background:var(--accent);color:#17202a;font-weight:bold;font-size:16px;cursor:pointer}.disabled{padding:16px;text-align:center;background:#edf2f7;border-radius:9px}</style></head>
+:root{--primary:{{.PrimaryColor}};--accent:{{.AccentColor}}}
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(145deg,var(--primary),#102a43);color:#17324d;min-height:100vh;display:grid;place-items:center;padding:20px}
+.card{width:min(440px,100%);background:#fff;border-radius:18px;padding:30px;box-shadow:0 20px 60px #0005}
+.logo{display:block;max-width:180px;max-height:72px;margin:0 auto 18px}
+h1{margin:0;text-align:center;color:var(--primary);font-size:25px}
+.meta,.greeting{text-align:center}
+.meta{color:#60758a;font-size:13px}
+.greeting{font-size:17px;font-weight:bold;margin:18px 0 6px}
+.message{line-height:1.5}
+.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:14px 0 10px;font-size:13px}
+.info-grid div{background:#f4f7fa;padding:8px 12px;border-radius:8px}
+.info-grid div span{color:#60758a;display:block;font-size:11px;text-transform:uppercase;letter-spacing:.4px}
+.announcements{border-left:4px solid var(--accent);background:#fff8e5;padding:10px 14px;margin:18px 0}
+.announcements p{margin:6px 0}
+.error{background:#fee2e2;color:#991b1b;padding:10px;border-radius:8px}
+label{display:block;font-size:13px;font-weight:bold;margin:14px 0 6px}
+input{width:100%;padding:12px;border:1px solid #bdc9d4;border-radius:9px;font-size:16px}
+button{width:100%;margin-top:20px;padding:13px;border:0;border-radius:9px;background:var(--accent);color:#17202a;font-weight:bold;font-size:16px;cursor:pointer}
+.disabled{padding:16px;text-align:center;background:#edf2f7;border-radius:9px}</style></head>
 <body><main class="card">{{if .LogoURL}}<img class="logo" src="{{.LogoURL}}" alt="{{.HospitalName}} logo">{{end}}<h1>{{.HospitalName}}</h1><p class="meta"><span id="date">$(date)</span> <span id="time"></span></p><p class="greeting"><span id="greeting">Welcome</span>, <span id="guest-name">$(if username)$(username)$(else)Guest$(endif)</span></p><p class="message">{{.WelcomeMessage}}</p>
+<section class="info-grid"><div><span>IP Address</span>$(if ip)$(ip)$(else)—$(endif)</div><div><span>MAC Address</span>$(if mac-address)$(mac-address)$(else)—$(endif)</div><div><span>Access Point</span>$(if interface)$(interface)$(else)—$(endif)</div><div><span>Session time</span>$(if session-time-left)$(session-time-left)$(else)—$(endif)</div></section>
 {{if .Announcements}}<section class="announcements" aria-label="Announcements">{{range .Announcements}}<p>{{.}}</p>{{end}}</section>{{end}}
 $(if error)<p class="error">$(error)</p>$(endif)
 {{if .Enabled}}$(if chap-id)<form name="sendin" action="$(link-login-only)" method="post"><input type="hidden" name="username"><input type="hidden" name="password"><input type="hidden" name="dst" value="$(link-orig)"><input type="hidden" name="popup" value="true"></form><script src="/md5.js"></script>$(endif)

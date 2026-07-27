@@ -19,6 +19,7 @@ class RouteNames {
   static const String userManagement = '/settings/users';
   static const String permissionManagement = '/settings/permissions';
   static const String hotspotWelcome = '/settings/hotspot-welcome';
+  static const String telegramSettings = '/settings/telegram';
   static const String auditLog = '/audit';
   static const String about = '/about';
   static const String internetManagement = '/internet';
@@ -40,6 +41,8 @@ class RouteNames {
   // Asset Management
   static const String assetGroups = '/asset/groups';
   static String assetGroupDetail(String id) => '/asset/groups/$id';
+  static const String marcoGroups = '/marco-groups';
+  static String marcoGroupDetail(String id) => '/marco-groups/$id';
   static const String floorMaps = '/asset/floor-maps';
   static String floorMapDetail(String id) => '/asset/floor-maps/$id';
   static String floorMapEditor(String id) => '/asset/floor-maps/$id/edit';

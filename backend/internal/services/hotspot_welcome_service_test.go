@@ -17,7 +17,7 @@ func TestGenerateHotspotLoginHTMLRouterOSCompatibility(t *testing.T) {
 		t.Fatal(err)
 	}
 	html := string(content)
-	for _, expected := range []string{"$(link-login-only)", "$(username)", "$(date)", "$(chap-id)", "/md5.js", "Good morning", "Guest", "Clinic closes at 5 PM"} {
+	for _, expected := range []string{"$(link-login-only)", "$(username)", "$(date)", "$(chap-id)", "/md5.js", "Good morning", "Guest", "Clinic closes at 5 PM", "$(ip)", "$(mac-address)", "$(interface)", "$(session-time-left)"} {
 		if !strings.Contains(html, expected) {
 			t.Errorf("generated login.html is missing %q", expected)
 		}

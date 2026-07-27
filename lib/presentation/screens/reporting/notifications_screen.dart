@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/services/marco_state_service.dart';
+import '../../providers/device/device_provider.dart';
 import '../../providers/reporting/reporting_provider.dart';
 import '../../widgets/common/app_error_widget.dart';
 import '../../../shared/extensions/datetime_extensions.dart';
@@ -75,13 +77,14 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                 onRetry: () => ref.invalidate(notificationsProvider),
               ),
               data: (notifications) {
+                final localNotifications = ref.read(marcoStateServiceProvider).notifications;
                 final filtered = notifications.where((n) {
                   if (_filter == 'unread') return !n.isRead;
                   if (_filter == 'acknowledged') return n.acknowledgedAt != null;
                   return true;
                 }).toList();
 
-                if (filtered.isEmpty) {
+                if (filtered.isEmpty && localNotifications.isEmpty) {
                   return Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -96,6 +99,25 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                     ),
                   );
                 }
+                if (filtered.isEmpty && localNotifications.isNotEmpty) {
+                  return ListView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    itemCount: localNotifications.length,
+                    itemBuilder: (context, index) {
+                      final notification = localNotifications[index];
+                      return Card(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        child: ListTile(
+                          leading: Icon(_iconForType(notification.type), color: _colorForType(notification.type)),
+                          title: Text(notification.title),
+                          subtitle: Text(notification.message),
+                          trailing: Text(notification.createdAt.timeAgo()),
+                        ),
+                      );
+                    },
+                  );
+                }
+
                 return ListView.builder(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   itemCount: filtered.length,
@@ -186,6 +208,38 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
         ],
       ),
     );
+  }
+
+  Color _colorForType(String type) {
+    switch (type) {
+      case 'device_connected':
+      case 'group_assignment':
+        return Colors.green;
+      case 'device_disconnected':
+      case 'internet_blocked':
+        return Colors.red;
+      case 'pin_device':
+        return Colors.orange;
+      default:
+        return Colors.blue;
+    }
+  }
+
+  IconData _iconForType(String type) {
+    switch (type) {
+      case 'device_connected':
+        return Icons.wifi;
+      case 'device_disconnected':
+        return Icons.wifi_off;
+      case 'internet_blocked':
+        return Icons.block;
+      case 'pin_device':
+        return Icons.push_pin;
+      case 'group_assignment':
+        return Icons.group;
+      default:
+        return Icons.notifications;
+    }
   }
 
   Color _severityColor(String severity) {

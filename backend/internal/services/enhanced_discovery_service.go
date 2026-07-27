@@ -21,16 +21,19 @@ import (
 )
 
 type EnhancedDiscoveryService struct {
-	deviceRepo     *repository.DeviceRepository
-	scanRepo       *repository.ScanRepository
-	eventRepo      *repository.DeviceEventRepository
-	deviceCtrlRepo *repository.DeviceControlRepository
-	internetRepo   *repository.InternetRepository
-	hub            *websocket.Hub
-	cfg            *config.Config
-	mu             sync.Mutex
-	pollingActive  map[uuid.UUID]bool
-	trafficSamples map[string]trafficSample
+	deviceRepo      *repository.DeviceRepository
+	scanRepo        *repository.ScanRepository
+	eventRepo       *repository.DeviceEventRepository
+	deviceCtrlRepo  *repository.DeviceControlRepository
+	internetRepo    *repository.InternetRepository
+	hub             *websocket.Hub
+	cfg             *config.Config
+	mu              sync.Mutex
+	pollingActive   map[uuid.UUID]bool
+	trafficSamples  map[string]trafficSample
+	knownDeviceMACs   sync.Map
+	knownDeviceOnline sync.Map
+	telegramSvc       *TelegramService
 }
 
 type trafficSample struct {
@@ -39,7 +42,7 @@ type trafficSample struct {
 	at      time.Time
 }
 
-func NewEnhancedDiscoveryService(deviceRepo *repository.DeviceRepository, scanRepo *repository.ScanRepository, eventRepo *repository.DeviceEventRepository, deviceCtrlRepo *repository.DeviceControlRepository, internetRepo *repository.InternetRepository, hub *websocket.Hub, cfg *config.Config) *EnhancedDiscoveryService {
+func NewEnhancedDiscoveryService(deviceRepo *repository.DeviceRepository, scanRepo *repository.ScanRepository, eventRepo *repository.DeviceEventRepository, deviceCtrlRepo *repository.DeviceControlRepository, internetRepo *repository.InternetRepository, hub *websocket.Hub, cfg *config.Config, telegramSvc *TelegramService) *EnhancedDiscoveryService {
 	return &EnhancedDiscoveryService{
 		deviceRepo:     deviceRepo,
 		scanRepo:       scanRepo,
@@ -50,6 +53,7 @@ func NewEnhancedDiscoveryService(deviceRepo *repository.DeviceRepository, scanRe
 		cfg:            cfg,
 		pollingActive:  make(map[uuid.UUID]bool),
 		trafficSamples: make(map[string]trafficSample),
+		telegramSvc:    telegramSvc,
 	}
 }
 
@@ -158,6 +162,7 @@ func (s *EnhancedDiscoveryService) connectedDevicesResult(ctx context.Context, o
 		}
 		byIP[device.IPAddress.String()] = device
 	}
+
 	devices := make([]models.ConnectedDeviceView, 0, len(entries))
 	for _, entry := range entries {
 		if !mikrotik.IsInSubnet172(entry.IPAddress) {
@@ -213,6 +218,52 @@ func (s *EnhancedDiscoveryService) connectedDevicesResult(ctx context.Context, o
 			_, _, _ = s.deviceRepo.UpsertDiscovered(ctx, device)
 		}
 	}
+	notificationsToBroadcast := make([]models.LiveNotification, 0)
+	for _, d := range devices {
+		mac := d.MACAddress
+		if mac == "" {
+			continue
+		}
+		_, loaded := s.knownDeviceMACs.LoadOrStore(mac, true)
+		if !loaded {
+			if d.DeviceID == "" {
+				notificationsToBroadcast = append(notificationsToBroadcast, models.LiveNotification{
+					Title:    "New device detected",
+					Message:  fmt.Sprintf("%s (%s) joined the network", d.DeviceName, d.IPAddress),
+					Type:     "device_joined",
+					DeviceID: mac,
+				})
+				if s.telegramSvc != nil {
+					go func(n models.ConnectedDeviceView) {
+						_ = s.telegramSvc.Notify(context.Background(), orgID, models.TelegramEventNewDevice, n.MACAddress, n.DeviceName, n.IPAddress, n.ConnectedAccessPoint)
+					}(d)
+				}
+			}
+		} else {
+			prevOnline, _ := s.knownDeviceOnline.Load(mac)
+			wasOnline, _ := prevOnline.(bool)
+			if !wasOnline && d.IsOnline {
+				if s.telegramSvc != nil {
+					go func(n models.ConnectedDeviceView) {
+						_ = s.telegramSvc.Notify(context.Background(), orgID, models.TelegramEventConnect, n.MACAddress, n.DeviceName, n.IPAddress, n.ConnectedAccessPoint)
+					}(d)
+				}
+			} else if wasOnline && !d.IsOnline {
+				if s.telegramSvc != nil {
+					go func(n models.ConnectedDeviceView) {
+						_ = s.telegramSvc.Notify(context.Background(), orgID, models.TelegramEventDisconnect, n.MACAddress, n.DeviceName, n.IPAddress, n.ConnectedAccessPoint)
+					}(d)
+				}
+			}
+		}
+		s.knownDeviceOnline.Store(mac, d.IsOnline)
+	}
+	for _, n := range notificationsToBroadcast {
+		if s.hub != nil {
+			s.hub.BroadcastMessage("notification", n)
+		}
+	}
+
 	sort.Slice(devices, func(i, j int) bool { return bytesCompareIP(devices[i].IPAddress, devices[j].IPAddress) < 0 })
 	return &models.ConnectedDevicesResult{Connection: models.RouterConnectionStatus{Code: "CONNECTED", Message: "Connected to MikroTik RouterOS API", Reachable: true, APIEndpoint: endpoint, RouterName: identity.Name, RouterVersion: identity.Version, CheckedAt: now}, Devices: devices}
 }

@@ -66,10 +66,25 @@ func TestDesiredEntriesBuildsRouterOSUploadDownloadOrder(t *testing.T) {
 	}
 }
 
-func TestDesiredEntriesRejectsUnsupportedWebsitePolicy(t *testing.T) {
-	_, _, err := desiredEntries([]models.AssignedPolicyDevice{policyTarget("website_blacklist", map[string]interface{}{"domains": []interface{}{"example.com"}})})
+func TestDesiredEntriesRejectsWhitelistPolicy(t *testing.T) {
+	_, _, err := desiredEntries([]models.AssignedPolicyDevice{policyTarget("website_whitelist", map[string]interface{}{"domains": []interface{}{"example.com"}})})
 	if !errors.Is(err, ErrPolicyUnsupported) {
 		t.Fatalf("expected explicit unsupported error, got %v", err)
+	}
+}
+
+func TestDesiredEntriesGeneratesBlockRules(t *testing.T) {
+	firewall, _, err := desiredEntries([]models.AssignedPolicyDevice{policyTarget("website_blacklist", map[string]interface{}{"platforms": []interface{}{"youtube"}})})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(firewall) == 0 {
+		t.Fatal("expected firewall rules for platform blocking")
+	}
+	for comment, entry := range firewall {
+		if entry.attrs["action"] != "drop" {
+			t.Fatalf("rule %s: expected drop action, got %s", comment, entry.attrs["action"])
+		}
 	}
 }
 

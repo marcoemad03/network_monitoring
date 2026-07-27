@@ -508,6 +508,12 @@ func (h *AssetHandler) CreatePolicy(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to create policy", "error_code": "SERVER_ERROR"})
 		return
 	}
+	if err := h.policySyncService.SyncPoliciesToMikroTik(c.Request.Context(), orgID); err != nil {
+		if !errors.Is(err, services.ErrPolicyUnsupported) {
+			c.JSON(http.StatusInternalServerError, gin.H{"success": true, "data": p, "message": "Policy created but enforcement sync failed: " + err.Error(), "error_code": "POLICY_SYNC_ERROR"})
+			return
+		}
+	}
 	c.JSON(http.StatusCreated, gin.H{"success": true, "data": p, "message": "Policy created"})
 }
 
@@ -533,6 +539,7 @@ func (h *AssetHandler) UpdatePolicy(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "Policy not found", "error_code": "NOT_FOUND"})
 		return
 	}
+	orgID := p.OrganizationID
 	p.Name = req.Name
 	if req.Description != nil {
 		p.Description = req.Description
@@ -550,6 +557,12 @@ func (h *AssetHandler) UpdatePolicy(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to update policy", "error_code": "SERVER_ERROR"})
 		return
 	}
+	if err := h.policySyncService.SyncPoliciesToMikroTik(c.Request.Context(), orgID); err != nil {
+		if !errors.Is(err, services.ErrPolicyUnsupported) {
+			c.JSON(http.StatusInternalServerError, gin.H{"success": true, "data": p, "message": "Policy updated but enforcement sync failed: " + err.Error(), "error_code": "POLICY_SYNC_ERROR"})
+			return
+		}
+	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": p, "message": "Policy updated"})
 }
 
@@ -559,9 +572,23 @@ func (h *AssetHandler) DeletePolicy(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid policy ID", "error_code": "VALIDATION_ERROR"})
 		return
 	}
+	orgID, err2 := parseUUID(c.GetString("org_id"))
+	if err2 != nil {
+		if p, err3 := h.assetService.GetPolicy(c.Request.Context(), id); err3 == nil {
+			orgID = p.OrganizationID
+		}
+	}
 	if err := h.assetService.DeletePolicy(c.Request.Context(), id); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to delete policy", "error_code": "SERVER_ERROR"})
 		return
+	}
+	if orgID != uuid.Nil {
+		if err := h.policySyncService.SyncPoliciesToMikroTik(c.Request.Context(), orgID); err != nil {
+			if !errors.Is(err, services.ErrPolicyUnsupported) {
+				c.JSON(http.StatusInternalServerError, gin.H{"success": true, "message": "Policy deleted but enforcement sync failed: " + err.Error(), "error_code": "POLICY_SYNC_ERROR"})
+				return
+			}
+		}
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Policy deleted"})
 }

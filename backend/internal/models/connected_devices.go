@@ -38,3 +38,10 @@ type ConnectedDevicesResult struct {
 	Connection RouterConnectionStatus `json:"connection"`
 	Devices    []ConnectedDeviceView  `json:"devices"`
 }
+
+type LiveNotification struct {
+	Title    string `json:"title"`
+	Message  string `json:"message"`
+	Type     string `json:"type"`
+	DeviceID string `json:"device_id,omitempty"`
+}

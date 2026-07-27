@@ -18,6 +18,7 @@ import '../../../core/network/websocket_manager.dart';
 import '../../../core/network/websocket_client.dart';
 import '../../../data/models/dashboard_live_model.dart';
 import '../../../core/utils/logger.dart';
+import '../../../core/services/marco_state_service.dart';
 
 final getDevicesUseCaseProvider = Provider<GetDevicesUseCase>((ref) {
   return GetDevicesUseCase(ref.watch(deviceRepositoryProvider));
@@ -263,3 +264,41 @@ final deviceUpdateStreamProvider =
         }
       }();
     });
+
+final marcoStateServiceProvider = Provider<MarcoStateService>((ref) {
+  throw UnimplementedError('Must be overridden in bootstrap.dart');
+});
+
+final liveNotificationProvider = StreamProvider<List<({String title, String message, String type, String? deviceId})>>((ref) {
+  final manager = ref.watch(webSocketManagerProvider);
+  final marcoService = ref.watch(marcoStateServiceProvider);
+
+  return () async* {
+    try {
+      await manager.start();
+      final List<({String title, String message, String type, String? deviceId})> buffer = [];
+      await for (final message in manager.messages) {
+        if (message['type'] == 'notification' && message['data'] is Map<String, dynamic>) {
+          final data = message['data'] as Map<String, dynamic>;
+          final title = data['title'] as String? ?? '';
+          final msg = data['message'] as String? ?? '';
+          final type = data['type'] as String? ?? 'unknown';
+          final deviceId = data['device_id'] as String?;
+
+          marcoService.addNotification(
+            title: title,
+            message: msg,
+            type: type,
+            deviceId: deviceId,
+          );
+
+          buffer.add((title: title, message: msg, type: type, deviceId: deviceId));
+          if (buffer.length > 50) buffer.removeAt(0);
+          yield [...buffer];
+        }
+      }
+    } catch (e) {
+      AppLogger.debug('liveNotificationProvider stream ended', error: e);
+    }
+  }();
+});

@@ -49,10 +49,12 @@ func RegisterRoutes(router *gin.Engine, db *database.DB, hub *websocket.Hub, cfg
 	internetService := services.NewInternetService(internetRepo)
 	discoveryService := services.NewDiscoveryService(deviceRepo, scanRepo, cfg)
 	assetService := services.NewAssetService(assetRepo)
-	policySyncService := services.NewPolicySyncService(assetRepo, internetRepo, cfg)
+	telegramRepo := repository.NewTelegramRepository(db)
+	telegramService := services.NewTelegramService(telegramRepo, hub)
+	policySyncService := services.NewPolicySyncService(assetRepo, internetRepo, cfg, hub, telegramService)
 	deviceControlService := services.NewDeviceControlService(deviceRepo, deviceCtrlRepo, monRepo, auditRepo)
 	deviceEventService := services.NewDeviceEventService(deviceEventRepo, deviceRepo, alertRepo)
-	enhancedDiscoverySvc := services.NewEnhancedDiscoveryService(deviceRepo, scanRepo, deviceEventRepo, deviceCtrlRepo, internetRepo, hub, cfg)
+	enhancedDiscoverySvc := services.NewEnhancedDiscoveryService(deviceRepo, scanRepo, deviceEventRepo, deviceCtrlRepo, internetRepo, hub, cfg, telegramService)
 	hotspotWelcomeService := services.NewHotspotWelcomeService(hotspotWelcomeRepo)
 
 	// Reporting services
@@ -73,6 +75,7 @@ func RegisterRoutes(router *gin.Engine, db *database.DB, hub *websocket.Hub, cfg
 	assetHandler := handlers.NewAssetHandler(assetService, policySyncService)
 	deviceCtrlHandler := handlers.NewDeviceControlHandler(deviceControlService, deviceEventService, enhancedDiscoverySvc)
 	hotspotWelcomeHandler := handlers.NewHotspotWelcomeHandler(hotspotWelcomeService)
+	telegramHandler := handlers.NewTelegramHandler(telegramService)
 
 	// Reporting handlers
 	logsHandler := handlers.NewLogsHandler(loggingService)
@@ -252,6 +255,13 @@ func RegisterRoutes(router *gin.Engine, db *database.DB, hub *websocket.Hub, cfg
 			hotspotWelcome.PUT("", middleware.RoleAuthorization("super_admin", "network_admin"), hotspotWelcomeHandler.Update)
 			hotspotWelcome.GET("/login.html", hotspotWelcomeHandler.Download)
 			hotspotWelcome.POST("/configure-profile", middleware.RoleAuthorization("super_admin", "network_admin"), hotspotWelcomeHandler.ConfigureProfile)
+		}
+
+		telegram := protected.Group("/telegram")
+		{
+			telegram.GET("/config", telegramHandler.GetConfig)
+			telegram.PUT("/config", middleware.RoleAuthorization("super_admin", "network_admin"), telegramHandler.SaveConfig)
+			telegram.POST("/test", middleware.RoleAuthorization("super_admin", "network_admin"), telegramHandler.Test)
 		}
 
 		// Reporting - Logs
