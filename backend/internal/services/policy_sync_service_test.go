@@ -78,13 +78,26 @@ func TestDesiredEntriesGeneratesBlockRules(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(firewall) == 0 {
-		t.Fatal("expected firewall rules for platform blocking")
+	if len(firewall) != 2 {
+		t.Fatalf("expected 2 firewall rules (address-list + layer7) for 1 platform, got %d", len(firewall))
 	}
 	for comment, entry := range firewall {
 		if entry.attrs["action"] != "drop" {
 			t.Fatalf("rule %s: expected drop action, got %s", comment, entry.attrs["action"])
 		}
+	}
+	dnsBlockExists := false
+	l7BlockExists := false
+	for comment := range firewall {
+		if strings.HasSuffix(comment, "-dns") {
+			dnsBlockExists = true
+		}
+		if strings.HasSuffix(comment, "-l7") {
+			l7BlockExists = true
+		}
+	}
+	if !dnsBlockExists || !l7BlockExists {
+		t.Fatalf("expected both -dns and -l7 rules, dns=%v l7=%v", dnsBlockExists, l7BlockExists)
 	}
 }
 

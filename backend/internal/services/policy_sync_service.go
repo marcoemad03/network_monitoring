@@ -18,17 +18,41 @@ import (
 	"github.com/hospital/nms-backend/pkg/mikrotik"
 )
 
-// platformDomains maps known platform names to a list of relevant address patterns
-// that RouterOS firewall can match via dst-address-list or content.
 var platformDomains = map[string][]string{
-	"youtube":    {"googlevideo.com", "youtube.com", "ytimg.com", "youtu.be"},
+	"youtube":    {"youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be", "googlevideo.com", "ytimg.com", "ggpht.com", "googleapis.com", "youtubei.googleapis.com", "youtube-nocookie.com"},
 	"facebook":   {"facebook.com", "fbcdn.net", "fb.com", "messenger.com"},
-	"tiktok":     {"tiktok.com", "tiktokcdn.com", "tiktokv.com"},
+	"tiktok":     {"tiktok.com", "tiktokcdn.com", "tiktokv.com", "musical.ly"},
 	"instagram":  {"instagram.com", "cdninstagram.com"},
 }
 
-const managedPlatformAddressList = "nms-blocked-platforms"
+var platformIPRanges = map[string][]string{
+	"youtube": {
+		"173.194.0.0/16", "74.125.0.0/16", "216.58.0.0/16", "172.217.0.0/16",
+		"172.253.0.0/16", "142.250.0.0/16", "142.251.0.0/16", "108.177.0.0/16",
+		"216.239.32.0/19", "64.233.160.0/19", "66.249.64.0/19", "72.14.192.0/18",
+		"209.85.128.0/17", "35.184.0.0/16", "35.186.0.0/16", "35.188.0.0/16",
+		"35.190.0.0/16", "35.192.0.0/16", "35.196.0.0/16", "35.198.0.0/16",
+		"35.200.0.0/16", "35.201.0.0/16", "35.202.0.0/16", "35.203.0.0/16",
+		"35.204.0.0/16", "35.205.0.0/16", "35.206.0.0/16", "35.207.0.0/16",
+		"35.208.0.0/16", "35.209.0.0/16", "35.210.0.0/16", "35.211.0.0/16",
+		"35.212.0.0/16", "35.213.0.0/16", "35.214.0.0/16", "35.215.0.0/16",
+		"35.216.0.0/16", "35.217.0.0/16", "35.220.0.0/16", "35.221.0.0/16",
+		"35.222.0.0/16", "35.223.0.0/16", "35.224.0.0/16", "35.225.0.0/16",
+		"35.226.0.0/16", "35.227.0.0/16", "35.228.0.0/16", "35.229.0.0/16",
+		"35.230.0.0/16", "35.231.0.0/16", "35.232.0.0/16", "35.233.0.0/16",
+		"35.234.0.0/16", "35.235.0.0/16", "35.236.0.0/16", "35.237.0.0/16",
+		"35.238.0.0/16", "35.239.0.0/16", "35.240.0.0/16", "35.241.0.0/16",
+		"35.242.0.0/16", "35.243.0.0/16", "35.244.0.0/16", "35.245.0.0/16",
+		"35.246.0.0/16", "35.247.0.0/16", "104.154.0.0/15", "104.196.0.0/14",
+		"107.167.160.0/19", "107.178.192.0/18", "130.211.0.0/16", "146.148.0.0/17",
+		"162.216.148.0/22", "162.222.176.0/21", "172.110.32.0/21", "173.255.112.0/20",
+		"192.158.28.0/22", "193.186.4.0/24", "199.192.112.0/22", "199.223.232.0/21",
+		"207.223.160.0/20", "208.68.108.0/23", "209.85.128.0/17",
+	},
+}
 
+const managedPlatformAddressList = "nms-blocked-platforms"
+const managedPlatformDNS = "nms-dns-blocked"
 const managedPolicyPrefix = "nms-policy-"
 
 var ErrPolicyUnsupported = errors.New("policy type is not safely enforceable on MikroTik")
@@ -89,6 +113,13 @@ func (s *PolicySyncService) SyncPoliciesToMikroTik(ctx context.Context, orgID uu
 	if err := s.reconcilePlatformAddressLists(ctx, conn, targets); err != nil {
 		return s.fail(ctx, log, fmt.Errorf("reconcile platform address lists: %w", err))
 	}
+	if err := s.reconcilePlatformLayer7(ctx, conn, targets); err != nil {
+		return s.fail(ctx, log, fmt.Errorf("reconcile platform layer7 protocols: %w", err))
+	}
+	if err := s.reconcilePlatformDNS(ctx, conn, targets); err != nil {
+		return s.fail(ctx, log, fmt.Errorf("reconcile platform DNS blocks: %w", err))
+	}
+
 	log.ID = uuid.New()
 	log.Status = "completed"
 	log.Details = map[string]interface{}{"targets": len(targets), "firewall_rules": len(firewall), "queues": len(queues), "completed_at": time.Now().Format(time.RFC3339)}
@@ -195,9 +226,17 @@ func desiredEntries(targets []models.AssignedPolicyDevice) (map[string]desiredRo
 					continue
 				}
 				ruleComment := comment + "-block-" + name
-				firewall[ruleComment] = desiredRouterEntry{
+
+				dnsDropComment := ruleComment + "-dns"
+				firewall[dnsDropComment] = desiredRouterEntry{
 					path:  "/ip/firewall/filter",
-					attrs: map[string]string{"chain": "forward", "action": "drop", "dst-address-list": managedPlatformAddressList + "-" + name, "comment": ruleComment},
+					attrs: map[string]string{"chain": "forward", "action": "drop", "src-mac-address": strings.ToUpper(*d.MACAddress), "dst-address-list": managedPlatformAddressList + "-" + name, "comment": dnsDropComment},
+				}
+
+				layer7Comment := ruleComment + "-l7"
+				firewall[layer7Comment] = desiredRouterEntry{
+					path:  "/ip/firewall/filter",
+					attrs: map[string]string{"chain": "forward", "action": "drop", "src-mac-address": strings.ToUpper(*d.MACAddress), "layer7-protocol": "nms-" + name, "comment": layer7Comment},
 				}
 			}
 		case "website_whitelist":
@@ -313,14 +352,184 @@ func hostCIDR(ip net.IP) string {
 }
 
 func (s *PolicySyncService) reconcilePlatformAddressLists(ctx context.Context, conn routerCommander, targets []models.AssignedPolicyDevice) error {
+	activePlatforms := getActivePlatforms(targets)
+	managedPrefix := managedPlatformAddressList + "-"
+
+	existing, err := conn.Command("/ip/firewall/address-list/print")
+	if err != nil {
+		return err
+	}
+	seen := make(map[string]map[string]bool)
+	for _, entry := range existing {
+		listName := entry["list"]
+		if !strings.HasPrefix(listName, managedPrefix) {
+			continue
+		}
+		platform := strings.TrimPrefix(listName, managedPrefix)
+		if !activePlatforms[platform] {
+			if _, err := conn.Command("/ip/firewall/address-list/remove", "=.id="+entry[".id"]); err != nil {
+				return err
+			}
+			continue
+		}
+		if seen[platform] == nil {
+			seen[platform] = make(map[string]bool)
+		}
+		seen[platform][entry["address"]] = true
+	}
+
+	for name := range activePlatforms {
+		ranges, ok := platformIPRanges[name]
+		if !ok {
+			continue
+		}
+		listName := fmt.Sprintf("%s-%s", managedPlatformAddressList, name)
+		for _, ipRange := range ranges {
+			if seen[name] != nil && seen[name][ipRange] {
+				continue
+			}
+			content := fmt.Sprintf("nms-%s-%s", name, strings.ReplaceAll(ipRange, "/", "-"))
+			if _, err := conn.Command("/ip/firewall/address-list/add",
+				"=list="+listName,
+				"=address="+ipRange,
+				"=comment="+content,
+			); err != nil {
+				_ = s.fail(ctx, &models.SyncLog{ID: uuid.New(), OrganizationID: uuid.Nil, Status: "failed",
+					Details: map[string]interface{}{"error": err.Error(), "platform": name, "range": ipRange}},
+					fmt.Errorf("add address-list range: %w", err))
+			}
+		}
+	}
+	return nil
+}
+
+func (s *PolicySyncService) reconcilePlatformLayer7(ctx context.Context, conn routerCommander, targets []models.AssignedPolicyDevice) error {
+	activePlatforms := getActivePlatforms(targets)
+
+	existing, err := conn.Command("/ip/firewall/layer7-protocol/print")
+	if err != nil {
+		return err
+	}
+	seen := make(map[string]bool)
+	for _, entry := range existing {
+		name := entry["name"]
+		if !strings.HasPrefix(name, "nms-") {
+			continue
+		}
+		platform := strings.TrimPrefix(name, "nms-")
+		if !activePlatforms[platform] {
+			if _, err := conn.Command("/ip/firewall/layer7-protocol/remove", "=.id="+entry[".id"]); err != nil {
+				return err
+			}
+			continue
+		}
+		seen[platform] = true
+	}
+
+	for name := range activePlatforms {
+		if seen[name] {
+			continue
+		}
+		domains, ok := platformDomains[name]
+		if !ok || len(domains) == 0 {
+			continue
+		}
+		sort.Strings(domains)
+		escapedParts := make([]string, len(domains))
+		for i, d := range domains {
+			pattern := strings.ReplaceAll(d, ".", "\\.")
+			pattern = strings.ReplaceAll(pattern, "-", "\\-")
+			escapedParts[i] = pattern
+		}
+		regexp := ".*(" + strings.Join(escapedParts, "|") + ").*"
+
+		layer7Name := "nms-" + name
+		if _, err := conn.Command("/ip/firewall/layer7-protocol/add",
+			"=name="+layer7Name,
+			"=regexp="+regexp,
+		); err != nil {
+			_ = s.fail(ctx, &models.SyncLog{ID: uuid.New(), OrganizationID: uuid.Nil, Status: "failed",
+				Details: map[string]interface{}{"error": err.Error(), "platform": name}},
+				fmt.Errorf("add layer7 protocol: %w", err))
+		}
+	}
+	return nil
+}
+
+func (s *PolicySyncService) reconcilePlatformDNS(ctx context.Context, conn routerCommander, targets []models.AssignedPolicyDevice) error {
+	activePlatforms := getActivePlatforms(targets)
+
+	existing, err := conn.Command("/ip/dns/static/print")
+	if err != nil {
+		return err
+	}
+	seen := make(map[string]bool)
+	for _, entry := range existing {
+		comment := entry["comment"]
+		if !strings.HasPrefix(comment, managedPlatformDNS) {
+			continue
+		}
+		domain := strings.TrimPrefix(comment, managedPlatformDNS+"-")
+		stillBlocked := false
+		for platform, domains := range platformDomains {
+			if !activePlatforms[platform] {
+				continue
+			}
+			for _, d := range domains {
+				if d == domain {
+					stillBlocked = true
+					break
+				}
+			}
+			if stillBlocked {
+				break
+			}
+		}
+		if !stillBlocked {
+			if _, err := conn.Command("/ip/dns/static/remove", "=.id="+entry[".id"]); err != nil {
+				return err
+			}
+			continue
+		}
+		seen[domain] = true
+	}
+
+	for name := range activePlatforms {
+		domains, ok := platformDomains[name]
+		if !ok {
+			continue
+		}
+		for _, domain := range domains {
+			if seen[domain] {
+				continue
+			}
+			comment := fmt.Sprintf("%s-%s", managedPlatformDNS, domain)
+			if _, err := conn.Command("/ip/dns/static/add",
+				"=name="+domain,
+				"=address=127.0.0.1",
+				"=comment="+comment,
+				"=ttl=1d",
+			); err != nil {
+				_ = s.fail(ctx, &models.SyncLog{ID: uuid.New(), OrganizationID: uuid.Nil, Status: "failed",
+					Details: map[string]interface{}{"error": err.Error(), "platform": name, "domain": domain}},
+					fmt.Errorf("add dns block: %w", err))
+			}
+		}
+	}
+	return nil
+}
+
+func getActivePlatforms(targets []models.AssignedPolicyDevice) map[string]bool {
 	activePlatforms := make(map[string]bool)
 	for _, target := range targets {
 		if target.Policy.PolicyType != "website_blacklist" {
 			continue
 		}
-		enabled, ok := target.Policy.Config["enabled"].(bool)
-		if ok && !enabled {
-			continue
+		enabledVal, ok := target.Policy.Config["enabled"]
+		if ok {
+			if enabled, isBool := enabledVal.(bool); isBool && !enabled {
+				continue
+			}
 		}
 		platforms, ok := target.Policy.Config["platforms"].([]interface{})
 		if !ok {
@@ -334,61 +543,5 @@ func (s *PolicySyncService) reconcilePlatformAddressLists(ctx context.Context, c
 			activePlatforms[strings.ToLower(name)] = true
 		}
 	}
-
-	existing, err := conn.Command("/ip/firewall/address-list/print")
-	if err != nil {
-		return err
-	}
-
-	managedPrefix := managedPlatformAddressList + "-"
-	seen := make(map[string]bool)
-	for _, entry := range existing {
-		listName := entry["list"]
-		if !strings.HasPrefix(listName, managedPrefix) {
-			continue
-		}
-		platform := strings.TrimPrefix(listName, managedPrefix)
-		if !activePlatforms[platform] {
-			if _, err := conn.Command("/ip/firewall/address-list/remove", "=.id="+entry[".id"]); err != nil {
-				return err
-			}
-			continue
-		}
-		seen[platform] = true
-	}
-
-	for name := range activePlatforms {
-		if seen[name] {
-			continue
-		}
-		domains, ok := platformDomains[name]
-		if !ok {
-			continue
-		}
-		sort.Strings(domains)
-		for _, domain := range domains {
-			listName := fmt.Sprintf("%s-%s", managedPlatformAddressList, name)
-			content := fmt.Sprintf("nms-%s-%s", name, domain)
-			if _, err := conn.Command("/ip/firewall/address-list/add",
-				"=list="+listName,
-				"=address="+domain,
-				"=comment="+content,
-			); err != nil {
-				_ = s.fail(ctx, &models.SyncLog{ID: uuid.New(), OrganizationID: uuid.Nil, Status: "failed",
-					Details: map[string]interface{}{"error": err.Error(), "platform": name, "domain": domain}},
-					fmt.Errorf("add address-list entry: %w", err))
-			}
-		}
-
-		layer7Name := "nms-" + name
-		if _, err := conn.Command("/ip/firewall/layer7-protocol/add",
-			"=name="+layer7Name,
-			"=regexp=.*\\.("+strings.Join(domains, "|")+")$",
-		); err != nil {
-			_ = s.fail(ctx, &models.SyncLog{ID: uuid.New(), OrganizationID: uuid.Nil, Status: "failed",
-				Details: map[string]interface{}{"error": err.Error(), "platform": name}},
-				fmt.Errorf("add layer7 protocol: %w", err))
-		}
-	}
-	return nil
+	return activePlatforms
 }

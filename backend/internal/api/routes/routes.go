@@ -420,6 +420,8 @@ func RegisterRoutes(router *gin.Engine, db *database.DB, hub *websocket.Hub, cfg
 		protected.GET("/vendors/:vendorId/address-lists", deviceCtrlHandler.GetMikroTikAddressLists)
 		protected.GET("/vendors/:vendorId/dns", deviceCtrlHandler.GetMikroTikDNS)
 		protected.GET("/vendors/:vendorId/identity", deviceCtrlHandler.GetMikroTikRouterIdentity)
+		protected.GET("/vendors/:vendorId/connections", deviceCtrlHandler.GetMikroTikActiveConnections)
+		protected.GET("/vendors/:vendorId/dns-cache", deviceCtrlHandler.GetMikroTikDNSCache)
 	}
 
 	router.GET("/ws/alerts", func(c *gin.Context) {

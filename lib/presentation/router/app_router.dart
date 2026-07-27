@@ -12,6 +12,7 @@ import '../screens/devices/device_form_screen.dart';
 import '../screens/devices/device_events_screen.dart';
 import '../screens/devices/enhanced_device_list_screen.dart';
 import '../screens/devices/connected_devices_screen.dart';
+import '../screens/devices/active_connections_screen.dart';
 import '../screens/alerts/alert_list_screen.dart';
 import '../screens/alerts/alert_detail_screen.dart';
 import '../screens/network/network_map_screen.dart';
@@ -99,6 +100,10 @@ class AppRouter {
                   GoRoute(
                     path: 'connected',
                     builder: (context, state) => const ConnectedDevicesScreen(),
+                  ),
+                  GoRoute(
+                    path: 'active-connections',
+                    builder: (context, state) => const ActiveConnectionsScreen(),
                   ),
                   GoRoute(
                     path: ':id',

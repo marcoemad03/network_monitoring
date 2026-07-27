@@ -683,6 +683,52 @@ func (h *DeviceControlHandler) extractContext(c *gin.Context) (*uuid.UUID, *uuid
 	return &orgID, &deviceID, userID
 }
 
+func (h *DeviceControlHandler) GetMikroTikActiveConnections(c *gin.Context) {
+	vendorID, err := uuid.Parse(c.Param("vendorId"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid vendor ID"})
+		return
+	}
+	vendor, err := h.getVendorIntegration(c, vendorID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "Vendor not found"})
+		return
+	}
+	client := h.createMikroTikClient(vendor)
+	conns, err := client.RouterOSCommand("/ip/firewall/connection/print")
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": true, "data": []interface{}{}, "note": "Active connections require /ip/firewall/connection/print which may be unavailable or empty on this RouterOS version"})
+		return
+	}
+	if conns == nil {
+		conns = []map[string]string{}
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": conns, "count": len(conns)})
+}
+
+func (h *DeviceControlHandler) GetMikroTikDNSCache(c *gin.Context) {
+	vendorID, err := uuid.Parse(c.Param("vendorId"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid vendor ID"})
+		return
+	}
+	vendor, err := h.getVendorIntegration(c, vendorID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "Vendor not found"})
+		return
+	}
+	client := h.createMikroTikClient(vendor)
+	entries, err := client.RouterOSCommand("/ip/dns/cache/print")
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": true, "data": []interface{}{}, "note": "DNS cache requires /ip/dns/cache/print which may be unavailable or empty if DNS cache is disabled"})
+		return
+	}
+	if entries == nil {
+		entries = []map[string]string{}
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": entries, "count": len(entries)})
+}
+
 func parseTimeQuery(s string) time.Time {
 	if s == "" {
 		return time.Time{}

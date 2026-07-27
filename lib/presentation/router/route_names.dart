@@ -55,4 +55,5 @@ class RouteNames {
   static const String deviceEvents = '/devices/:id/events';
   static const String enhancedDeviceList = '/devices/enhanced';
   static const String connectedDevices = '/devices/connected';
+  static const String activeConnections = '/devices/active-connections';
 }

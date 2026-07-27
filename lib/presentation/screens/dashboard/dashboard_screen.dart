@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:collection';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -7,6 +10,45 @@ import '../../router/route_names.dart';
 import '../../../domain/entities/dashboard_live.dart';
 import '../../../core/network/websocket_client.dart';
 
+class _TrafficSample {
+  final double uploadMbps;
+  final double downloadMbps;
+  final DateTime time;
+  const _TrafficSample(this.uploadMbps, this.downloadMbps, this.time);
+}
+
+final _trafficSamplesProvider = StateNotifierProvider<_TrafficStore, List<_TrafficSample>>(
+  (_) => _TrafficStore(),
+);
+
+class _TrafficStore extends StateNotifier<List<_TrafficSample>> {
+  _TrafficStore() : super([]);
+
+  void add(double upload, double download) {
+    state = [...state, _TrafficSample(upload, download, DateTime.now())].take(60).toList();
+  }
+
+  double get peakUpload {
+    if (state.isEmpty) return 0;
+    return state.map((s) => s.uploadMbps).reduce((a, b) => a > b ? a : b);
+  }
+
+  double get peakDownload {
+    if (state.isEmpty) return 0;
+    return state.map((s) => s.downloadMbps).reduce((a, b) => a > b ? a : b);
+  }
+
+  double get avgUpload {
+    if (state.isEmpty) return 0;
+    return state.map((s) => s.uploadMbps).reduce((a, b) => a + b) / state.length;
+  }
+
+  double get avgDownload {
+    if (state.isEmpty) return 0;
+    return state.map((s) => s.downloadMbps).reduce((a, b) => a + b) / state.length;
+  }
+}
+
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
 
@@ -15,6 +57,14 @@ class DashboardScreen extends ConsumerWidget {
     final summaryAsync = ref.watch(dashboardSummaryProvider);
     final wsState = ref.watch(wsConnectionStateProvider);
     final theme = Theme.of(context);
+
+    ref.listen(dashboardSummaryProvider, (_, next) {
+      next.whenData((summary) {
+        if (summary != null) {
+          ref.read(_trafficSamplesProvider.notifier).add(summary.totalUploadMbps, summary.totalDownloadMbps);
+        }
+      });
+    });
 
     return Scaffold(
       appBar: AppBar(
@@ -78,25 +128,21 @@ class DashboardScreen extends ConsumerWidget {
       ),
       body: summaryAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error:
-            (e, _) => Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.error_outline, size: 48),
-                  const SizedBox(height: 16),
-                  Text(
-                    e.toString().replaceFirst('Exception: ', ''),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 8),
-                  OutlinedButton(
-                    onPressed: () => ref.invalidate(dashboardSummaryProvider),
-                    child: const Text('Retry'),
-                  ),
-                ],
+        error: (e, _) => Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.error_outline, size: 48),
+              const SizedBox(height: 16),
+              Text(e.toString().replaceFirst('Exception: ', ''), textAlign: TextAlign.center),
+              const SizedBox(height: 8),
+              OutlinedButton(
+                onPressed: () => ref.invalidate(dashboardSummaryProvider),
+                child: const Text('Retry'),
               ),
-            ),
+            ],
+          ),
+        ),
         data: (summary) {
           if (summary == null) {
             return Center(
@@ -105,10 +151,7 @@ class DashboardScreen extends ConsumerWidget {
                 children: [
                   const Icon(Icons.cloud_off, size: 48, color: Colors.grey),
                   const SizedBox(height: 16),
-                  Text(
-                    'Unable to load dashboard',
-                    style: theme.textTheme.titleMedium,
-                  ),
+                  Text('Unable to load dashboard', style: theme.textTheme.titleMedium),
                   const SizedBox(height: 8),
                   OutlinedButton(
                     onPressed: () => ref.invalidate(dashboardSummaryProvider),
@@ -127,13 +170,11 @@ class DashboardScreen extends ConsumerWidget {
 
 class _DashboardBody extends StatelessWidget {
   final DashboardLive summary;
-
   const _DashboardBody({required this.summary});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -151,6 +192,8 @@ class _DashboardBody extends StatelessWidget {
               Expanded(flex: 2, child: _buildDeviceDistribution(theme)),
             ],
           ),
+          const SizedBox(height: 20),
+          _buildTrafficMetricsRow(theme),
           const SizedBox(height: 20),
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -172,10 +215,7 @@ class _DashboardBody extends StatelessWidget {
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [
-            theme.colorScheme.primaryContainer,
-            theme.colorScheme.primaryContainer.withValues(alpha: 0.3),
-          ],
+          colors: [theme.colorScheme.primaryContainer, theme.colorScheme.primaryContainer.withValues(alpha: 0.3)],
         ),
         borderRadius: BorderRadius.circular(16),
       ),
@@ -185,18 +225,11 @@ class _DashboardBody extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Network Status',
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+                Text('Network Status', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 4),
                 Text(
                   '${summary.onlineDevices} of ${summary.totalDevices} devices online',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
+                  style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                 ),
               ],
             ),
@@ -205,12 +238,7 @@ class _DashboardBody extends StatelessWidget {
           const SizedBox(width: 8),
           _statusChip(theme, 'Offline', summary.offlineDevices, Colors.red),
           const SizedBox(width: 8),
-          _statusChip(
-            theme,
-            'Degraded',
-            summary.degradedDevices,
-            Colors.orange,
-          ),
+          _statusChip(theme, 'Degraded', summary.degradedDevices, Colors.orange),
         ],
       ),
     );
@@ -226,13 +254,7 @@ class _DashboardBody extends StatelessWidget {
       ),
       child: Column(
         children: [
-          Text(
-            count.toString(),
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.bold,
-              color: color,
-            ),
-          ),
+          Text(count.toString(), style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: color)),
           Text(label, style: theme.textTheme.bodySmall?.copyWith(color: color)),
         ],
       ),
@@ -242,29 +264,11 @@ class _DashboardBody extends StatelessWidget {
   Widget _buildMetricRow(ThemeData theme) {
     return Row(
       children: [
-        _metricCard(
-          theme,
-          Icons.devices,
-          'Total Devices',
-          summary.totalDevices,
-          theme.colorScheme.primary,
-        ),
+        _metricCard(theme, Icons.devices, 'Total Devices', summary.totalDevices, theme.colorScheme.primary),
         const SizedBox(width: 12),
-        _metricCard(
-          theme,
-          Icons.people,
-          'Active Clients',
-          summary.activeClients,
-          Colors.teal,
-        ),
+        _metricCard(theme, Icons.people, 'Active Clients', summary.activeClients, Colors.teal),
         const SizedBox(width: 12),
-        _metricCard(
-          theme,
-          Icons.warning,
-          'Critical Alerts',
-          summary.criticalAlerts,
-          Colors.red,
-        ),
+        _metricCard(theme, Icons.warning, 'Critical Alerts', summary.criticalAlerts, Colors.red),
         const SizedBox(width: 12),
         _metricCard(
           theme,
@@ -277,13 +281,7 @@ class _DashboardBody extends StatelessWidget {
     );
   }
 
-  Widget _metricCard(
-    ThemeData theme,
-    IconData icon,
-    String label,
-    dynamic value,
-    Color color,
-  ) {
+  Widget _metricCard(ThemeData theme, IconData icon, String label, dynamic value, Color color) {
     return Expanded(
       child: Card(
         child: Padding(
@@ -291,32 +289,17 @@ class _DashboardBody extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: color.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Icon(icon, color: color, size: 20),
-                  ),
-                ],
-              ),
+              Row(children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
+                  child: Icon(icon, color: color, size: 20),
+                ),
+              ]),
               const SizedBox(height: 12),
-              Text(
-                value.toString(),
-                style: theme.textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+              Text(value.toString(), style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)),
               const SizedBox(height: 4),
-              Text(
-                label,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
+              Text(label, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
             ],
           ),
         ),
@@ -334,94 +317,83 @@ class _DashboardBody extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  'Real-Time Traffic',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                Row(
-                  children: [
-                    _legendDot(Colors.green, 'Upload'),
-                    const SizedBox(width: 12),
-                    _legendDot(Colors.blue, 'Download'),
-                  ],
-                ),
+                Text('Real-Time Traffic', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
+                Row(children: [
+                  _legendDot(Colors.green, 'Upload'),
+                  const SizedBox(width: 12),
+                  _legendDot(Colors.blue, 'Download'),
+                ]),
               ],
             ),
             const SizedBox(height: 16),
             SizedBox(
-              height: 120,
+              height: 180,
               child: BarChart(
                 BarChartData(
                   alignment: BarChartAlignment.spaceAround,
-                  maxY: 1000,
-                  barTouchData: BarTouchData(enabled: false),
+                  maxY: (summary.totalUploadMbps > summary.totalDownloadMbps
+                          ? summary.totalUploadMbps
+                          : summary.totalDownloadMbps) *
+                      1.3,
+                  barTouchData: BarTouchData(
+                    enabled: true,
+                    touchTooltipData: BarTouchTooltipData(
+                      getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                        final label = rodIndex == 0 ? 'Upload' : 'Download';
+                        return BarTooltipItem('$label\n${rod.toY.toStringAsFixed(2)} Mbps', const TextStyle());
+                      },
+                    ),
+                  ),
                   titlesData: FlTitlesData(
                     show: true,
                     bottomTitles: AxisTitles(
                       sideTitles: SideTitles(
                         showTitles: true,
-                        getTitlesWidget:
-                            (v, _) => Text(
-                              ['', 'Up', '', 'Down', ''][v.toInt()],
-                              style: const TextStyle(fontSize: 10),
-                            ),
+                        getTitlesWidget: (v, _) => Text(['Upload', 'Download'][v.toInt()], style: const TextStyle(fontSize: 10)),
                         reservedSize: 22,
                       ),
                     ),
                     leftTitles: AxisTitles(
                       sideTitles: SideTitles(
                         showTitles: true,
-                        reservedSize: 30,
-                        getTitlesWidget:
-                            (v, _) => Text(
-                              '${v.toInt()}M',
-                              style: const TextStyle(fontSize: 10),
-                            ),
+                        reservedSize: 40,
+                        getTitlesWidget: (v, _) => Text('${v.toInt()} Mbps', style: const TextStyle(fontSize: 9)),
                       ),
                     ),
-                    topTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false),
-                    ),
-                    rightTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false),
-                    ),
+                    topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
                   ),
                   borderData: FlBorderData(show: false),
-                  barGroups: [
-                    BarChartGroupData(
-                      x: 0,
-                      barRods: [
-                        BarChartRodData(
-                          toY: summary.totalUploadMbps,
-                          color: Colors.green,
-                          width: 20,
-                          borderRadius: const BorderRadius.vertical(
-                            top: Radius.circular(4),
-                          ),
-                        ),
-                      ],
-                    ),
-                    BarChartGroupData(
-                      x: 1,
-                      barRods: [
-                        BarChartRodData(
-                          toY: summary.totalDownloadMbps,
-                          color: Colors.blue,
-                          width: 20,
-                          borderRadius: const BorderRadius.vertical(
-                            top: Radius.circular(4),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
                   gridData: FlGridData(
                     show: true,
                     drawVerticalLine: false,
-                    horizontalInterval: 250,
+                    horizontalInterval: (summary.totalUploadMbps > 0 || summary.totalDownloadMbps > 0)
+                        ? ((summary.totalUploadMbps > summary.totalDownloadMbps
+                                    ? summary.totalUploadMbps
+                                    : summary.totalDownloadMbps) *
+                                1.3 /
+                                4)
+                            .clamp(1, double.infinity)
+                        : 100,
                   ),
+                  barGroups: [
+                    BarChartGroupData(x: 0, barRods: [
+                      BarChartRodData(
+                        toY: summary.totalUploadMbps,
+                        color: Colors.green,
+                        width: 28,
+                        borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
+                      ),
+                    ]),
+                    BarChartGroupData(x: 1, barRods: [
+                      BarChartRodData(
+                        toY: summary.totalDownloadMbps,
+                        color: Colors.blue,
+                        width: 28,
+                        borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
+                      ),
+                    ]),
+                  ],
                 ),
               ),
             ),
@@ -435,14 +407,72 @@ class _DashboardBody extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Container(
-          width: 8,
-          height: 8,
-          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-        ),
+        Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
         const SizedBox(width: 4),
         Text(label, style: const TextStyle(fontSize: 11)),
       ],
+    );
+  }
+
+  Widget _buildTrafficMetricsRow(ThemeData theme) {
+    return Consumer(
+      builder: (context, ref, _) {
+        final samples = ref.watch(_trafficSamplesProvider);
+        final peakUp = samples.isEmpty ? summary.totalUploadMbps : ref.read(_trafficSamplesProvider.notifier).peakUpload;
+        final peakDown = samples.isEmpty ? summary.totalDownloadMbps : ref.read(_trafficSamplesProvider.notifier).peakDownload;
+        final avgUp = samples.isEmpty ? summary.totalUploadMbps : ref.read(_trafficSamplesProvider.notifier).avgUpload;
+        final avgDown = samples.isEmpty ? summary.totalDownloadMbps : ref.read(_trafficSamplesProvider.notifier).avgDownload;
+        return Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Traffic Details', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 12),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final isWide = constraints.maxWidth > 600;
+                    return Wrap(
+                      spacing: isWide ? 24 : 12,
+                      runSpacing: 12,
+                      children: [
+                        _trafficMetric(theme, Icons.speed, 'Current Upload', '${summary.totalUploadMbps.toStringAsFixed(2)} Mbps', Colors.green),
+                        _trafficMetric(theme, Icons.speed, 'Current Download', '${summary.totalDownloadMbps.toStringAsFixed(2)} Mbps', Colors.blue),
+                        _trafficMetric(theme, Icons.trending_up, 'Peak Upload', '${peakUp.toStringAsFixed(2)} Mbps', Colors.green.shade700),
+                        _trafficMetric(theme, Icons.trending_up, 'Peak Download', '${peakDown.toStringAsFixed(2)} Mbps', Colors.blue.shade700),
+                        _trafficMetric(theme, Icons.analytics, 'Avg Upload', '${avgUp.toStringAsFixed(2)} Mbps', Colors.green.shade300),
+                        _trafficMetric(theme, Icons.analytics, 'Avg Download', '${avgDown.toStringAsFixed(2)} Mbps', Colors.blue.shade300),
+                        _trafficMetric(theme, Icons.router, 'Router Throughput', '${(summary.totalUploadMbps + summary.totalDownloadMbps).toStringAsFixed(2)} Mbps', Colors.indigo),
+                      ],
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _trafficMetric(ThemeData theme, IconData icon, String label, String value, Color color) {
+    return SizedBox(
+      width: 160,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 18, color: color),
+          const SizedBox(width: 6),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+              Text(value, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold, color: color)),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -451,19 +481,13 @@ class _DashboardBody extends StatelessWidget {
     final online = summary.onlineDevices;
     final offline = summary.offlineDevices;
     final degraded = summary.degradedDevices;
-
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Device Status',
-              style: theme.textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-            ),
+            Text('Device Status', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
             const SizedBox(height: 16),
             SizedBox(
               height: 140,
@@ -476,37 +500,22 @@ class _DashboardBody extends StatelessWidget {
                       value: online.toDouble(),
                       color: Colors.green,
                       radius: 30,
-                      title:
-                          '${(total > 0 ? (online / total * 100) : 0).toStringAsFixed(0)}%',
-                      titleStyle: const TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
+                      title: '${(total > 0 ? (online / total * 100) : 0).toStringAsFixed(0)}%',
+                      titleStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white),
                     ),
                     PieChartSectionData(
                       value: offline.toDouble(),
                       color: Colors.red,
                       radius: 25,
-                      title:
-                          '${(total > 0 ? (offline / total * 100) : 0).toStringAsFixed(0)}%',
-                      titleStyle: const TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
+                      title: '${(total > 0 ? (offline / total * 100) : 0).toStringAsFixed(0)}%',
+                      titleStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white),
                     ),
                     PieChartSectionData(
                       value: degraded.toDouble(),
                       color: Colors.orange,
                       radius: 25,
-                      title:
-                          '${(total > 0 ? (degraded / total * 100) : 0).toStringAsFixed(0)}%',
-                      titleStyle: const TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
+                      title: '${(total > 0 ? (degraded / total * 100) : 0).toStringAsFixed(0)}%',
+                      titleStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white),
                     ),
                   ],
                 ),
@@ -533,11 +542,7 @@ class _DashboardBody extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Container(
-          width: 8,
-          height: 8,
-          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-        ),
+        Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
         const SizedBox(width: 4),
         Text(label, style: const TextStyle(fontSize: 10)),
       ],
@@ -554,12 +559,7 @@ class _DashboardBody extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  'Alert Summary',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
+                Text('Alert Summary', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
                 IconButton(
                   icon: const Icon(Icons.arrow_forward, size: 16),
                   onPressed: () => context.go(RouteNames.alerts),
@@ -571,12 +571,7 @@ class _DashboardBody extends StatelessWidget {
             const SizedBox(height: 8),
             _alertRow(theme, 'Open', summary.openAlerts, Colors.orange),
             const SizedBox(height: 8),
-            _alertRow(
-              theme,
-              'Active Clients',
-              summary.activeClients,
-              Colors.teal,
-            ),
+            _alertRow(theme, 'Active Clients', summary.activeClients, Colors.teal),
           ],
         ),
       ),
@@ -586,21 +581,11 @@ class _DashboardBody extends StatelessWidget {
   Widget _alertRow(ThemeData theme, String label, int count, Color color) {
     return Row(
       children: [
-        Container(
-          width: 8,
-          height: 8,
-          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-        ),
+        Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
         const SizedBox(width: 8),
         Text(label, style: theme.textTheme.bodyMedium),
         const Spacer(),
-        Text(
-          count.toString(),
-          style: theme.textTheme.titleSmall?.copyWith(
-            fontWeight: FontWeight.bold,
-            color: color,
-          ),
-        ),
+        Text(count.toString(), style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold, color: color)),
       ],
     );
   }
@@ -612,42 +597,17 @@ class _DashboardBody extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Quick Actions',
-              style: theme.textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-            ),
+            Text('Quick Actions', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
             const SizedBox(height: 16),
             Row(
               children: [
-                _actionButton(
-                  theme,
-                  Icons.add,
-                  'Add Device',
-                  () => context.push(RouteNames.deviceCreate),
-                ),
+                _actionButton(theme, Icons.add, 'Add Device', () => context.push(RouteNames.deviceCreate)),
                 const SizedBox(width: 8),
-                _actionButton(
-                  theme,
-                  Icons.wifi_tethering,
-                  'Scan',
-                  () => context.go(RouteNames.networkScan),
-                ),
+                _actionButton(theme, Icons.wifi_tethering, 'Scan', () => context.go(RouteNames.networkScan)),
                 const SizedBox(width: 8),
-                _actionButton(
-                  theme,
-                  Icons.map,
-                  'Map',
-                  () => context.go(RouteNames.networkMap),
-                ),
+                _actionButton(theme, Icons.map, 'Map', () => context.go(RouteNames.networkMap)),
                 const SizedBox(width: 8),
-                _actionButton(
-                  theme,
-                  Icons.devices,
-                  'Devices',
-                  () => context.go(RouteNames.devices),
-                ),
+                _actionButton(theme, Icons.devices, 'Devices', () => context.go(RouteNames.devices)),
               ],
             ),
           ],
@@ -656,32 +616,19 @@ class _DashboardBody extends StatelessWidget {
     );
   }
 
-  Widget _actionButton(
-    ThemeData theme,
-    IconData icon,
-    String label,
-    VoidCallback onTap,
-  ) {
+  Widget _actionButton(ThemeData theme, IconData icon, String label, VoidCallback onTap) {
     return Expanded(
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(8),
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 12),
-          decoration: BoxDecoration(
-            border: Border.all(color: theme.colorScheme.outlineVariant),
-            borderRadius: BorderRadius.circular(8),
-          ),
+          decoration: BoxDecoration(border: Border.all(color: theme.colorScheme.outlineVariant), borderRadius: BorderRadius.circular(8)),
           child: Column(
             children: [
               Icon(icon, color: theme.colorScheme.primary, size: 24),
               const SizedBox(height: 4),
-              Text(
-                label,
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
+              Text(label, style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
             ],
           ),
         ),
@@ -690,10 +637,7 @@ class _DashboardBody extends StatelessWidget {
   }
 
   Widget _buildDeviceTypeBreakdown(ThemeData theme) {
-    if (summary.devicesByType.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
+    if (summary.devicesByType.isEmpty) return const SizedBox.shrink();
     final typeColors = {
       'router': Colors.blue,
       'switch': Colors.teal,
@@ -707,42 +651,25 @@ class _DashboardBody extends StatelessWidget {
       'iot': Colors.amber,
       'medical_device': Colors.deepOrange,
     };
-
-    final sortedTypes =
-        summary.devicesByType.entries.toList()
-          ..sort((a, b) => b.value.compareTo(a.value));
-
+    final sortedTypes = summary.devicesByType.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Device Type Breakdown',
-              style: theme.textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-            ),
+            Text('Device Type Breakdown', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
             const SizedBox(height: 12),
             ...sortedTypes.map((entry) {
               final color = typeColors[entry.key] ?? theme.colorScheme.primary;
-              final pct =
-                  summary.totalDevices > 0
-                      ? (entry.value / summary.totalDevices * 100)
-                      : 0.0;
+              final pct = summary.totalDevices > 0 ? (entry.value / summary.totalDevices * 100) : 0.0;
               return Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: Row(
                   children: [
                     SizedBox(
                       width: 100,
-                      child: Text(
-                        entry.key.replaceAll('_', ' ').toUpperCase(),
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
+                      child: Text(entry.key.replaceAll('_', ' ').toUpperCase(), style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w500)),
                     ),
                     const SizedBox(width: 8),
                     Expanded(
@@ -759,12 +686,7 @@ class _DashboardBody extends StatelessWidget {
                     const SizedBox(width: 8),
                     SizedBox(
                       width: 30,
-                      child: Text(
-                        entry.value.toString(),
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                      child: Text(entry.value.toString(), style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.bold)),
                     ),
                   ],
                 ),
