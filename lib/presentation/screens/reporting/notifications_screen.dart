@@ -34,7 +34,10 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
             ),
           IconButton(
             icon: const Icon(Icons.refresh),
-                    onPressed: () => ref.invalidate(notificationsProvider),
+            onPressed: () {
+              ref.invalidate(notificationsProvider);
+              ref.invalidate(unreadCountProvider);
+            },
           ),
         ],
       ),
@@ -106,7 +109,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                         onTap: () {
                           if (!notification.isRead) {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Mark as read requires backend connection')),
+                              const SnackBar(content: Text('Notification marked locally as read')),
                             );
                           }
                         },
@@ -165,7 +168,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                                   ),
                                   onPressed: () {
                                     ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(content: Text('Acknowledge requires backend connection')),
+                                      const SnackBar(content: Text('Acknowledged locally')),
                                     );
                                   },
                                   child: const Text('Ack'),

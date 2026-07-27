@@ -149,15 +149,23 @@ func (r *DeviceRepository) UpsertDiscovered(ctx context.Context, d *models.Devic
 		var id uuid.UUID
 		var inserted bool
 		err := r.db.QueryRow(ctx, `
-			INSERT INTO devices (id, organization_id, name, hostname, ip_address, mac_address, device_type, status, vendor, first_seen, last_seen, is_monitored, created_at, updated_at)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW(),NOW())
+			INSERT INTO devices (id, organization_id, name, hostname, ip_address, mac_address, device_type, status, vendor,
+				connection_type, connected_interface, connected_ap, signal_strength_dbm,
+				total_download_bytes, total_upload_bytes, first_seen, last_seen, is_monitored, created_at, updated_at)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,NOW(),NOW())
 			ON CONFLICT (organization_id, mac_address) WHERE mac_address IS NOT NULL
 			DO UPDATE SET ip_address=EXCLUDED.ip_address, hostname=COALESCE(EXCLUDED.hostname, devices.hostname),
 				name=CASE WHEN EXCLUDED.hostname IS NOT NULL THEN EXCLUDED.name ELSE devices.name END,
 				vendor=COALESCE(EXCLUDED.vendor, devices.vendor), status=EXCLUDED.status,
+				connection_type=EXCLUDED.connection_type, connected_interface=EXCLUDED.connected_interface,
+				connected_ap=EXCLUDED.connected_ap, signal_strength_dbm=EXCLUDED.signal_strength_dbm,
+				total_download_bytes=GREATEST(devices.total_download_bytes, EXCLUDED.total_download_bytes),
+				total_upload_bytes=GREATEST(devices.total_upload_bytes, EXCLUDED.total_upload_bytes),
 				last_seen=EXCLUDED.last_seen, updated_at=NOW()
 			RETURNING id, (xmax = 0)`, d.ID, d.OrganizationID, d.Name, d.Hostname, d.IPAddress,
-			mac, d.DeviceType, d.Status, d.Vendor, d.FirstSeen, d.LastSeen, d.IsMonitored).Scan(&id, &inserted)
+			mac, d.DeviceType, d.Status, d.Vendor, d.ConnectionType, d.ConnectedInterface,
+			d.ConnectedAP, d.SignalStrengthDbm, d.TotalDownloadBytes, d.TotalUploadBytes,
+			d.FirstSeen, d.LastSeen, d.IsMonitored).Scan(&id, &inserted)
 		return id, inserted, err
 	}
 
@@ -174,6 +182,28 @@ func (r *DeviceRepository) UpsertDiscovered(ctx context.Context, d *models.Devic
 		return d.ID, true, nil
 	}
 	return uuid.Nil, false, fmt.Errorf("discovered device has neither MAC nor IP")
+}
+
+func (r *DeviceRepository) GetConnectedInventory(ctx context.Context, orgID uuid.UUID) ([]models.Device, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT id, name, hostname, ip_address, mac_address::text, device_type, vendor,
+		       department, room, notes, last_seen
+		FROM devices WHERE organization_id=$1`, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var devices []models.Device
+	for rows.Next() {
+		var d models.Device
+		if err := rows.Scan(&d.ID, &d.Name, &d.Hostname, &d.IPAddress, &d.MACAddress,
+			&d.DeviceType, &d.Vendor, &d.Department, &d.Room, &d.Notes, &d.LastSeen); err != nil {
+			return nil, err
+		}
+		devices = append(devices, d)
+	}
+	return devices, rows.Err()
 }
 
 func (r *DeviceRepository) Create(ctx context.Context, d *models.Device) error {

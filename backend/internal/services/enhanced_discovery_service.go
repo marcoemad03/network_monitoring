@@ -30,6 +30,13 @@ type EnhancedDiscoveryService struct {
 	cfg            *config.Config
 	mu             sync.Mutex
 	pollingActive  map[uuid.UUID]bool
+	trafficSamples map[string]trafficSample
+}
+
+type trafficSample struct {
+	rxBytes int64
+	txBytes int64
+	at      time.Time
 }
 
 func NewEnhancedDiscoveryService(deviceRepo *repository.DeviceRepository, scanRepo *repository.ScanRepository, eventRepo *repository.DeviceEventRepository, deviceCtrlRepo *repository.DeviceControlRepository, internetRepo *repository.InternetRepository, hub *websocket.Hub, cfg *config.Config) *EnhancedDiscoveryService {
@@ -42,6 +49,7 @@ func NewEnhancedDiscoveryService(deviceRepo *repository.DeviceRepository, scanRe
 		hub:            hub,
 		cfg:            cfg,
 		pollingActive:  make(map[uuid.UUID]bool),
+		trafficSamples: make(map[string]trafficSample),
 	}
 }
 
@@ -106,7 +114,7 @@ func (s *EnhancedDiscoveryService) GetConnectedDevices(ctx context.Context, orgI
 		return &models.ConnectedDevicesResult{Connection: models.RouterConnectionStatus{Code: code, Message: message, APIEndpoint: vendor.BaseURL, RouterName: identity.Name, RouterVersion: identity.Version, CheckedAt: time.Now()}, Devices: []models.ConnectedDeviceView{}}, nil
 	}
 
-	return connectedDevicesResult(vendor.BaseURL, identity, entries), nil
+	return s.connectedDevicesResult(ctx, orgID, vendor.BaseURL, identity, entries), nil
 }
 
 func (s *EnhancedDiscoveryService) ConnectDevelopmentMikroTik(ctx context.Context, orgID uuid.UUID, host, username, password string, port int) (*models.ConnectedDevicesResult, error) {
@@ -136,45 +144,120 @@ func (s *EnhancedDiscoveryService) ConnectDevelopmentMikroTik(ctx context.Contex
 		return nil, fmt.Errorf("save MikroTik configuration: %w", err)
 	}
 
-	return connectedDevicesResult(endpoint, identity, entries), nil
+	return s.connectedDevicesResult(ctx, orgID, endpoint, identity, entries), nil
 }
 
-func connectedDevicesResult(endpoint string, identity *mikrotik.RouterIdentity, entries []mikrotik.EnhancedDevice) *models.ConnectedDevicesResult {
+func (s *EnhancedDiscoveryService) connectedDevicesResult(ctx context.Context, orgID uuid.UUID, endpoint string, identity *mikrotik.RouterIdentity, entries []mikrotik.EnhancedDevice) *models.ConnectedDevicesResult {
 	now := time.Now()
+	persisted, _ := s.deviceRepo.GetConnectedInventory(ctx, orgID)
+	byMAC := make(map[string]models.Device, len(persisted))
+	byIP := make(map[string]models.Device, len(persisted))
+	for _, device := range persisted {
+		if device.MACAddress != nil {
+			byMAC[strings.ToUpper(strings.TrimSpace(*device.MACAddress))] = device
+		}
+		byIP[device.IPAddress.String()] = device
+	}
 	devices := make([]models.ConnectedDeviceView, 0, len(entries))
 	for _, entry := range entries {
 		if !mikrotik.IsInSubnet172(entry.IPAddress) {
 			continue
 		}
+		mac := strings.ToUpper(strings.TrimSpace(entry.MACAddress))
+		inventory, found := byMAC[mac]
+		if !found {
+			inventory, found = byIP[entry.IPAddress]
+		}
 		name := firstNonEmpty(entry.Hostname, entry.Comment, entry.IPAddress, entry.MACAddress)
+		vendor := firstNonEmpty(entry.Vendor)
+		deviceType := inferDeviceType(entry.Hostname)
+		department, room, notes, deviceID := "", "", "", ""
+		lastSeen := now
+		if found {
+			name = firstNonEmpty(inventory.Name, entry.Hostname, entry.Comment, entry.IPAddress)
+			vendor = firstNonEmpty(stringValue(inventory.Vendor), vendor)
+			deviceType = firstNonEmpty(inventory.DeviceType, deviceType)
+			department = stringValue(inventory.Department)
+			room = inventory.Room
+			notes = stringValue(inventory.Notes)
+			deviceID = inventory.ID.String()
+			if !inventory.LastSeen.IsZero() {
+				lastSeen = inventory.LastSeen
+			}
+		}
 		connectionType := "LAN"
 		accessPoint := ""
 		if strings.EqualFold(entry.ConnectionType, "WiFi") {
 			connectionType = "WiFi"
 			accessPoint = entry.InterfaceName
 		}
-		var upload, download *float64
-		if entry.RxRateMbps > 0 {
-			value := entry.RxRateMbps
-			upload = &value
-		}
-		if entry.TxRateMbps > 0 {
-			value := entry.TxRateMbps
-			download = &value
-		}
+		upload, download := s.trafficRates(orgID, firstNonEmpty(mac, entry.IPAddress), entry.RxBytes, entry.TxBytes, now)
 		var signal *int
 		if entry.SignalStrength != 0 {
 			value := entry.SignalStrength
 			signal = &value
 		}
-		id := strings.ToUpper(entry.MACAddress)
+		id := mac
 		if id == "" {
 			id = entry.IPAddress
 		}
-		devices = append(devices, models.ConnectedDeviceView{ID: id, DeviceName: name, Hostname: entry.Hostname, IPAddress: entry.IPAddress, MACAddress: strings.ToUpper(entry.MACAddress), IsOnline: entry.IsActive && !entry.Disabled, ConnectionType: connectionType, ConnectedAccessPoint: accessPoint, InterfaceName: entry.InterfaceName, CurrentUploadMbps: upload, CurrentDownloadMbps: download, SignalStrengthDbm: signal, LastSeen: now})
+		devices = append(devices, models.ConnectedDeviceView{ID: id, DeviceID: deviceID, DeviceName: name, Hostname: entry.Hostname, IPAddress: entry.IPAddress, MACAddress: mac, Vendor: vendor, DeviceType: deviceType, IsOnline: entry.IsActive && !entry.Disabled, ConnectionType: connectionType, ConnectedAccessPoint: accessPoint, InterfaceName: entry.InterfaceName, CurrentUploadMbps: upload, CurrentDownloadMbps: download, SignalStrengthDbm: signal, Department: department, Room: room, Notes: notes, LastSeen: lastSeen})
+
+		if mac != "" {
+			macCopy := mac
+			vendorCopy := vendor
+			device := &models.Device{ID: uuid.New(), OrganizationID: orgID, Name: name, IPAddress: net.ParseIP(entry.IPAddress), MACAddress: &macCopy, DeviceType: deviceType, Status: "online", Vendor: &vendorCopy, ConnectionType: connectionType, ConnectedInterface: entry.InterfaceName, ConnectedAP: accessPoint, SignalStrengthDbm: entry.SignalStrength, TotalDownloadBytes: entry.TxBytes, TotalUploadBytes: entry.RxBytes, IsMonitored: true, FirstSeen: now, LastSeen: now}
+			if entry.Hostname != "" {
+				device.Hostname = &entry.Hostname
+			}
+			_, _, _ = s.deviceRepo.UpsertDiscovered(ctx, device)
+		}
 	}
 	sort.Slice(devices, func(i, j int) bool { return bytesCompareIP(devices[i].IPAddress, devices[j].IPAddress) < 0 })
 	return &models.ConnectedDevicesResult{Connection: models.RouterConnectionStatus{Code: "CONNECTED", Message: "Connected to MikroTik RouterOS API", Reachable: true, APIEndpoint: endpoint, RouterName: identity.Name, RouterVersion: identity.Version, CheckedAt: now}, Devices: devices}
+}
+
+func (s *EnhancedDiscoveryService) trafficRates(orgID uuid.UUID, identity string, rxBytes, txBytes int64, now time.Time) (*float64, *float64) {
+	if identity == "" || (rxBytes == 0 && txBytes == 0) {
+		return nil, nil
+	}
+	key := orgID.String() + ":" + identity
+	s.mu.Lock()
+	previous, exists := s.trafficSamples[key]
+	s.trafficSamples[key] = trafficSample{rxBytes: rxBytes, txBytes: txBytes, at: now}
+	s.mu.Unlock()
+	if !exists || !now.After(previous.at) || rxBytes < previous.rxBytes || txBytes < previous.txBytes {
+		return nil, nil
+	}
+	seconds := now.Sub(previous.at).Seconds()
+	uploadValue := float64(rxBytes-previous.rxBytes) * 8 / seconds / 1_000_000
+	downloadValue := float64(txBytes-previous.txBytes) * 8 / seconds / 1_000_000
+	return &uploadValue, &downloadValue
+}
+
+func stringValue(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return strings.TrimSpace(*value)
+}
+
+func inferDeviceType(hostname string) string {
+	name := strings.ToLower(hostname)
+	switch {
+	case strings.Contains(name, "printer"):
+		return "printer"
+	case strings.Contains(name, "camera"), strings.Contains(name, "cam-"):
+		return "camera"
+	case strings.Contains(name, "phone"), strings.Contains(name, "iphone"):
+		return "phone"
+	case strings.Contains(name, "ap-"), strings.Contains(name, "access-point"):
+		return "access_point"
+	case strings.Contains(name, "medical"), strings.Contains(name, "monitor"), strings.Contains(name, "scanner"):
+		return "medical_device"
+	default:
+		return "unknown"
+	}
 }
 
 func classifyRouterError(err error) (string, string) {

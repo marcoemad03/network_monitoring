@@ -228,6 +228,9 @@ func (c *APIConnection) Login() error {
 
 	switch sentenceType {
 	case "!done":
+		if isChallengeResponse(words) {
+			return c.challengeLoginWithWords(words)
+		}
 		c.log("[LOGIN] SUCCESS: Plain login accepted")
 		return nil
 

@@ -115,7 +115,7 @@ type RouterIdentity struct {
 	Uptime  string
 }
 
-const Subnet172 = "172.16.0.0/24"
+const Subnet172 = "172.16.0.0/8"
 
 func firstNonEmpty(values ...string) string {
 	for _, value := range values {
@@ -133,7 +133,7 @@ func IsInSubnet172(ip string) bool {
 	}
 	_, cidr, err := net.ParseCIDR(Subnet172)
 	if err != nil {
-		return true
+		return false
 	}
 	return cidr.Contains(parsed)
 }
@@ -239,6 +239,39 @@ func (c *Client) GetARPEnhanced() ([]EnhancedDevice, error) {
 	}
 	for i := range devices {
 		devices[i].Source = "arp"
+	}
+	return devices, nil
+}
+
+func (c *Client) GetHotspotHostsEnhanced() ([]EnhancedDevice, error) {
+	conn, err := c.connect()
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+
+	results, err := conn.Command("/ip/hotspot/host/print")
+	if err != nil {
+		return nil, err
+	}
+	devices := make([]EnhancedDevice, 0, len(results))
+	for _, r := range results {
+		d := EnhancedDevice{
+			MACAddress:     r["mac-address"],
+			IPAddress:      firstNonEmpty(r["address"], r["to-address"]),
+			Hostname:       firstNonEmpty(r["host-name"], r["user"]),
+			InterfaceName:  firstNonEmpty(r["interface"], r["server"]),
+			ConnectionType: "WiFi",
+			IsActive:       true,
+			Source:         "hotspot",
+			RxBytes:        parseInt64(firstNonEmpty(r["bytes-in"], r["rx-bytes"])),
+			TxBytes:        parseInt64(firstNonEmpty(r["bytes-out"], r["tx-bytes"])),
+			RxPackets:      parseInt64(firstNonEmpty(r["packets-in"], r["rx-packets"])),
+			TxPackets:      parseInt64(firstNonEmpty(r["packets-out"], r["tx-packets"])),
+		}
+		if d.MACAddress != "" || d.IPAddress != "" {
+			devices = append(devices, d)
+		}
 	}
 	return devices, nil
 }
@@ -474,6 +507,7 @@ func (c *Client) GetAllDevicesEnhanced() ([]EnhancedDevice, error) {
 		fn   func() ([]EnhancedDevice, error)
 	}{
 		{"dhcp", c.GetDHCPLeasesFull},
+		{"hotspot", c.GetHotspotHostsEnhanced},
 		{"arp", c.GetARPEnhanced},
 		{"wireless", c.GetWiFiRegistrationTable},
 		{"bridge", c.GetBridgeHostsEnhanced},
@@ -520,6 +554,7 @@ func mergeEnhancedDevice(seen map[string]EnhancedDevice, d EnhancedDevice, sourc
 	} else if _, exists := seen[key]; !exists && d.IPAddress != "" {
 		if existing, ok := seen[d.IPAddress]; ok && existing.MACAddress == "" {
 			delete(seen, d.IPAddress)
+			existing.MACAddress = d.MACAddress
 			seen[key] = existing
 		}
 	}
@@ -533,6 +568,9 @@ func mergeEnhancedDevice(seen map[string]EnhancedDevice, d EnhancedDevice, sourc
 	}
 	if existing.IPAddress == "" && d.IPAddress != "" {
 		existing.IPAddress = d.IPAddress
+	}
+	if existing.MACAddress == "" && d.MACAddress != "" {
+		existing.MACAddress = d.MACAddress
 	}
 	if existing.Hostname == "" && d.Hostname != "" {
 		existing.Hostname = d.Hostname

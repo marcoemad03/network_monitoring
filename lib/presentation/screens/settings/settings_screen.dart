@@ -6,6 +6,7 @@ import '../../../core/config/environment.dart';
 import '../../../core/theme/theme_provider.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/constants/app_constants.dart';
+import '../../../core/di/injection_container.dart';
 import '../../providers/auth/auth_provider.dart';
 import '../../router/route_names.dart';
 
@@ -73,6 +74,13 @@ class SettingsScreen extends ConsumerWidget {
             onTap: () => _showChangePasswordDialog(context, ref),
           ),
           ListTile(
+            leading: const Icon(Icons.router_outlined),
+            title: const Text('Router Credentials'),
+            subtitle: const Text('Manage saved MikroTik access details'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => _showRouterCredentialsDialog(context, ref),
+          ),
+          ListTile(
             leading: const Icon(Icons.devices),
             title: const Text('Active Sessions'),
             subtitle: const Text('Manage your login sessions'),
@@ -127,6 +135,94 @@ class SettingsScreen extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _showRouterCredentialsDialog(BuildContext context, WidgetRef ref) async {
+    final prefs = ref.read(sharedPreferencesProvider);
+    final secureStorage = ref.read(secureStorageProvider);
+    final routerCtrl = TextEditingController(
+      text: prefs.getString('mikrotik_router_ip') ?? '',
+    );
+    final userCtrl = TextEditingController(
+      text: prefs.getString('mikrotik_username') ?? 'admin',
+    );
+    final passwordCtrl = TextEditingController(
+      text: await secureStorage.read('mikrotik_password') ?? '',
+    );
+    final port = prefs.getInt('mikrotik_api_port') ?? 8728;
+    final portCtrl = TextEditingController(text: port.toString());
+
+    if (!context.mounted) return;
+    await showDialog(
+      context: context,
+      builder:
+          (ctx) => AlertDialog(
+            title: const Text('Router Credentials'),
+            content: SizedBox(
+              width: 360,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: routerCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Router IP',
+                      prefixIcon: Icon(Icons.router_outlined),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: userCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Username',
+                      prefixIcon: Icon(Icons.person_outline),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: passwordCtrl,
+                    obscureText: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Password',
+                      prefixIcon: Icon(Icons.password_outlined),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: portCtrl,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'API Port',
+                      prefixIcon: Icon(Icons.settings_ethernet),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+              FilledButton(
+                onPressed: () async {
+                  Navigator.pop(ctx);
+                  await prefs.setString('mikrotik_router_ip', routerCtrl.text.trim());
+                  await prefs.setString('mikrotik_username', userCtrl.text.trim());
+                  await prefs.setInt('mikrotik_api_port', int.tryParse(portCtrl.text) ?? 8728);
+                  await secureStorage.write('mikrotik_password', passwordCtrl.text);
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Router credentials saved locally')),
+                    );
+                  }
+                },
+                child: const Text('Save'),
+              ),
+            ],
+          ),
+    );
+    routerCtrl.dispose();
+    userCtrl.dispose();
+    passwordCtrl.dispose();
+    portCtrl.dispose();
   }
 
   void _showChangePasswordDialog(BuildContext context, WidgetRef ref) {

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/di/injection_container.dart';
+import '../../../core/security/secure_storage.dart';
 import '../../providers/device/device_provider.dart';
 import '../../router/route_names.dart';
 
@@ -29,10 +30,26 @@ class _MikroTikConnectScreenState extends ConsumerState<MikroTikConnectScreen> {
   @override
   void initState() {
     super.initState();
+    _loadSavedCredentials();
+  }
+
+  Future<void> _loadSavedCredentials() async {
     final prefs = ref.read(sharedPreferencesProvider);
-    _routerIPController.text = prefs.getString('mikrotik_router_ip') ?? '';
-    _usernameController.text = prefs.getString('mikrotik_username') ?? 'admin';
-    _apiPort = prefs.getInt('mikrotik_api_port') ?? 8728;
+    final secureStorage = ref.read(secureStorageProvider);
+    final savedRouterIp = prefs.getString('mikrotik_router_ip') ?? '';
+    final savedUsername = prefs.getString('mikrotik_username') ?? 'admin';
+    final savedPort = prefs.getInt('mikrotik_api_port') ?? 8728;
+    final savedPassword = await secureStorage.read('mikrotik_password');
+
+    if (!mounted) return;
+    setState(() {
+      _routerIPController.text = savedRouterIp;
+      _usernameController.text = savedUsername;
+      _apiPort = savedPort;
+      if (savedPassword != null && savedPassword.isNotEmpty) {
+        _passwordController.text = savedPassword;
+      }
+    });
   }
 
   @override
@@ -69,6 +86,7 @@ class _MikroTikConnectScreenState extends ConsumerState<MikroTikConnectScreen> {
       if (!connection.reachable) return;
 
       final prefs = ref.read(sharedPreferencesProvider);
+      final secureStorage = ref.read(secureStorageProvider);
       await prefs.setString(
         'mikrotik_router_ip',
         _routerIPController.text.trim(),
@@ -78,6 +96,7 @@ class _MikroTikConnectScreenState extends ConsumerState<MikroTikConnectScreen> {
         _usernameController.text.trim(),
       );
       await prefs.setInt('mikrotik_api_port', _apiPort);
+      await secureStorage.write('mikrotik_password', _passwordController.text);
       ref.invalidate(connectedDevicesProvider);
       if (mounted) context.go(RouteNames.connectedDevices);
     } on DioException catch (error) {
@@ -209,6 +228,7 @@ class _MikroTikConnectScreenState extends ConsumerState<MikroTikConnectScreen> {
                                         value == null || value.trim().isEmpty
                                             ? 'Router IP is required'
                                             : null,
+                                onFieldSubmitted: (_) => _connect(),
                               ),
                               const SizedBox(height: 16),
                               TextFormField(
@@ -222,6 +242,7 @@ class _MikroTikConnectScreenState extends ConsumerState<MikroTikConnectScreen> {
                                         value == null || value.trim().isEmpty
                                             ? 'Username is required'
                                             : null,
+                                onFieldSubmitted: (_) => _connect(),
                               ),
                               const SizedBox(height: 16),
                               TextFormField(
@@ -249,6 +270,12 @@ class _MikroTikConnectScreenState extends ConsumerState<MikroTikConnectScreen> {
                                 ),
                               ),
                               const SizedBox(height: 16),
+                              TextButton.icon(
+                                onPressed: _loadSavedCredentials,
+                                icon: const Icon(Icons.restore),
+                                label: const Text('Reload saved credentials'),
+                              ),
+                              const SizedBox(height: 8),
                               DropdownButtonFormField<int>(
                                 value: _apiPort,
                                 isExpanded: true,
