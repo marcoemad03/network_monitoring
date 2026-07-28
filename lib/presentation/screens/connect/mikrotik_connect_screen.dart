@@ -36,12 +36,6 @@ class _MikroTikConnectScreenState extends ConsumerState<MikroTikConnectScreen> {
 
   Future<void> _init() async {
     await _loadSavedCredentials();
-    if (!mounted) return;
-    if (_routerIPController.text.trim().isNotEmpty &&
-        _passwordController.text.isNotEmpty) {
-      await Future.delayed(const Duration(milliseconds: 300));
-      if (mounted) _connect();
-    }
   }
 
   Future<void> _loadSavedCredentials() async {

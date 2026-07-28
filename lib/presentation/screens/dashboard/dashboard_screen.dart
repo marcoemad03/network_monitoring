@@ -415,65 +415,7 @@ class _DashboardBody extends StatelessWidget {
   }
 
   Widget _buildTrafficMetricsRow(ThemeData theme) {
-    return Consumer(
-      builder: (context, ref, _) {
-        final samples = ref.watch(_trafficSamplesProvider);
-        final peakUp = samples.isEmpty ? summary.totalUploadMbps : ref.read(_trafficSamplesProvider.notifier).peakUpload;
-        final peakDown = samples.isEmpty ? summary.totalDownloadMbps : ref.read(_trafficSamplesProvider.notifier).peakDownload;
-        final avgUp = samples.isEmpty ? summary.totalUploadMbps : ref.read(_trafficSamplesProvider.notifier).avgUpload;
-        final avgDown = samples.isEmpty ? summary.totalDownloadMbps : ref.read(_trafficSamplesProvider.notifier).avgDownload;
-        return Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Traffic Details', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
-                const SizedBox(height: 12),
-                LayoutBuilder(
-                  builder: (context, constraints) {
-                    final isWide = constraints.maxWidth > 600;
-                    return Wrap(
-                      spacing: isWide ? 24 : 12,
-                      runSpacing: 12,
-                      children: [
-                        _trafficMetric(theme, Icons.speed, 'Current Upload', '${summary.totalUploadMbps.toStringAsFixed(2)} Mbps', Colors.green),
-                        _trafficMetric(theme, Icons.speed, 'Current Download', '${summary.totalDownloadMbps.toStringAsFixed(2)} Mbps', Colors.blue),
-                        _trafficMetric(theme, Icons.trending_up, 'Peak Upload', '${peakUp.toStringAsFixed(2)} Mbps', Colors.green.shade700),
-                        _trafficMetric(theme, Icons.trending_up, 'Peak Download', '${peakDown.toStringAsFixed(2)} Mbps', Colors.blue.shade700),
-                        _trafficMetric(theme, Icons.analytics, 'Avg Upload', '${avgUp.toStringAsFixed(2)} Mbps', Colors.green.shade300),
-                        _trafficMetric(theme, Icons.analytics, 'Avg Download', '${avgDown.toStringAsFixed(2)} Mbps', Colors.blue.shade300),
-                        _trafficMetric(theme, Icons.router, 'Router Throughput', '${(summary.totalUploadMbps + summary.totalDownloadMbps).toStringAsFixed(2)} Mbps', Colors.indigo),
-                      ],
-                    );
-                  },
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _trafficMetric(ThemeData theme, IconData icon, String label, String value, Color color) {
-    return SizedBox(
-      width: 160,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 18, color: color),
-          const SizedBox(width: 6),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(label, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-              Text(value, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold, color: color)),
-            ],
-          ),
-        ],
-      ),
-    );
+    return _TrafficMetricsSection(summary: summary, theme: theme);
   }
 
   Widget _buildDeviceDistribution(ThemeData theme) {
@@ -694,6 +636,65 @@ class _DashboardBody extends StatelessWidget {
             }),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _TrafficMetricsSection extends ConsumerWidget {
+  final DashboardLive summary;
+  final ThemeData theme;
+  const _TrafficMetricsSection({required this.summary, required this.theme});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final samples = ref.watch(_trafficSamplesProvider);
+    final peakUp = samples.isEmpty ? summary.totalUploadMbps : samples.map((s) => s.uploadMbps).reduce((a, b) => a > b ? a : b);
+    final peakDown = samples.isEmpty ? summary.totalDownloadMbps : samples.map((s) => s.downloadMbps).reduce((a, b) => a > b ? a : b);
+    final avgUp = samples.isEmpty ? summary.totalUploadMbps : samples.map((s) => s.uploadMbps).reduce((a, b) => a + b) / samples.length;
+    final avgDown = samples.isEmpty ? summary.totalDownloadMbps : samples.map((s) => s.downloadMbps).reduce((a, b) => a + b) / samples.length;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Traffic Details', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 24, runSpacing: 12,
+              children: [
+                _trafficMetric(Icons.speed, 'Current Upload', '${summary.totalUploadMbps.toStringAsFixed(2)} Mbps', Colors.green),
+                _trafficMetric(Icons.speed, 'Current Download', '${summary.totalDownloadMbps.toStringAsFixed(2)} Mbps', Colors.blue),
+                _trafficMetric(Icons.trending_up, 'Peak Upload', '${peakUp.toStringAsFixed(2)} Mbps', Colors.green.shade700),
+                _trafficMetric(Icons.trending_up, 'Peak Download', '${peakDown.toStringAsFixed(2)} Mbps', Colors.blue.shade700),
+                _trafficMetric(Icons.analytics, 'Avg Upload', '${avgUp.toStringAsFixed(2)} Mbps', Colors.green.shade300),
+                _trafficMetric(Icons.analytics, 'Avg Download', '${avgDown.toStringAsFixed(2)} Mbps', Colors.blue.shade300),
+                _trafficMetric(Icons.router, 'Router Throughput', '${(summary.totalUploadMbps + summary.totalDownloadMbps).toStringAsFixed(2)} Mbps', Colors.indigo),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _trafficMetric(IconData icon, String label, String value, Color color) {
+    return SizedBox(
+      width: 160,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 18, color: color),
+          const SizedBox(width: 6),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+              Text(value, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold, color: color)),
+            ],
+          ),
+        ],
       ),
     );
   }

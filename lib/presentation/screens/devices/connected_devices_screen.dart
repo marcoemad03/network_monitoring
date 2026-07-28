@@ -3,11 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-
-import 'package:go_router/go_router.dart';
-
 import '../../../core/services/marco_state_service.dart';
 import '../../../domain/entities/connected_device.dart';
+import '../../../domain/entities/router_connection_status.dart';
 import '../../../shared/extensions/datetime_extensions.dart';
 import '../../providers/device/device_provider.dart';
 import '../../router/route_names.dart';
@@ -171,31 +169,40 @@ class _ConnectedDevicesScreenState extends ConsumerState<ConnectedDevicesScreen>
         error: (error, _) => _ErrorState(message: error.toString().replaceFirst('Exception: ', ''), onRetry: _refresh),
         data: (result) {
           unawaited(ref.read(marcoStateServiceProvider).updateDeviceSnapshot(result.devices));
-          final devices = _visibleDevices(result.devices);
+          final banner = _ConnectionBanner(status: result.connection, total: result.devices.length);
           return RefreshIndicator(
             onRefresh: _refresh,
             child: CustomScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
               slivers: [
-                SliverToBoxAdapter(child: _ConnectionBanner(status: result.connection, total: result.devices.length)),
+                SliverToBoxAdapter(child: banner),
                 SliverToBoxAdapter(child: _buildToolbar()),
                 if (_selectedDeviceIds.isNotEmpty) SliverToBoxAdapter(child: _buildBulkActions()),
-                if (!result.connection.reachable)
-                  SliverFillRemaining(hasScrollBody: false, child: _RouterUnavailable(code: result.connection.code, message: result.connection.message))
-                else if (devices.isEmpty)
-                  const SliverFillRemaining(hasScrollBody: false, child: _EmptyState())
-                else
-                  SliverToBoxAdapter(
-                    child: LayoutBuilder(
-                      builder: (context, constraints) => constraints.maxWidth >= 1050 ? _buildTable(devices) : _buildCards(devices),
-                    ),
-                  ),
+                _buildContentSliver(connection: result.connection, devices: result.devices),
               ],
             ),
           );
         },
       ),
     );
+  }
+
+  Widget _buildContentSliver({required RouterConnectionStatus connection, required List<ConnectedDevice> devices}) {
+    final filtered = _visibleDevices(devices);
+    final isWide = MediaQuery.of(context).size.width >= 1050;
+    if (!connection.reachable) {
+      return SliverFillRemaining(
+        hasScrollBody: false,
+        child: _RouterUnavailable(code: connection.code, message: connection.message),
+      );
+    }
+    if (filtered.isEmpty) {
+      return const SliverFillRemaining(hasScrollBody: false, child: _EmptyState());
+    }
+    if (isWide) {
+      return SliverToBoxAdapter(child: _buildTable(filtered));
+    }
+    return SliverToBoxAdapter(child: _buildCards(filtered));
   }
 
   Widget _buildToolbar() => Padding(
@@ -246,8 +253,8 @@ class _ConnectedDevicesScreenState extends ConsumerState<ConnectedDevicesScreen>
     ]),
   );
 
-  Widget _buildTable(List<ConnectedDevice> devices) => Scrollbar(
-    child: SingleChildScrollView(
+  Widget _buildTable(List<ConnectedDevice> devices) {
+    return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       padding: const EdgeInsets.all(16),
       child: DataTable(
@@ -332,8 +339,8 @@ class _ConnectedDevicesScreenState extends ConsumerState<ConnectedDevicesScreen>
           );
         }).toList(),
       ),
-    ),
-  );
+    );
+  }
 
   Widget _typeBadge(String type) {
     final label = type.replaceAll('_', ' ');
