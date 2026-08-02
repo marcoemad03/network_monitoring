@@ -56,4 +56,7 @@ class RouteNames {
   static const String enhancedDeviceList = '/devices/enhanced';
   static const String connectedDevices = '/devices/connected';
   static const String activeConnections = '/devices/active-connections';
+
+  // Infrastructure
+  static const String infrastructureStatus = '/infrastructure';
 }

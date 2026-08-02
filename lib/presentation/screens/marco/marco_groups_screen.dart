@@ -23,7 +23,6 @@ class _MarcoGroupsScreenState extends ConsumerState<MarcoGroupsScreen> {
           IconButton(
             icon: const Icon(Icons.add_circle_outline),
             onPressed: _createGroup,
-            tooltip: 'Create group',
           ),
         ],
       ),

@@ -41,7 +41,7 @@ class AppConfig {
     return AppConfig(
       environment: Environment.development,
       apiBaseUrl: 'http://$host:8080',
-      wsBaseUrl: 'ws://$host:8080/ws',
+      wsBaseUrl: 'ws://$host:8080',
       appName: 'NMS Hospital (Dev)',
       appVersion: '1.0.0',
       enableLogging: true,
@@ -57,7 +57,7 @@ class AppConfig {
   factory AppConfig.staging() => const AppConfig(
         environment: Environment.staging,
         apiBaseUrl: 'https://staging-api.hospital-nms.com/api/v1',
-        wsBaseUrl: 'wss://staging-api.hospital-nms.com/ws',
+        wsBaseUrl: 'wss://staging-api.hospital-nms.com',
         appName: 'NMS Hospital (Staging)',
         appVersion: '1.0.0',
         enableLogging: true,
@@ -72,7 +72,7 @@ class AppConfig {
   factory AppConfig.production() => const AppConfig(
         environment: Environment.production,
         apiBaseUrl: 'https://api.hospital-nms.com/api/v1',
-        wsBaseUrl: 'wss://api.hospital-nms.com/ws',
+        wsBaseUrl: 'wss://api.hospital-nms.com',
         appName: 'NMS Hospital',
         appVersion: '1.0.0',
         enableLogging: false,

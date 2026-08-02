@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import '../config/backend_config.dart';
 import '../config/build_config.dart';
 import '../constants/api_constants.dart';
 import 'api_interceptors.dart';
@@ -12,17 +13,18 @@ class DioClient {
   }
 
   Dio _createDio(JwtManager jwtManager) {
+    final baseUrl = BackendConfig.instance?.apiBaseUrl ?? BuildConfig.apiBaseUrl;
     final dio = Dio(
       BaseOptions(
-        baseUrl: BuildConfig.apiBaseUrl,
+        baseUrl: baseUrl,
         connectTimeout: Duration(
-          milliseconds: BuildConfig.config.connectTimeoutMs,
+          milliseconds: BackendConfig.instance?.connectionTimeoutMs ?? BuildConfig.config.connectTimeoutMs,
         ),
         receiveTimeout: Duration(
-          milliseconds: BuildConfig.config.receiveTimeoutMs,
+          milliseconds: BackendConfig.instance?.receiveTimeoutMs ?? BuildConfig.config.receiveTimeoutMs,
         ),
         sendTimeout: Duration(
-          milliseconds: BuildConfig.config.sendTimeoutMs,
+          milliseconds: BackendConfig.instance?.receiveTimeoutMs ?? BuildConfig.config.sendTimeoutMs,
         ),
         headers: {
           ApiConstants.acceptHeader: ApiConstants.applicationJson,

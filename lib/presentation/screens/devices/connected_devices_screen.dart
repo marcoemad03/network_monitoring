@@ -125,23 +125,20 @@ class _ConnectedDevicesScreenState extends ConsumerState<ConnectedDevicesScreen>
       appBar: AppBar(
         title: const Text('Connected Devices'),
         actions: [
-          IconButton(icon: const Icon(Icons.refresh), tooltip: 'Refresh RouterOS data', onPressed: _refresh),
-          PopupMenuButton<int>(
-            tooltip: 'Auto refresh interval',
-            icon: Icon(_autoRefresh ? Icons.sync : Icons.sync_disabled),
+           IconButton(icon: const Icon(Icons.refresh), onPressed: _refresh),
+           PopupMenuButton<int>(
+             icon: Icon(_autoRefresh ? Icons.sync : Icons.sync_disabled),
             onSelected: (seconds) => setState(() { _refreshSeconds = seconds; _autoRefresh = true; _scheduleRefresh(); }),
             itemBuilder: (_) => [5, 15, 30, 60].map((seconds) => PopupMenuItem(value: seconds, child: Text('Every $seconds seconds'))).toList(),
           ),
-          IconButton(
-            icon: const Icon(Icons.lan_outlined),
-            tooltip: 'Active Connections',
-            onPressed: () => context.push(RouteNames.activeConnections),
-          ),
+           IconButton(
+             icon: const Icon(Icons.lan_outlined),
+             onPressed: () => context.push(RouteNames.activeConnections),
+           ),
           Switch(value: _autoRefresh, onChanged: (value) => setState(() { _autoRefresh = value; _scheduleRefresh(); })),
           const SizedBox(width: 12),
-          PopupMenuButton<String>(
-            tooltip: 'Columns',
-            icon: const Icon(Icons.view_column),
+           PopupMenuButton<String>(
+             icon: const Icon(Icons.view_column),
             onSelected: (col) {
               setState(() {
                 if (_visibleColumns.contains(col)) {
@@ -227,7 +224,7 @@ class _ConnectedDevicesScreenState extends ConsumerState<ConnectedDevicesScreen>
         DropdownButton<_ConnectedDeviceSort>(value: _sort, items: _ConnectedDeviceSort.values.map((v) =>
           DropdownMenuItem(value: v, child: Text('Sort: ${_sortLabel(v)}')),
         ).toList(), onChanged: (value) => setState(() => _sort = value ?? _sort)),
-        IconButton(icon: Icon(_ascending ? Icons.arrow_upward : Icons.arrow_downward), tooltip: _ascending ? 'Ascending' : 'Descending', onPressed: () => setState(() => _ascending = !_ascending)),
+        IconButton(icon: Icon(_ascending ? Icons.arrow_upward : Icons.arrow_downward), onPressed: () => setState(() => _ascending = !_ascending)),
       ],
     ),
   );

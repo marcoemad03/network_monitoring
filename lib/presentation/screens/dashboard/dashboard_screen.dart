@@ -72,47 +72,39 @@ class DashboardScreen extends ConsumerWidget {
         actions: [
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8),
-            child: Tooltip(
-              message: switch (wsState) {
-                WebSocketState.connected => 'Live',
-                WebSocketState.connecting => 'Connecting...',
-                WebSocketState.reconnecting => 'Reconnecting...',
-                WebSocketState.disconnected => 'Offline',
-              },
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 8,
-                    height: 8,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: switch (wsState) {
-                        WebSocketState.connected => Colors.green,
-                        WebSocketState.connecting => Colors.orange,
-                        WebSocketState.reconnecting => Colors.orange,
-                        WebSocketState.disconnected => Colors.grey,
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    switch (wsState) {
-                      WebSocketState.connected => 'Live',
-                      WebSocketState.connecting => '...',
-                      WebSocketState.reconnecting => '...',
-                      WebSocketState.disconnected => '',
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: switch (wsState) {
+                      WebSocketState.connected => Colors.green,
+                      WebSocketState.connecting => Colors.orange,
+                      WebSocketState.reconnecting => Colors.orange,
+                      WebSocketState.disconnected => Colors.grey,
                     },
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: switch (wsState) {
-                        WebSocketState.connected => Colors.green.shade300,
-                        _ => Colors.grey,
-                      },
-                    ),
                   ),
-                ],
-              ),
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  switch (wsState) {
+                    WebSocketState.connected => 'Live',
+                    WebSocketState.connecting => '...',
+                    WebSocketState.reconnecting => '...',
+                    WebSocketState.disconnected => '',
+                  },
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: switch (wsState) {
+                      WebSocketState.connected => Colors.green.shade300,
+                      _ => Colors.grey,
+                    },
+                  ),
+                ),
+              ],
             ),
           ),
           IconButton(
@@ -121,7 +113,6 @@ class DashboardScreen extends ConsumerWidget {
           ),
           IconButton(
             icon: const Icon(Icons.wifi_tethering),
-            tooltip: 'Network Map',
             onPressed: () => context.go(RouteNames.networkMap),
           ),
         ],
@@ -253,6 +244,7 @@ class _DashboardBody extends StatelessWidget {
         border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
           Text(count.toString(), style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: color)),
           Text(label, style: theme.textTheme.bodySmall?.copyWith(color: color)),
@@ -287,6 +279,7 @@ class _DashboardBody extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
+            mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(children: [
@@ -336,14 +329,8 @@ class _DashboardBody extends StatelessWidget {
                           : summary.totalDownloadMbps) *
                       1.3,
                   barTouchData: BarTouchData(
-                    enabled: true,
-                    touchTooltipData: BarTouchTooltipData(
-                      getTooltipItem: (group, groupIndex, rod, rodIndex) {
-                        final label = rodIndex == 0 ? 'Upload' : 'Download';
-                        return BarTooltipItem('$label\n${rod.toY.toStringAsFixed(2)} Mbps', const TextStyle());
-                      },
-                    ),
-                  ),
+                  enabled: false,
+                ),
                   titlesData: FlTitlesData(
                     show: true,
                     bottomTitles: AxisTitles(
@@ -567,6 +554,7 @@ class _DashboardBody extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 12),
           decoration: BoxDecoration(border: Border.all(color: theme.colorScheme.outlineVariant), borderRadius: BorderRadius.circular(8)),
           child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
               Icon(icon, color: theme.colorScheme.primary, size: 24),
               const SizedBox(height: 4),

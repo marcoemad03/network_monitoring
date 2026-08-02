@@ -126,12 +126,10 @@ class _AlertRulesScreenState extends ConsumerState<AlertRulesScreen> {
                           IconButton(
                             icon: const Icon(Icons.edit_outlined, size: 18),
                             onPressed: () => _showRuleDialog(rule),
-                            tooltip: 'Edit',
                           ),
                           IconButton(
                             icon: const Icon(Icons.delete_outlined, size: 18, color: Colors.red),
                             onPressed: () => _confirmDelete(rule.id, rule.name),
-                            tooltip: 'Delete',
                           ),
                         ],
                       ),

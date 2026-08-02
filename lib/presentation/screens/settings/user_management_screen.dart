@@ -39,7 +39,6 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
           IconButton(
             icon: const Icon(Icons.person_add),
             onPressed: () => _showUserDialog(context, null),
-            tooltip: 'Add User',
           ),
         ],
       ),

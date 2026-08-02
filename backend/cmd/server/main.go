@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"log"
 	"net/http"
@@ -21,7 +22,10 @@ import (
 )
 
 func main() {
-	cfg, err := config.Load()
+	port := flag.Int("port", 0, "Port for the server to listen on. Overrides .env file.")
+	flag.Parse()
+
+	cfg, err := config.Load(*port)
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}

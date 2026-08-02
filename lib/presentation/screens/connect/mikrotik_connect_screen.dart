@@ -2,10 +2,8 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/di/injection_container.dart';
-import '../../../core/security/secure_storage.dart';
 import '../../providers/device/device_provider.dart';
 import '../../router/route_names.dart';
 
@@ -25,6 +23,7 @@ class _MikroTikConnectScreenState extends ConsumerState<MikroTikConnectScreen> {
   int _apiPort = 8728;
   bool _connecting = false;
   bool _obscurePassword = true;
+  bool _buttonEnabled = false;
   String? _statusCode;
   String? _statusMessage;
 
@@ -36,6 +35,14 @@ class _MikroTikConnectScreenState extends ConsumerState<MikroTikConnectScreen> {
 
   Future<void> _init() async {
     await _loadSavedCredentials();
+    if (mounted) {
+      setState(() {
+        _statusCode = null;
+        _statusMessage = null;
+      });
+    }
+    await Future.delayed(const Duration(seconds: 3));
+    if (mounted) setState(() => _buttonEnabled = true);
   }
 
   Future<void> _loadSavedCredentials() async {
@@ -147,48 +154,51 @@ class _MikroTikConnectScreenState extends ConsumerState<MikroTikConnectScreen> {
                     flex: 4,
                     child: Container(
                       color: const Color(0xFF102A2A),
-                      padding: const EdgeInsets.all(48),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(
-                            Icons.router,
-                            size: 64,
-                            color: Color(0xFF72D6C9),
+                      child: Center(
+                        child: SingleChildScrollView(
+                          padding: const EdgeInsets.all(48),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Icon(
+                                Icons.router,
+                                size: 64,
+                                color: Color(0xFF72D6C9),
+                              ),
+                              const SizedBox(height: 28),
+                              Text(
+                                'Hospital Network\nCommand Center',
+                                style: theme.textTheme.displaySmall?.copyWith(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w800,
+                                  height: 1.05,
+                                ),
+                              ),
+                              const SizedBox(height: 20),
+                              const Text(
+                                'Development mode connects through the local Hospital NMS server directly to RouterOS. No Internet service or user login is required.',
+                                style: TextStyle(
+                                  color: Color(0xFFB5CECA),
+                                  fontSize: 16,
+                                  height: 1.5,
+                                ),
+                              ),
+                              const SizedBox(height: 32),
+                              const _Feature(
+                                icon: Icons.lock_open,
+                                text: 'JWT disabled locally',
+                              ),
+                              const _Feature(
+                                icon: Icons.lan,
+                                text: 'LAN RouterOS connection',
+                              ),
+                              const _Feature(
+                                icon: Icons.filter_alt,
+                                text: '172.16.0.0/24 devices only',
+                              ),
+                            ],
                           ),
-                          const SizedBox(height: 28),
-                          Text(
-                            'Hospital Network\nCommand Center',
-                            style: theme.textTheme.displaySmall?.copyWith(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w800,
-                              height: 1.05,
-                            ),
-                          ),
-                          const SizedBox(height: 20),
-                          const Text(
-                            'Development mode connects through the local Hospital NMS server directly to RouterOS. No Internet service or user login is required.',
-                            style: TextStyle(
-                              color: Color(0xFFB5CECA),
-                              fontSize: 16,
-                              height: 1.5,
-                            ),
-                          ),
-                          const SizedBox(height: 32),
-                          const _Feature(
-                            icon: Icons.lock_open,
-                            text: 'JWT disabled locally',
-                          ),
-                          const _Feature(
-                            icon: Icons.lan,
-                            text: 'LAN RouterOS connection',
-                          ),
-                          const _Feature(
-                            icon: Icons.filter_alt,
-                            text: '172.16.0.0/24 devices only',
-                          ),
-                        ],
+                        ),
                       ),
                     ),
                   ),
@@ -222,7 +232,7 @@ class _MikroTikConnectScreenState extends ConsumerState<MikroTikConnectScreen> {
                               const SizedBox(height: 32),
                               TextFormField(
                                 controller: _routerIPController,
-                                autofocus: true,
+
                                 decoration: const InputDecoration(
                                   labelText: 'Router IP',
                                   hintText: '172.16.0.1',
@@ -233,7 +243,6 @@ class _MikroTikConnectScreenState extends ConsumerState<MikroTikConnectScreen> {
                                         value == null || value.trim().isEmpty
                                             ? 'Router IP is required'
                                             : null,
-                                onFieldSubmitted: (_) => _connect(),
                               ),
                               const SizedBox(height: 16),
                               TextFormField(
@@ -247,13 +256,11 @@ class _MikroTikConnectScreenState extends ConsumerState<MikroTikConnectScreen> {
                                         value == null || value.trim().isEmpty
                                             ? 'Username is required'
                                             : null,
-                                onFieldSubmitted: (_) => _connect(),
                               ),
                               const SizedBox(height: 16),
                               TextFormField(
                                 controller: _passwordController,
                                 obscureText: _obscurePassword,
-                                onFieldSubmitted: (_) => _connect(),
                                 decoration: InputDecoration(
                                   labelText: 'Password',
                                   prefixIcon: const Icon(
@@ -359,7 +366,12 @@ class _MikroTikConnectScreenState extends ConsumerState<MikroTikConnectScreen> {
                               ],
                               const SizedBox(height: 24),
                               FilledButton.icon(
-                                onPressed: _connecting ? null : _connect,
+                                onPressed:
+                                    _connecting || !_buttonEnabled
+                                        ? null
+                                        : () {
+                                          _connect();
+                                        },
                                 icon: const Icon(Icons.cable),
                                 label: Padding(
                                   padding: const EdgeInsets.symmetric(

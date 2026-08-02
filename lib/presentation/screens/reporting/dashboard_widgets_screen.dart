@@ -99,12 +99,10 @@ class _DashboardWidgetsScreenState extends ConsumerState<DashboardWidgetsScreen>
                           IconButton(
                             icon: const Icon(Icons.arrow_upward, size: 18),
                             onPressed: isFirst ? null : () => _moveWidget(index, index - 1),
-                            tooltip: 'Move up',
                           ),
                           IconButton(
                             icon: const Icon(Icons.arrow_downward, size: 18),
                             onPressed: isLast ? null : () => _moveWidget(index, index + 1),
-                            tooltip: 'Move down',
                           ),
                           Switch(
                             value: widget.isVisible,

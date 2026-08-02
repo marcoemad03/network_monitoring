@@ -121,7 +121,6 @@ class _MarcoGroupDetailScreenState extends ConsumerState<MarcoGroupDetailScreen>
           IconButton(
             onPressed: _isSaving ? null : _saveGroup,
             icon: const Icon(Icons.save_outlined),
-            tooltip: 'Save policies',
           ),
         ],
       ),

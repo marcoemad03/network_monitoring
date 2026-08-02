@@ -19,9 +19,7 @@ void main() async {
     return true;
   };
 
-  await AppBootstrap.initialize(
-    environment: Environment.development,
-  );
+  await AppBootstrap.initialize(environment: Environment.development);
 
   await _configureWindow();
 

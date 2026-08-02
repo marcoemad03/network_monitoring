@@ -16,7 +16,6 @@ class PolicyListScreen extends ConsumerWidget {
         actions: [
           IconButton(
             icon: const Icon(Icons.sync),
-            tooltip: 'Sync with MikroTik',
             onPressed: () async {
               await ref.read(assetRepositoryProvider).syncPolicies();
               if (context.mounted) {

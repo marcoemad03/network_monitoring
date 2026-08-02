@@ -23,23 +23,33 @@ class AppScaffold extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         leading: Builder(
-          builder: (ctx) => IconButton(
-            icon: const Icon(Icons.menu),
-            onPressed: () => Scaffold.of(ctx).openDrawer(),
-          ),
+          builder:
+              (ctx) => IconButton(
+                icon: const Icon(Icons.menu),
+                onPressed: () => Scaffold.of(ctx).openDrawer(),
+              ),
         ),
       ),
       drawer: NavigationDrawer(
-        onDestinationSelected: (index) => _onDestinationSelected(context, index),
+        onDestinationSelected:
+            (index) => _onDestinationSelected(context, index),
         selectedIndex: _calculateSelectedIndex(context),
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 24, 16, 16),
             child: Row(
               children: [
-                Icon(Icons.network_check, color: Theme.of(context).colorScheme.primary),
+                Icon(
+                  Icons.network_check,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
                 const SizedBox(width: 10),
-                Text('NMS', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                Text(
+                  'NMS',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ],
             ),
           ),
@@ -62,28 +72,29 @@ class AppScaffold extends StatelessWidget {
         children: [
           SizedBox(
             width: 88,
-            child: SingleChildScrollView(
-              padding: EdgeInsets.only(top: 8),
-              child: NavigationRail(
-                selectedIndex: _calculateSelectedIndex(context),
-                onDestinationSelected: (index) => _onDestinationSelected(context, index),
-                labelType: NavigationRailLabelType.all,
-                leading: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  child: Icon(
-                    Icons.network_check,
-                    size: 28,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
+            child: NavigationRail(
+              selectedIndex: _calculateSelectedIndex(context),
+              onDestinationSelected:
+                  (index) => _onDestinationSelected(context, index),
+              labelType: NavigationRailLabelType.selected,
+              leading: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Icon(
+                  Icons.network_check,
+                  size: 26,
+                  color: Theme.of(context).colorScheme.primary,
                 ),
-                destinations: _navItems
-                    .map((item) => NavigationRailDestination(
+              ),
+              destinations:
+                  _navItems
+                      .map(
+                        (item) => NavigationRailDestination(
                           icon: Icon(item.icon),
                           selectedIcon: Icon(item.selectedIcon),
                           label: Text(item.label),
-                        ))
-                    .toList(),
-              ),
+                        ),
+                      )
+                      .toList(),
             ),
           ),
           const VerticalDivider(width: 1),
@@ -111,17 +122,28 @@ class AppScaffold extends StatelessWidget {
 
   void _onDestinationSelected(BuildContext context, int index) {
     switch (index) {
-      case 0: context.go(RouteNames.dashboard);
-      case 1: context.go(RouteNames.devices);
-      case 2: context.go(RouteNames.connectedDevices);
-      case 3: context.go(RouteNames.alerts);
-      case 4: context.go(RouteNames.networkMap);
-      case 5: context.go(RouteNames.reporting);
-      case 6: context.go(RouteNames.internetManagement);
-      case 7: context.go(RouteNames.settings);
-      case 8: context.go(RouteNames.marcoGroups);
-      case 9: context.go(RouteNames.assetList);
-      case 10: context.go(RouteNames.auditLog);
+      case 0:
+        context.go(RouteNames.dashboard);
+      case 1:
+        context.go(RouteNames.devices);
+      case 2:
+        context.go(RouteNames.connectedDevices);
+      case 3:
+        context.go(RouteNames.alerts);
+      case 4:
+        context.go(RouteNames.networkMap);
+      case 5:
+        context.go(RouteNames.reporting);
+      case 6:
+        context.go(RouteNames.internetManagement);
+      case 7:
+        context.go(RouteNames.settings);
+      case 8:
+        context.go(RouteNames.marcoGroups);
+      case 9:
+        context.go(RouteNames.assetList);
+      case 10:
+        context.go(RouteNames.auditLog);
     }
   }
 }

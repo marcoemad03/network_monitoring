@@ -46,6 +46,7 @@ import '../screens/marco/marco_groups_screen.dart';
 import '../screens/marco/marco_group_detail_screen.dart';
 import '../screens/assets/asset_list_screen.dart';
 import '../screens/assets/asset_detail_screen.dart';
+import '../screens/infrastructure/infrastructure_status_screen.dart';
 import 'route_names.dart';
 import '../widgets/layout/app_scaffold.dart';
 
@@ -178,6 +179,10 @@ class AppRouter {
               GoRoute(
                 path: RouteNames.vendorIntegrations,
                 builder: (context, state) => const VendorIntegrationsScreen(),
+              ),
+              GoRoute(
+                path: RouteNames.infrastructureStatus,
+                builder: (context, state) => const InfrastructureStatusScreen(),
               ),
               GoRoute(
                 path: RouteNames.settings,

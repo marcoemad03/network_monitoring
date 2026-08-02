@@ -62,7 +62,6 @@ class _FloorMapViewerScreenState extends ConsumerState<FloorMapViewerScreen> {
           ),
           IconButton(
             icon: const Icon(Icons.my_location),
-            tooltip: 'Reset zoom',
             onPressed: () => _transformController.value = Matrix4.identity(),
           ),
           const SizedBox(width: 8),
@@ -234,38 +233,35 @@ class _FloorMapViewerScreenState extends ConsumerState<FloorMapViewerScreen> {
                             'y_coord': newPos.dy,
                           });
                         },
-                        child: Tooltip(
-                          message: '${device.deviceName}\n${device.ipAddress ?? device.deviceId}\n${device.status}',
-                          child: Semantics(
-                            label: '${device.deviceName}, ${device.status}',
-                            button: true,
-                            child: InkWell(
-                              key: ValueKey('floor-map-device-${device.deviceId}'),
-                              customBorder: const CircleBorder(),
-                              onTap: () => context.push(
-                                RouteNames.deviceDetail.replaceAll(':id', device.deviceId),
-                              ),
-                              child: AnimatedContainer(
-                                duration: const Duration(milliseconds: 150),
-                                width: radius * 2,
-                                height: radius * 2,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: floorMapStatusColor(device.status),
-                                  border: Border.all(
-                                    color: highlighted ? Colors.yellowAccent : Colors.white,
-                                    width: highlighted ? 4 : 2,
-                                  ),
-                                  boxShadow: const [BoxShadow(color: Colors.black38, blurRadius: 4)],
+                        child: Semantics(
+                          label: '${device.deviceName}, ${device.status}',
+                          button: true,
+                          child: InkWell(
+                            key: ValueKey('floor-map-device-${device.deviceId}'),
+                            customBorder: const CircleBorder(),
+                            onTap: () => context.push(
+                              RouteNames.deviceDetail.replaceAll(':id', device.deviceId),
+                            ),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 150),
+                              width: radius * 2,
+                              height: radius * 2,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: floorMapStatusColor(device.status),
+                                border: Border.all(
+                                  color: highlighted ? Colors.yellowAccent : Colors.white,
+                                  width: highlighted ? 4 : 2,
                                 ),
-                                child: const Icon(Icons.devices, size: 13, color: Colors.white),
+                                boxShadow: const [BoxShadow(color: Colors.black38, blurRadius: 4)],
                               ),
+                              child: const Icon(Icons.devices, size: 13, color: Colors.white),
                             ),
                           ),
-                        ),
+                          ),
                       ),
                     );
-                  }),
+                    }),
                 ],
               ),
             ),

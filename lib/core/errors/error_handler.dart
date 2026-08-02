@@ -43,13 +43,13 @@ class ErrorHandler {
         return TimeoutFailure();
 
       case DioExceptionType.connectionError:
-        return const NetworkFailure();
+        return _classifyConnectionError(error);
 
       case DioExceptionType.badResponse:
         return _handleStatusCode(error.response);
 
       case DioExceptionType.cancel:
-        return const NetworkFailure(message: 'Request was cancelled');
+        return NetworkFailure.cancelled();
 
       case DioExceptionType.badCertificate:
         return const ServerFailure(
@@ -60,6 +60,31 @@ class ErrorHandler {
       default:
         return UnknownFailure(message: error.message ?? 'Unknown error');
     }
+  }
+
+  static NetworkFailure _classifyConnectionError(DioException error) {
+    final message = error.message ?? '';
+    if (message.contains('Connection refused')) {
+      return NetworkFailure.backendNotRunning();
+    }
+    if (message.contains('No address associated') || 
+        message.contains('Failed host lookup') ||
+        message.contains('Cannot resolve')) {
+      return NetworkFailure.invalidBackendUrl();
+    }
+    if (message.contains('Connection timed out') || 
+        message.contains('timed out')) {
+      return NetworkFailure.timeout();
+    }
+    // Check for specific socket error codes
+    final socketError = error.error?.toString() ?? '';
+    if (socketError.contains('10048')) {
+      return NetworkFailure.portInUse();
+    }
+    if (socketError.contains('10061')) {
+      return NetworkFailure.backendNotRunning();
+    }
+    return NetworkFailure.firewallBlocking();
   }
 
   static Failure _handleStatusCode(Response? response) {

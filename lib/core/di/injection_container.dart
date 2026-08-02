@@ -4,11 +4,14 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
+import '../config/backend_config.dart';
 import '../network/dio_client.dart';
 import '../network/network_info.dart';
 import '../network/websocket_client.dart';
+import '../network/health_check_service.dart';
 import '../security/jwt_manager.dart';
 import '../security/secure_storage.dart';
+import '../services/backend_manager.dart';
 
 final secureStorageProvider = Provider<SecureStorage>((ref) => SecureStorage());
 
@@ -38,4 +41,21 @@ final webSocketClientProvider = Provider<WebSocketClient>(
 
 final sharedPreferencesProvider = Provider<SharedPreferences>((ref) {
   throw UnimplementedError('Must be overridden in main.dart');
+});
+
+final backendConfigProvider = Provider<BackendConfig>((ref) {
+  final config = BackendConfig.instance;
+  if (config == null) {
+    throw StateError('BackendConfig not initialized. Call AppBootstrap.initialize first.');
+  }
+  return config;
+});
+
+final backendManagerProvider = Provider<BackendManager>((ref) {
+  final config = ref.watch(backendConfigProvider);
+  return BackendManager(config);
+});
+
+final healthCheckServiceProvider = Provider<HealthCheckService>((ref) {
+  return ref.watch(backendManagerProvider).healthCheckService;
 });

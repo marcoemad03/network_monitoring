@@ -226,34 +226,31 @@ class _FloorMapEditorScreenState extends ConsumerState<FloorMapEditorScreen> {
                           });
                         },
                         onPanEnd: (_) => _persistPosition(_devices![index]),
-                        child: Tooltip(
-                          message: '${device.deviceName}\n${device.status}',
-                          child: Container(
-                            width: radius * 2,
-                            height: radius * 2,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: floorMapStatusColor(device.status),
-                              border: Border.all(
-                                color:
-                                    highlighted
-                                        ? Colors.yellowAccent
-                                        : Colors.white,
-                                width: highlighted ? 4 : 2,
-                              ),
-                              boxShadow: const [
-                                BoxShadow(color: Colors.black38, blurRadius: 4),
-                              ],
-                            ),
-                            child: const Icon(
-                              Icons.devices,
-                              size: 13,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
-                      ),
-                    );
+                         child: Container(
+                             width: radius * 2,
+                             height: radius * 2,
+                             decoration: BoxDecoration(
+                               shape: BoxShape.circle,
+                               color: floorMapStatusColor(device.status),
+                               border: Border.all(
+                                 color:
+                                     highlighted
+                                         ? Colors.yellowAccent
+                                         : Colors.white,
+                                 width: highlighted ? 4 : 2,
+                               ),
+                               boxShadow: const [
+                                 BoxShadow(color: Colors.black38, blurRadius: 4),
+                               ],
+                             ),
+                             child: const Icon(
+                               Icons.devices,
+                               size: 13,
+                               color: Colors.white,
+                             ),
+                           ),
+                         ),
+                       );
                   }),
                   if (_selectedDeviceId != null)
                     const Align(

@@ -87,11 +87,10 @@ class _AuditLogScreenState extends ConsumerState<AuditLogScreen> {
       appBar: AppBar(
         title: const Text('Audit Log'),
         actions: [
-          IconButton(icon: const Icon(Icons.file_download), onPressed: () {}, tooltip: 'Export'),
+          IconButton(icon: const Icon(Icons.file_download), onPressed: () {}),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: () => ref.invalidate(_auditLogsProvider),
-            tooltip: 'Refresh',
           ),
         ],
       ),

@@ -63,17 +63,14 @@ class _NetworkMapScreenState extends ConsumerState<NetworkMapScreen> {
           IconButton(
             icon: const Icon(Icons.zoom_in),
             onPressed: () => _zoom(1.2),
-            tooltip: 'Zoom In',
           ),
           IconButton(
             icon: const Icon(Icons.zoom_out),
             onPressed: () => _zoom(0.8),
-            tooltip: 'Zoom Out',
           ),
           IconButton(
             icon: const Icon(Icons.my_location),
             onPressed: _centerMap,
-            tooltip: 'Center Map',
           ),
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -81,7 +78,6 @@ class _NetworkMapScreenState extends ConsumerState<NetworkMapScreen> {
               ref.invalidate(allDevicesProvider);
               ref.invalidate(connectionsProvider);
             },
-            tooltip: 'Refresh Topology',
           ),
         ],
       ),
@@ -570,12 +566,10 @@ class _DeviceInfoCard extends StatelessWidget {
                 IconButton(
                   icon: const Icon(Icons.open_in_new, size: 16),
                   onPressed: onNavigate,
-                  tooltip: 'Open Details',
                 ),
                 IconButton(
                   icon: const Icon(Icons.close, size: 16),
                   onPressed: onClose,
-                  tooltip: 'Close',
                 ),
               ],
             ),

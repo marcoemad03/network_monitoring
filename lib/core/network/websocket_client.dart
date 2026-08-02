@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:web_socket_channel/io.dart';
+import '../config/backend_config.dart';
 import '../config/build_config.dart';
 import '../config/environment.dart';
 import '../utils/logger.dart';
@@ -37,7 +38,8 @@ class WebSocketClient {
     _setState(WebSocketState.connecting);
 
     try {
-      final uri = Uri.parse('${BuildConfig.wsBaseUrl}$path');
+      final wsBase = BackendConfig.instance?.wsBaseUrl ?? BuildConfig.wsBaseUrl;
+      final uri = Uri.parse('$wsBase$path');
       final wsHeaders = <String, dynamic>{};
       if (BuildConfig.environment != Environment.development) {
         final token = await _jwtManager.getAccessToken();

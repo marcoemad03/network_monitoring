@@ -46,7 +46,6 @@ class _DeviceDetailScreenState extends ConsumerState<DeviceDetailScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.history),
-            tooltip: 'View Events',
             onPressed: () => context.push('/devices/${widget.id}/events'),
           ),
           IconButton(

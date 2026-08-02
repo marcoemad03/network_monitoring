@@ -67,11 +67,18 @@ type Config struct {
 	TracerouteMaxHops int
 }
 
-func Load() (*Config, error) {
+func Load(cliPort int) (*Config, error) {
 	_ = godotenv.Load()
 
+	var serverPort int
+	if cliPort > 0 {
+		serverPort = cliPort
+	} else {
+		serverPort = getEnvInt("SERVER_PORT", 8080)
+	}
+
 	cfg := &Config{
-		ServerPort: getEnvInt("SERVER_PORT", 8080),
+		ServerPort: serverPort,
 		ServerHost: getEnv("SERVER_HOST", "0.0.0.0"),
 		Environment: getEnv("ENVIRONMENT", "development"),
 

@@ -76,6 +76,7 @@ func RegisterRoutes(router *gin.Engine, db *database.DB, hub *websocket.Hub, cfg
 	deviceCtrlHandler := handlers.NewDeviceControlHandler(deviceControlService, deviceEventService, enhancedDiscoverySvc)
 	hotspotWelcomeHandler := handlers.NewHotspotWelcomeHandler(hotspotWelcomeService)
 	telegramHandler := handlers.NewTelegramHandler(telegramService)
+	healthHandler := handlers.NewHealthHandler(db, enhancedDiscoverySvc)
 
 	// Reporting handlers
 	logsHandler := handlers.NewLogsHandler(loggingService)
@@ -90,9 +91,12 @@ func RegisterRoutes(router *gin.Engine, db *database.DB, hub *websocket.Hub, cfg
 	api.Use(middleware.RequestLogger())
 	api.Use(middleware.RateLimiter(cfg))
 
-	api.GET("/health", func(c *gin.Context) {
-		c.JSON(200, gin.H{"status": "ok", "service": "hospital-nms"})
+	api.GET("/ping", func(c *gin.Context) {
+		c.JSON(200, gin.H{"message": "pong"})
 	})
+
+	api.GET("/health", healthHandler.Check)
+	api.POST("/development/mikrotik/connect", middleware.DevelopmentAuthContext(), deviceCtrlHandler.ConnectDevelopmentMikroTik)
 
 	auth := api.Group("/auth")
 	if !strings.EqualFold(cfg.Environment, "development") {
@@ -106,7 +110,6 @@ func RegisterRoutes(router *gin.Engine, db *database.DB, hub *websocket.Hub, cfg
 	protected := api.Group("")
 	if strings.EqualFold(cfg.Environment, "development") {
 		protected.Use(middleware.DevelopmentAuthContext())
-		api.POST("/development/mikrotik/connect", middleware.DevelopmentAuthContext(), deviceCtrlHandler.ConnectDevelopmentMikroTik)
 	} else {
 		protected.Use(middleware.JWTAuth(cfg))
 	}

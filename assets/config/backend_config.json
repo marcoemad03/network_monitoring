@@ -1,0 +1,12 @@
+{
+  "host": "localhost",
+  "port": 8080,
+  "useTls": false,
+  "autoStartBackend": true,
+  "backendExecutablePath": "backend/server.exe",
+  "backendWorkingDirectory": "backend",
+  "healthCheckIntervalSeconds": 30,
+  "healthCheckTimeoutMs": 5000,
+  "connectionTimeoutMs": 10000,
+  "receiveTimeoutMs": 10000
+}

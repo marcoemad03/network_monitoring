@@ -40,12 +40,10 @@ class _DeviceEventsScreenState extends ConsumerState<DeviceEventsScreen> {
           IconButton(
             icon: const Icon(Icons.filter_list),
             onPressed: () {},
-            tooltip: 'Filter',
           ),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _onRefresh,
-            tooltip: 'Refresh',
           ),
         ],
       ),
