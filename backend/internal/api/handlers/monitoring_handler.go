@@ -144,6 +144,15 @@ func (h *MonitoringHandler) GetDeviceLatestMetrics(c *gin.Context) {
 		return
 	}
 
+	// A reading that old describes the past; do not present it as the device now.
+	if time.Since(metrics.Timestamp) > services.MetricsFreshFor {
+		c.JSON(http.StatusNotFound, gin.H{
+			"success": false, "message": "No recent measurement",
+			"error_code": "NOT_FOUND",
+		})
+		return
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"data":    metrics,
@@ -275,4 +284,19 @@ func (h *MonitoringHandler) GetDeviceTrafficHistory(c *gin.Context) {
 		"data":    history,
 		"message": "Traffic history retrieved",
 	})
+}
+
+// GetEquipment lists the registered equipment with the latest ping of each.
+func (h *MonitoringHandler) GetEquipment(c *gin.Context) {
+	orgID, err := parseUUID(c.GetString("org_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid organization", "error_code": "VALIDATION_ERROR"})
+		return
+	}
+	rows, err := h.monitoringService.ListEquipment(c.Request.Context(), orgID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to load equipment", "error_code": "SERVER_ERROR"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": rows, "message": "Equipment retrieved"})
 }

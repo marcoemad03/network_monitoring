@@ -44,14 +44,34 @@ func (s *DeviceService) Create(ctx context.Context, device *models.Device, userI
 	if device.DeviceType == "" {
 		device.DeviceType = "unknown"
 	}
+	device.IPAddress = NormalizeIP(device.IPAddress)
+	if err := ValidateDevice(device); err != nil {
+		return err
+	}
+	if used, err := s.deviceRepo.IPInUse(ctx, device.OrganizationID, device.IPAddress.String(), uuid.Nil); err == nil && used {
+		return &DeviceInputError{"Another device already uses this IP address"}
+	}
 
 	return s.deviceRepo.Create(ctx, device)
 }
 
 func (s *DeviceService) Update(ctx context.Context, device *models.Device, userID uuid.UUID) error {
+	return s.UpdateFields(ctx, device, nil, userID)
+}
+
+// UpdateFields saves an update; present names the JSON keys the request had, so
+// fields it left out keep their stored value.
+func (s *DeviceService) UpdateFields(ctx context.Context, device *models.Device, present map[string]bool, userID uuid.UUID) error {
 	existing, err := s.deviceRepo.GetByID(ctx, device.ID)
 	if err != nil {
 		return err
+	}
+	MergeDeviceUpdate(existing, device, present)
+	if err := ValidateDevice(device); err != nil {
+		return err
+	}
+	if used, err := s.deviceRepo.IPInUse(ctx, existing.OrganizationID, device.IPAddress.String(), device.ID); err == nil && used {
+		return &DeviceInputError{"Another device already uses this IP address"}
 	}
 
 	device.OrganizationID = existing.OrganizationID

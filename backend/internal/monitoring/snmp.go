@@ -90,32 +90,34 @@ func (c *SNMPCollector) collectDevice(ctx context.Context, deviceID uuid.UUID) {
 		logger.Error("Failed to store SNMP ping", "error", err, "device_id", deviceID)
 	}
 
-	metrics := SimulateMetrics(deviceID, deviceType)
-	metrics.AverageLatencyMs = &pingResult.AvgRttMs
-	metrics.MaxLatencyMs = &pingResult.MaxRttMs
-	metrics.PacketLossPercent = &pingResult.PacketLossPercent
-	if err := c.monRepo.InsertMetrics(ctx, metrics); err != nil {
-		logger.Error("Failed to store SNMP metrics", "error", err, "device_id", deviceID)
+	update := map[string]interface{}{
+		"device_id": deviceID,
+		"type":      "snmp",
+		"ping":      pingModel,
 	}
+	if simulating() {
+		metrics := SimulateMetrics(deviceID, deviceType)
+		metrics.AverageLatencyMs = &pingResult.AvgRttMs
+		metrics.MaxLatencyMs = &pingResult.MaxRttMs
+		metrics.PacketLossPercent = &pingResult.PacketLossPercent
+		if err := c.monRepo.InsertMetrics(ctx, metrics); err != nil {
+			logger.Error("Failed to store SNMP metrics", "error", err, "device_id", deviceID)
+		}
 
-	traffic := SimulateTraffic(deviceID, nil)
-	if err := c.monRepo.InsertTraffic(ctx, traffic); err != nil {
-		logger.Error("Failed to store SNMP traffic", "error", err, "device_id", deviceID)
+		traffic := SimulateTraffic(deviceID, nil)
+		if err := c.monRepo.InsertTraffic(ctx, traffic); err != nil {
+			logger.Error("Failed to store SNMP traffic", "error", err, "device_id", deviceID)
+		}
+
+		speedTest := SimulateSpeedTest(deviceID)
+		if err := c.monRepo.InsertSpeedTest(ctx, speedTest); err != nil {
+			logger.Error("Failed to store speed test", "error", err, "device_id", deviceID)
+		}
+		update["metrics"] = metrics
+		update["traffic"] = traffic
+		update["speed_test"] = speedTest
 	}
-
-	speedTest := SimulateSpeedTest(deviceID)
-	if err := c.monRepo.InsertSpeedTest(ctx, speedTest); err != nil {
-		logger.Error("Failed to store speed test", "error", err, "device_id", deviceID)
-	}
-
-	c.hub.BroadcastMessage("device_update", map[string]interface{}{
-		"device_id":  deviceID,
-		"type":       "snmp",
-		"ping":       pingModel,
-		"metrics":    metrics,
-		"traffic":    traffic,
-		"speed_test": speedTest,
-	})
+	c.hub.BroadcastMessage("device_update", update)
 }
 
 func (c *SNMPCollector) repositoryDevice(ctx context.Context, id uuid.UUID) (*models.Device, error) {

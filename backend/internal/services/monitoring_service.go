@@ -57,3 +57,14 @@ func (s *MonitoringService) GetPingHistory(ctx context.Context, deviceID uuid.UU
 func (s *MonitoringService) GetTrafficHistory(ctx context.Context, deviceID uuid.UUID, from, to time.Time) ([]models.DeviceTraffic, error) {
 	return s.monRepo.GetTrafficHistory(ctx, deviceID, from, to)
 }
+
+// EquipmentKinds are the registered device types listed on the Equipment page.
+var EquipmentKinds = []string{"router", "switch", "server", "firewall", "access_point", "printer", "medical_device", "camera", "iot"}
+
+// ListEquipment returns the registered equipment with the latest ping of each.
+func (s *MonitoringService) ListEquipment(ctx context.Context, orgID uuid.UUID) ([]repository.EquipmentRow, error) {
+	return s.monRepo.ListEquipment(ctx, orgID, EquipmentKinds)
+}
+
+// MetricsFreshFor is how old a device reading may be and still be shown as current.
+const MetricsFreshFor = 15 * time.Minute

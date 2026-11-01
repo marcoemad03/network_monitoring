@@ -112,26 +112,28 @@ func (m *Monitor) pollDevice(ctx context.Context, deviceID uuid.UUID) {
 		logger.Error("Failed to update device status", "error", err, "device_id", deviceID)
 	}
 
-	metrics := SimulateMetrics(deviceID, deviceType)
-	metrics.AverageLatencyMs = &pingResult.AvgRttMs
-	metrics.MaxLatencyMs = &pingResult.MaxRttMs
-	metrics.PacketLossPercent = &pingResult.PacketLossPercent
-	if err := m.monRepo.InsertMetrics(ctx, metrics); err != nil {
-		logger.Error("Failed to store metrics", "error", err, "device_id", deviceID)
-	}
-
-	traffic := SimulateTraffic(deviceID, nil)
-	if err := m.monRepo.InsertTraffic(ctx, traffic); err != nil {
-		logger.Error("Failed to store traffic", "error", err, "device_id", deviceID)
-	}
-
-	m.hub.BroadcastMessage("device_update", map[string]interface{}{
+	update := map[string]interface{}{
 		"device_id": deviceID,
 		"status":    status,
 		"ping":      pingModel,
-		"metrics":   metrics,
-		"traffic":   traffic,
-	})
+	}
+	if simulating() {
+		metrics := SimulateMetrics(deviceID, deviceType)
+		metrics.AverageLatencyMs = &pingResult.AvgRttMs
+		metrics.MaxLatencyMs = &pingResult.MaxRttMs
+		metrics.PacketLossPercent = &pingResult.PacketLossPercent
+		if err := m.monRepo.InsertMetrics(ctx, metrics); err != nil {
+			logger.Error("Failed to store metrics", "error", err, "device_id", deviceID)
+		}
+
+		traffic := SimulateTraffic(deviceID, nil)
+		if err := m.monRepo.InsertTraffic(ctx, traffic); err != nil {
+			logger.Error("Failed to store traffic", "error", err, "device_id", deviceID)
+		}
+		update["metrics"] = metrics
+		update["traffic"] = traffic
+	}
+	m.hub.BroadcastMessage("device_update", update)
 }
 
 func (m *Monitor) broadcastDashboardSummary(ctx context.Context) {

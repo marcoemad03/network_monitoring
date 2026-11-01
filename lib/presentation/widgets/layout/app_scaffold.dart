@@ -107,7 +107,7 @@ class AppScaffold extends StatelessWidget {
   int _calculateSelectedIndex(BuildContext context) {
     final location = GoRouterState.of(context).uri.toString();
     if (location.startsWith(RouteNames.dashboard)) return 0;
-    if (location.startsWith(RouteNames.connectedDevices)) return 2;
+    if (location.startsWith(RouteNames.deviceInfrastructure)) return 2;
     if (location.startsWith('/devices')) return 1;
     if (location.startsWith('/alerts')) return 3;
     if (location.startsWith('/network')) return 4;
@@ -127,7 +127,7 @@ class AppScaffold extends StatelessWidget {
       case 1:
         context.go(RouteNames.devices);
       case 2:
-        context.go(RouteNames.connectedDevices);
+        context.go(RouteNames.deviceInfrastructure);
       case 3:
         context.go(RouteNames.alerts);
       case 4:
@@ -151,7 +151,7 @@ class AppScaffold extends StatelessWidget {
 const _navItems = <_NavItem>[
   _NavItem(Icons.dashboard_outlined, Icons.dashboard, 'Dashboard'),
   _NavItem(Icons.devices_outlined, Icons.devices, 'Devices'),
-  _NavItem(Icons.lan_outlined, Icons.lan, 'Connected'),
+  _NavItem(Icons.router_outlined, Icons.router, 'Equipment'),
   _NavItem(Icons.warning_amber_outlined, Icons.warning_amber, 'Alerts'),
   _NavItem(Icons.hub_outlined, Icons.hub, 'Network'),
   _NavItem(Icons.analytics_outlined, Icons.analytics, 'Reports'),

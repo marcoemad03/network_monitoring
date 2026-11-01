@@ -314,3 +314,53 @@ func (r *MonitoringRepository) GetDeviceByID(ctx context.Context, id uuid.UUID) 
 	}
 	return &d, nil
 }
+
+// EquipmentRow is a registered device with the outcome of its latest ping.
+type EquipmentRow struct {
+	ID          uuid.UUID  `json:"id"`
+	Name        string     `json:"name"`
+	IPAddress   string     `json:"ip_address"`
+	DeviceType  string     `json:"device_type"`
+	Status      string     `json:"status"`
+	Vendor      string     `json:"vendor"`
+	Model       string     `json:"model"`
+	Location    string     `json:"location"`
+	IsCritical  bool       `json:"is_critical"`
+	IsPinned    bool       `json:"is_pinned"`
+	IsMonitored bool       `json:"is_monitored"`
+	LastSeen    time.Time  `json:"last_seen"`
+	PingAvgMs   *float64   `json:"ping_avg_ms"`
+	PingLossPct *float64   `json:"ping_loss_percent"`
+	PingAt      *time.Time `json:"ping_at"`
+}
+
+// ListEquipment returns the registered devices of the given kinds with their
+// latest ping, in one query.
+func (r *MonitoringRepository) ListEquipment(ctx context.Context, orgID uuid.UUID, kinds []string) ([]EquipmentRow, error) {
+	rows, err := r.db.Query(ctx,
+		`SELECT d.id, d.name, regexp_replace(host(d.ip_address), '^::ffff:', ''), d.device_type::text, d.status::text,
+		        COALESCE(d.vendor, ''), COALESCE(d.model, ''),
+		        TRIM(BOTH ' ,' FROM CONCAT_WS(', ', NULLIF(d.building, ''), NULLIF(d.floor_name, ''), NULLIF(d.room, ''), NULLIF(d.location, ''))),
+		        d.is_critical, d.is_pinned, d.is_monitored, d.last_seen,
+		        p.avg_rtt_ms::float8, p.packet_loss_percent::float8, p.timestamp
+		   FROM devices d
+		   LEFT JOIN LATERAL (
+		        SELECT avg_rtt_ms, packet_loss_percent, timestamp FROM device_ping
+		         WHERE device_id = d.id ORDER BY timestamp DESC LIMIT 1) p ON true
+		  WHERE d.organization_id = $1 AND d.device_type::text = ANY($2)
+		  ORDER BY d.name`, orgID, kinds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []EquipmentRow{}
+	for rows.Next() {
+		var e EquipmentRow
+		if err := rows.Scan(&e.ID, &e.Name, &e.IPAddress, &e.DeviceType, &e.Status, &e.Vendor, &e.Model, &e.Location,
+			&e.IsCritical, &e.IsPinned, &e.IsMonitored, &e.LastSeen, &e.PingAvgMs, &e.PingLossPct, &e.PingAt); err != nil {
+			return nil, err
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}

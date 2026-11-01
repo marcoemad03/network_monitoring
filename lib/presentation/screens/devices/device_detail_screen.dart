@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../../providers/device/device_provider.dart';
+import '../../providers/equipment/equipment_provider.dart';
 import '../../widgets/common/status_badge.dart';
 import '../../widgets/common/app_error_widget.dart';
 import '../../widgets/device/device_control_panel.dart';
@@ -23,6 +24,35 @@ class DeviceDetailScreen extends ConsumerStatefulWidget {
 
 class _DeviceDetailScreenState extends ConsumerState<DeviceDetailScreen> {
   bool _listenerAttached = false;
+
+  Future<void> _confirmDelete(String name) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete this device?'),
+        content: Text('"$name" and its monitoring history will be removed. This cannot be undone.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Theme.of(ctx).colorScheme.error),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    final result = await ref.read(deleteDeviceUseCaseProvider)(widget.id);
+    if (!mounted) return;
+    result.fold(
+      (failure) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not delete: ${failure.message}'))),
+      (_) {
+        ref.invalidate(equipmentFeedProvider);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('"$name" deleted')));
+        context.go(RouteNames.deviceInfrastructure);
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -53,6 +83,11 @@ class _DeviceDetailScreenState extends ConsumerState<DeviceDetailScreen> {
             onPressed: () => context.push(
               RouteNames.deviceEdit.replaceAll(':id', widget.id),
             ),
+          ),
+          IconButton(
+            tooltip: 'Delete device',
+            icon: const Icon(Icons.delete_outline),
+            onPressed: () => _confirmDelete(deviceAsync.valueOrNull?.name ?? 'this device'),
           ),
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -190,10 +225,10 @@ class _DeviceDetailContent extends ConsumerWidget {
             const SizedBox(height: 16),
             metricsAsync.when(
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (_, __) => Text('Metrics unavailable',
+              error: (_, __) => Text('Metrics could not be loaded',
                   style: theme.textTheme.bodySmall),
               data: (metrics) {
-                if (metrics == null) return Text('No metrics available',
+                if (metrics == null) return Text('No live CPU or memory readings. This device only reports whether it answers ping; the ping result is below.',
                     style: theme.textTheme.bodySmall);
                 return Row(
                   children: [

@@ -58,6 +58,8 @@ func main() {
 	hub := websocket.NewHub(cfg.CORSAllowedOrigins)
 	go hub.Run()
 
+	monitoring.SetSimulation(cfg.MonitorSimulateMetrics)
+
 	monitor := monitoring.NewMonitor(db, hub, 30*time.Second)
 	defer monitor.Stop()
 	monitor.Start()

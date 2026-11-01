@@ -39,6 +39,11 @@ void main() {
       await response.drain<void>();
       backendUp = response.statusCode == 200;
       client.close();
+      // These tests create groups and members, which the backend then syncs. Only run
+      // them against a backend that does not write to the router.
+      if (backendUp && !(await remote.listGroups()).dryRun) {
+        backendUp = false;
+      }
     } catch (_) {
       backendUp = false;
     }
@@ -80,7 +85,7 @@ void main() {
 
   testWidgets('groups screen lists a backend group and shows the safe-mode banner', (tester) async {
     if (!backendUp) {
-      markTestSkipped('backend not reachable on localhost:8080');
+      markTestSkipped('no backend on localhost:8080, or it has router writes enabled (ROUTER_POLICY_WRITES=true)');
       return;
     }
     tester.view.physicalSize = const Size(1000, 2000);
@@ -103,7 +108,7 @@ void main() {
 
   testWidgets('detail screen saves membership and policy through the real API', (tester) async {
     if (!backendUp) {
-      markTestSkipped('backend not reachable on localhost:8080');
+      markTestSkipped('no backend on localhost:8080, or it has router writes enabled (ROUTER_POLICY_WRITES=true)');
       return;
     }
     tester.view.physicalSize = const Size(1000, 2600);

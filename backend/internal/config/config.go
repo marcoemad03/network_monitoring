@@ -84,6 +84,17 @@ type Config struct {
 	// RouterPlatformDstLists maps a platform key to an existing router address-list
 	// whose addresses are blocked instead of the built-in IP ranges.
 	RouterPlatformDstLists map[string]string
+	// RouterWANInterface overrides the internet interface otherwise detected from
+	// the default route. RouterTelemetryInterval is how often the router is read
+	// for speed and usage (0 disables it).
+	RouterWANInterface      string
+	RouterTelemetryInterval time.Duration
+	// RouterClientPollInterval is how often the router is read for the device
+	// inventory and per-device usage (0 disables it).
+	RouterClientPollInterval time.Duration
+	// MonitorSimulateMetrics makes the monitor store random device metrics (demo
+	// data). Off by default: the dashboard must only show measured values.
+	MonitorSimulateMetrics bool
 }
 
 func Load(cliPort int) (*Config, error) {
@@ -202,6 +213,18 @@ func Load(cliPort int) (*Config, error) {
 	cfg.RouterPruneStale = getEnvBool("ROUTER_PRUNE_STALE", false)
 	cfg.RouterLegacyPolicyWrites = getEnvBool("ROUTER_LEGACY_POLICY_WRITES", false)
 	cfg.RouterPlatformDstLists = parseKeyValueList(getEnv("ROUTER_PLATFORM_DST_LISTS", ""))
+	cfg.RouterWANInterface = strings.TrimSpace(getEnv("ROUTER_WAN_INTERFACE", ""))
+	telemetryInterval, err := time.ParseDuration(getEnv("ROUTER_TELEMETRY_INTERVAL", "15s"))
+	if err != nil {
+		return nil, fmt.Errorf("invalid ROUTER_TELEMETRY_INTERVAL: %w", err)
+	}
+	cfg.RouterTelemetryInterval = telemetryInterval
+	clientInterval, err := time.ParseDuration(getEnv("ROUTER_CLIENT_POLL_INTERVAL", "30s"))
+	if err != nil {
+		return nil, fmt.Errorf("invalid ROUTER_CLIENT_POLL_INTERVAL: %w", err)
+	}
+	cfg.RouterClientPollInterval = clientInterval
+	cfg.MonitorSimulateMetrics = getEnvBool("MONITOR_SIMULATE_METRICS", false)
 
 	return cfg, nil
 }

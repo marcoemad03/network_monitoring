@@ -61,6 +61,14 @@ func RegisterRoutes(router *gin.Engine, db *database.DB, hub *websocket.Hub, cfg
 	marcoGroupService := services.NewMarcoGroupService(marcoRepo, deviceRepo, internetRepo, cfg, hub, telegramService)
 	marcoQuotaService := services.NewMarcoQuotaService(marcoRepo, internetRepo, cfg)
 	marcoQuotaService.Start(context.Background(), 60*time.Second)
+	wanRepo := repository.NewWANRepository(db)
+	routerTelemetry := services.NewRouterTelemetryService(wanRepo, internetRepo, cfg)
+	routerTelemetry.Start(context.Background(), cfg.RouterTelemetryInterval)
+	wanHandler := handlers.NewWANHandler(routerTelemetry, wanRepo, cfg.RouterTelemetryInterval)
+	clientRepo := repository.NewClientRepository(db)
+	clientInventory := services.NewClientInventoryService(clientRepo, internetRepo, cfg)
+	clientInventory.Start(context.Background(), cfg.RouterClientPollInterval, wanRepo.OrgsWithRouter)
+	clientHandler := handlers.NewClientHandler(clientInventory)
 	hotspotWelcomeService := services.NewHotspotWelcomeService(hotspotWelcomeRepo)
 
 	// Reporting services
@@ -199,6 +207,11 @@ func RegisterRoutes(router *gin.Engine, db *database.DB, hub *websocket.Hub, cfg
 		monitoring := protected.Group("/monitoring")
 		{
 			monitoring.GET("/dashboard", monitoringHandler.GetDashboardSummary)
+			monitoring.GET("/wan", wanHandler.Get)
+			monitoring.GET("/equipment", monitoringHandler.GetEquipment)
+			monitoring.GET("/clients/inventory", clientHandler.List)
+			monitoring.PUT("/clients/inventory/:mac", clientHandler.UpdateNote)
+			monitoring.GET("/clients/inventory/:mac/usage", clientHandler.Usage)
 			monitoring.GET("/clients", monitoringHandler.GetAllClients)
 			monitoring.GET("/connections", monitoringHandler.GetConnections)
 		}

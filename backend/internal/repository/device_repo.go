@@ -294,3 +294,13 @@ func (r *DeviceRepository) CountByStatus(ctx context.Context, orgID uuid.UUID) (
 	}
 	return result, nil
 }
+
+// IPInUse reports whether another device of the organization already has this
+// address. excludeID leaves the device being edited out of the check.
+func (r *DeviceRepository) IPInUse(ctx context.Context, orgID uuid.UUID, ip string, excludeID uuid.UUID) (bool, error) {
+	var exists bool
+	err := r.db.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM devices WHERE organization_id = $1 AND regexp_replace(host(ip_address), '^::ffff:', '') = $2 AND id <> $3)`,
+		orgID, ip, excludeID).Scan(&exists)
+	return exists, err
+}

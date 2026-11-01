@@ -6,7 +6,8 @@ import '../screens/auth/login_screen.dart';
 import '../screens/auth/forgot_password_screen.dart';
 import '../screens/connect/mikrotik_connect_screen.dart';
 import '../screens/dashboard/dashboard_screen.dart';
-import '../screens/devices/device_list_screen.dart';
+import '../screens/devices/equipment_screen.dart';
+import '../screens/devices/devices_screen.dart';
 import '../screens/devices/device_detail_screen.dart';
 import '../screens/devices/device_form_screen.dart';
 import '../screens/devices/device_events_screen.dart';
@@ -87,8 +88,12 @@ class AppRouter {
               ),
               GoRoute(
                 path: RouteNames.devices,
-                builder: (context, state) => const DeviceListScreen(),
+                builder: (context, state) => const DevicesScreen(),
                 routes: [
+                  GoRoute(
+                    path: 'infrastructure',
+                    builder: (context, state) => const EquipmentScreen(),
+                  ),
                   GoRoute(
                     path: 'create',
                     builder: (context, state) => const DeviceFormScreen(),

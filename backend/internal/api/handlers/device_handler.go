@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"encoding/json"
+	"io"
 	"net/http"
 	"strconv"
 
@@ -99,22 +101,16 @@ func (h *DeviceHandler) Create(c *gin.Context) {
 		return
 	}
 
-	var device models.Device
-	if err := c.ShouldBindJSON(&device); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false, "message": "Invalid request body",
-			"error_code": "VALIDATION_ERROR",
-		})
+	device, _, ok := bindDevice(c)
+	if !ok {
 		return
 	}
 
 	device.OrganizationID = orgID
 
 	if err := h.deviceService.Create(c.Request.Context(), &device, userID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false, "message": "Failed to create device",
-			"error_code": "SERVER_ERROR",
-		})
+		status, message := services.DescribeDeviceError(err)
+		c.JSON(status, gin.H{"success": false, "message": message, "error_code": deviceErrorCode(status)})
 		return
 	}
 
@@ -135,12 +131,8 @@ func (h *DeviceHandler) Update(c *gin.Context) {
 		return
 	}
 
-	var device models.Device
-	if err := c.ShouldBindJSON(&device); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false, "message": "Invalid request body",
-			"error_code": "VALIDATION_ERROR",
-		})
+	device, present, ok := bindDevice(c)
+	if !ok {
 		return
 	}
 
@@ -152,11 +144,9 @@ func (h *DeviceHandler) Update(c *gin.Context) {
 		return
 	}
 
-	if err := h.deviceService.Update(c.Request.Context(), &device, userID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false, "message": "Failed to update device",
-			"error_code": "SERVER_ERROR",
-		})
+	if err := h.deviceService.UpdateFields(c.Request.Context(), &device, present, userID); err != nil {
+		status, message := services.DescribeDeviceError(err)
+		c.JSON(status, gin.H{"success": false, "message": message, "error_code": deviceErrorCode(status)})
 		return
 	}
 
@@ -247,4 +237,32 @@ func (h *DeviceHandler) GetMetrics(c *gin.Context) {
 		"data":    metrics,
 		"message": "Metrics retrieved",
 	})
+}
+
+// bindDevice reads a device from the request body and also reports which JSON
+// keys it contained. It answers the request itself when the body is unusable.
+func bindDevice(c *gin.Context) (models.Device, map[string]bool, bool) {
+	var device models.Device
+	body, err := io.ReadAll(io.LimitReader(c.Request.Body, 1<<20))
+	if err != nil || json.Unmarshal(body, &device) != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid request. Check that the IP address and the other fields are written correctly.", "error_code": "VALIDATION_ERROR"})
+		return device, nil, false
+	}
+	var keys map[string]json.RawMessage
+	_ = json.Unmarshal(body, &keys)
+	present := make(map[string]bool, len(keys))
+	for k := range keys {
+		present[k] = true
+	}
+	return device, present, true
+}
+
+func deviceErrorCode(status int) string {
+	switch status {
+	case http.StatusBadRequest:
+		return "VALIDATION_ERROR"
+	case http.StatusConflict:
+		return "CONFLICT"
+	}
+	return "SERVER_ERROR"
 }
