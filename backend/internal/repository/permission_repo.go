@@ -141,7 +141,7 @@ func (r *PermissionRepository) UserHasPermission(ctx context.Context, userID uui
 	err := r.db.QueryRow(ctx,
 		`SELECT EXISTS(
 			SELECT 1 FROM users u
-			INNER JOIN roles r ON u.role = r.slug
+			INNER JOIN roles r ON u.role::text = r.slug
 			INNER JOIN role_permissions rp ON r.id = rp.role_id
 			INNER JOIN permissions p ON p.id = rp.permission_id
 			WHERE u.id = $1 AND p.slug = $2

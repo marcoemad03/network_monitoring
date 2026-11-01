@@ -173,7 +173,7 @@ func (r *UserRepository) GetUserPermissions(ctx context.Context, userID uuid.UUI
 		`SELECT p.slug FROM permissions p
 		 INNER JOIN role_permissions rp ON p.id = rp.permission_id
 		 INNER JOIN roles r ON r.id = rp.role_id
-		 INNER JOIN users u ON u.role = r.slug
+		 INNER JOIN users u ON u.role::text = r.slug
 		 WHERE u.id = $1`,
 		userID,
 	)

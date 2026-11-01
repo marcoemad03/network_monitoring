@@ -147,7 +147,7 @@ func (h *AuthHandler) ResetPassword(c *gin.Context) {
 }
 
 func (h *AuthHandler) ListSessions(c *gin.Context) {
-	userID := c.MustGet("user_id").(uuid.UUID)
+	userID := ctxUUID(c, "user_id")
 	sessions, err := h.authService.ListSessions(c.Request.Context(), userID)
 	if err != nil {
 		utils.Error(c, http.StatusInternalServerError, "Failed to list sessions", "DB_ERROR", nil)
@@ -163,7 +163,7 @@ func (h *AuthHandler) RevokeSession(c *gin.Context) {
 		return
 	}
 
-	userID := c.MustGet("user_id").(uuid.UUID)
+	userID := ctxUUID(c, "user_id")
 	if err := h.authService.RevokeSession(c.Request.Context(), userID, sessionID); err != nil {
 		utils.Error(c, http.StatusInternalServerError, "Failed to revoke session", "DB_ERROR", nil)
 		return
@@ -173,7 +173,7 @@ func (h *AuthHandler) RevokeSession(c *gin.Context) {
 }
 
 func (h *AuthHandler) RevokeAllSessions(c *gin.Context) {
-	userID := c.MustGet("user_id").(uuid.UUID)
+	userID := ctxUUID(c, "user_id")
 	if err := h.authService.RevokeAllSessions(c.Request.Context(), userID); err != nil {
 		utils.Error(c, http.StatusInternalServerError, "Failed to revoke all sessions", "DB_ERROR", nil)
 		return

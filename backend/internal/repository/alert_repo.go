@@ -18,9 +18,16 @@ func NewAlertRepository(db *database.DB) *AlertRepository {
 	return &AlertRepository{db: db}
 }
 
+// alertColumns lists the columns models.Alert is scanned from, in Scan order. A
+// SELECT * breaks as soon as a migration adds a column (rule_id, is_suppressed...).
+const alertColumns = `id, organization_id, title, description, severity, status, category,
+	device_id, interface_id, metric_name, metric_value, threshold_value,
+	acknowledged_by, acknowledged_at, resolved_by, resolved_at, resolution_notes,
+	occurrence_count, detected_at, created_at, updated_at`
+
 func (r *AlertRepository) List(ctx context.Context, orgID uuid.UUID, page, limit int, status, severity, category, deviceID, sortBy string, ascending bool) ([]models.Alert, int, error) {
 	offset := (page - 1) * limit
-	query := `SELECT * FROM alerts WHERE organization_id = $1`
+	query := `SELECT ` + alertColumns + ` FROM alerts WHERE organization_id = $1`
 	countQuery := `SELECT COUNT(*) FROM alerts WHERE organization_id = $1`
 	args := []interface{}{orgID}
 	argIdx := 2
@@ -91,7 +98,7 @@ func (r *AlertRepository) List(ctx context.Context, orgID uuid.UUID, page, limit
 }
 
 func (r *AlertRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.Alert, error) {
-	query := `SELECT * FROM alerts WHERE id = $1`
+	query := `SELECT ` + alertColumns + ` FROM alerts WHERE id = $1`
 	row := r.db.QueryRow(ctx, query, id)
 
 	var a models.Alert

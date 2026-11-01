@@ -21,7 +21,7 @@ func NewUserHandler(userRepo *repository.UserRepository) *UserHandler {
 }
 
 func (h *UserHandler) List(c *gin.Context) {
-	orgID := c.MustGet("org_id").(uuid.UUID)
+	orgID := ctxUUID(c, "org_id")
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
 	search := c.Query("search")
@@ -91,7 +91,7 @@ func (h *UserHandler) Create(c *gin.Context) {
 		return
 	}
 
-	orgID := c.MustGet("org_id").(uuid.UUID)
+	orgID := ctxUUID(c, "org_id")
 	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
 		utils.Error(c, http.StatusInternalServerError, "Failed to hash password", "INTERNAL_ERROR", nil)
@@ -204,7 +204,7 @@ func (h *UserHandler) Delete(c *gin.Context) {
 		return
 	}
 
-	currentUserID := c.MustGet("user_id").(uuid.UUID)
+	currentUserID := ctxUUID(c, "user_id")
 	if id == currentUserID {
 		utils.Error(c, http.StatusBadRequest, "Cannot delete yourself", "VALIDATION_ERROR", nil)
 		return
@@ -224,7 +224,7 @@ type changePasswordRequest struct {
 }
 
 func (h *UserHandler) ChangePassword(c *gin.Context) {
-	userID := c.MustGet("user_id").(uuid.UUID)
+	userID := ctxUUID(c, "user_id")
 
 	var req changePasswordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -258,7 +258,7 @@ func (h *UserHandler) ChangePassword(c *gin.Context) {
 }
 
 func (h *UserHandler) GetPermissions(c *gin.Context) {
-	userID := c.MustGet("user_id").(uuid.UUID)
+	userID := ctxUUID(c, "user_id")
 	perms, err := h.userRepo.GetUserPermissions(c.Request.Context(), userID)
 	if err != nil {
 		utils.Error(c, http.StatusInternalServerError, "Failed to get permissions", "DB_ERROR", nil)

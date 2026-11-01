@@ -206,7 +206,7 @@ func (h *PermissionHandler) RemovePermission(c *gin.Context) {
 }
 
 func (h *PermissionHandler) GetUserPermissions(c *gin.Context) {
-	userID := c.MustGet("user_id").(uuid.UUID)
+	userID := ctxUUID(c, "user_id")
 	perms, err := h.permService.GetUserPermissions(c.Request.Context(), userID)
 	if err != nil {
 		utils.Error(c, http.StatusInternalServerError, "Failed to get user permissions", "DB_ERROR", nil)
