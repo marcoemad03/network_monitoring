@@ -24,6 +24,7 @@ type MarcoGroupService struct {
 	cfg         *config.Config
 	hub         *websocket.Hub
 	telegramSvc *TelegramService
+	async       asyncSyncer
 }
 
 func NewMarcoGroupService(marcoRepo *repository.MarcoRepository, deviceRepo *repository.DeviceRepository, internetRepo *repository.InternetRepository, cfg *config.Config, hub *websocket.Hub, telegramSvc *TelegramService) *MarcoGroupService {
@@ -71,10 +72,10 @@ func (s *MarcoGroupService) GetGroup(ctx context.Context, orgID, id uuid.UUID) (
 // Write
 
 type CreateGroupRequest struct {
-	Name        string  `json:"name"`
-	Description *string `json:"description,omitempty"`
-	Color       string  `json:"color,omitempty"`
-	Icon        string  `json:"icon,omitempty"`
+	Name        string                   `json:"name"`
+	Description *string                  `json:"description,omitempty"`
+	Color       string                   `json:"color,omitempty"`
+	Icon        string                   `json:"icon,omitempty"`
 	Policy      *models.MarcoGroupPolicy `json:"policy,omitempty"`
 }
 
@@ -158,10 +159,7 @@ func (s *MarcoGroupService) DeleteGroup(ctx context.Context, orgID, id uuid.UUID
 		return err
 	}
 	s.log(ctx, orgID, &id, nil, "group_deleted", fmt.Sprintf("Group %q deleted, policies removed", g.Name), "applied", "")
-	if _, err := s.sync.SyncAll(ctx, orgID); err != nil {
-		s.log(ctx, orgID, &id, nil, "sync_failed", err.Error(), "failed", err.Error())
-		return err
-	}
+	s.scheduleSync(orgID, &id, nil)
 	return nil
 }
 
@@ -197,11 +195,7 @@ func (s *MarcoGroupService) AddMembers(ctx context.Context, orgID, groupID uuid.
 	if len(added) == 0 {
 		return added, nil
 	}
-	if _, err := s.sync.SyncAll(ctx, orgID); err != nil {
-		s.log(ctx, orgID, &groupID, nil, "sync_failed", err.Error(), "failed", err.Error())
-		return added, err
-	}
-	s.logMemberPolicyChanges(ctx, orgID, g)
+	s.scheduleSync(orgID, &groupID, func() { s.logMemberPolicyChanges(context.Background(), orgID, g) })
 	return added, nil
 }
 
@@ -214,10 +208,7 @@ func (s *MarcoGroupService) RemoveMember(ctx context.Context, orgID, groupID, de
 		return err
 	}
 	s.log(ctx, orgID, &groupID, &deviceID, "member_removed", fmt.Sprintf("Device removed from group %q", g.Name), "applied", "")
-	if _, err := s.sync.SyncAll(ctx, orgID); err != nil {
-		s.log(ctx, orgID, &groupID, nil, "sync_failed", err.Error(), "failed", err.Error())
-		return err
-	}
+	s.scheduleSync(orgID, &groupID, nil)
 	return nil
 }
 
@@ -240,11 +231,7 @@ func (s *MarcoGroupService) MoveDevice(ctx context.Context, orgID, deviceID, tar
 		return err
 	}
 	s.log(ctx, orgID, &targetGroupID, &deviceID, "member_moved", fmt.Sprintf("%s moved to group %q - old policies removed, new policies applied", deviceName(device), target.Name), "applied", "")
-	if _, err := s.sync.SyncAll(ctx, orgID); err != nil {
-		s.log(ctx, orgID, &targetGroupID, &deviceID, "sync_failed", err.Error(), "failed", err.Error())
-		return err
-	}
-	s.logMemberPolicyChanges(ctx, orgID, target)
+	s.scheduleSync(orgID, &targetGroupID, func() { s.logMemberPolicyChanges(context.Background(), orgID, target) })
 	return nil
 }
 
@@ -259,11 +246,7 @@ func (s *MarcoGroupService) UpdatePolicy(ctx context.Context, orgID, groupID uui
 	}
 	g.Policy = policy
 	s.log(ctx, orgID, &groupID, nil, "policy_applied", fmt.Sprintf("Policy applied to group %q", g.Name), "applied", "")
-	if _, err := s.sync.SyncAll(ctx, orgID); err != nil {
-		s.log(ctx, orgID, &groupID, nil, "sync_failed", err.Error(), "failed", err.Error())
-		return err
-	}
-	s.logMemberPolicyChanges(ctx, orgID, g)
+	s.scheduleSync(orgID, &groupID, func() { s.logMemberPolicyChanges(context.Background(), orgID, g) })
 	return nil
 }
 
@@ -317,14 +300,14 @@ func (s *MarcoGroupService) DeviceStatuses(ctx context.Context, orgID uuid.UUID)
 			continue
 		}
 		st := models.MarcoDeviceStatus{
-			DeviceID:    m.DeviceID.String(),
-			MACAddress:  orEmpty(m.MACAddress),
-			DeviceName:  m.DeviceName,
-			IPAddress:   ipString(m.IPAddress),
-			IsOnline:    m.IsOnline,
-			GroupID:     &g.ID,
-			GroupName:   g.Name,
-			GroupColor:  g.Color,
+			DeviceID:        m.DeviceID.String(),
+			MACAddress:      orEmpty(m.MACAddress),
+			DeviceName:      m.DeviceName,
+			IPAddress:       ipString(m.IPAddress),
+			IsOnline:        m.IsOnline,
+			GroupID:         &g.ID,
+			GroupName:       g.Name,
+			GroupColor:      g.Color,
 			BlockedWebsites: g.Policy.BlockedWebsites,
 		}
 		internetEnabled := true

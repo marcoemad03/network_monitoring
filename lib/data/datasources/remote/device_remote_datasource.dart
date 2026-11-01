@@ -195,6 +195,9 @@ class DeviceRemoteDataSourceImpl implements DeviceRemoteDataSource {
   }) async {
     final response = await _client.post(
       ApiConstants.developmentMikroTikConnect,
+      // Reads identity and every client table from a slow router; a short timeout
+      // aborts the call and the retry interceptor would replay it against the router.
+      options: Options(receiveTimeout: const Duration(seconds: 90), extra: {'retryCount': 99}),
       data: {
         'router_ip': routerIP,
         'username': username,
@@ -213,6 +216,7 @@ class DeviceRemoteDataSourceImpl implements DeviceRemoteDataSource {
   }) async {
     final response = await _client.get(
       ApiConstants.monitoringConnectedDevices,
+      options: Options(receiveTimeout: const Duration(seconds: 60)),
       queryParameters: {if (vendorId != null) 'vendor_id': vendorId},
     );
     return ConnectedDevicesResultModel.fromJson(

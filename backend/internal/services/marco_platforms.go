@@ -28,7 +28,10 @@ var MarcoPlatforms = []models.PlatformDefinition{
 		Domains: []string{"youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be",
 			"googlevideo.com", "ytimg.com", "youtubei.googleapis.com", "youtube-nocookie.com",
 			"youtube.googleapis.com", "yt3.ggpht.com"},
-		IPRanges: youtubeIPRanges,
+		// No IPRanges on purpose: YouTube shares Google frontends with Gmail and
+		// Search, so an address list of Google ranges blocks them too. tls-host
+		// matching was tried and does not match modern browsers on RouterOS 6.
+		// Enforce it through ROUTER_PLATFORM_DST_LISTS (an existing address-list).
 	},
 	{
 		Key:      "facebook",

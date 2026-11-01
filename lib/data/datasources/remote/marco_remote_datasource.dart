@@ -14,6 +14,12 @@ class MarcoApiException implements Exception {
 
 const _base = '${ApiConstants.basePath}/marco';
 
+// Writes must never be replayed by the retry interceptor (a retried member change
+// would queue another router sync); the preview reads big router tables, so it
+// gets a long receive timeout.
+final _noRetry = Options(extra: {'retryCount': 99});
+final _slow = Options(receiveTimeout: const Duration(seconds: 90), extra: {'retryCount': 99});
+
 class MarcoRemoteDataSource {
   final DioClient _client;
 
@@ -65,7 +71,7 @@ class MarcoRemoteDataSource {
     Map<String, dynamic>? policy,
   }) =>
       _guard(() async {
-        final body = _body(await _client.post('$_base/groups', data: {
+        final body = _body(await _client.post('$_base/groups', options: _noRetry, data: {
           'name': name,
           if (description != null && description.isNotEmpty) 'description': description,
           'color': color,
@@ -83,7 +89,7 @@ class MarcoRemoteDataSource {
     required String icon,
   }) =>
       _guard(() async {
-        await _client.put('$_base/groups/$id', data: {
+        await _client.put('$_base/groups/$id', options: _noRetry, data: {
           'name': name,
           'description': description,
           'color': color,
@@ -92,23 +98,23 @@ class MarcoRemoteDataSource {
       });
 
   Future<MarcoActionResult> deleteGroup(String id) =>
-      _guard(() async => _result(await _client.delete('$_base/groups/$id')));
+      _guard(() async => _result(await _client.delete('$_base/groups/$id', options: _noRetry)));
 
   Future<MarcoActionResult> addMembers(String groupId, List<String> macAddresses) =>
       _guard(() async => _result(
-            await _client.post('$_base/groups/$groupId/members', data: {'mac_addresses': macAddresses}),
+            await _client.post('$_base/groups/$groupId/members', options: _noRetry, data: {'mac_addresses': macAddresses}),
           ));
 
   Future<MarcoActionResult> removeMember(String groupId, String deviceId) =>
-      _guard(() async => _result(await _client.delete('$_base/groups/$groupId/members/$deviceId')));
+      _guard(() async => _result(await _client.delete('$_base/groups/$groupId/members/$deviceId', options: _noRetry)));
 
   Future<MarcoActionResult> updatePolicy(String groupId, Map<String, dynamic> policy) =>
-      _guard(() async => _result(await _client.put('$_base/groups/$groupId/policy', data: policy)));
+      _guard(() async => _result(await _client.put('$_base/groups/$groupId/policy', options: _noRetry, data: policy)));
 
   /// Recomputes the router plan. While the backend is in dry-run this never
   /// changes the router.
   Future<MarcoSyncPreview> sync() => _guard(() async {
-        final body = _body(await _client.post('$_base/sync'));
+        final body = _body(await _client.post('$_base/sync', options: _slow));
         final data = Map<String, dynamic>.from(body['data'] as Map? ?? const {});
         return MarcoSyncPreview(
           dryRun: data['dry_run'] as bool? ?? true,

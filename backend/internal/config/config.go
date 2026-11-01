@@ -11,18 +11,18 @@ import (
 )
 
 type Config struct {
-	ServerPort int
-	ServerHost string
+	ServerPort  int
+	ServerHost  string
 	Environment string
 
-	DBHost     string
-	DBPort     int
-	DBUser     string
-	DBPassword string
-	DBName     string
-	DBSSLMode  string
-	DBMaxConns int
-	DBMaxIdle  int
+	DBHost        string
+	DBPort        int
+	DBUser        string
+	DBPassword    string
+	DBName        string
+	DBSSLMode     string
+	DBMaxConns    int
+	DBMaxIdle     int
 	DBMaxLifetime time.Duration
 
 	RedisHost     string
@@ -44,10 +44,10 @@ type Config struct {
 	SMTPPassword string
 	SMTPFrom     string
 
-	RateLimitRequests    int
-	RateLimitWindow      time.Duration
+	RateLimitRequests     int
+	RateLimitWindow       time.Duration
 	RateLimitAuthRequests int
-	RateLimitAuthWindow  time.Duration
+	RateLimitAuthWindow   time.Duration
 
 	EnableMetrics bool
 	MetricsPort   int
@@ -59,22 +59,31 @@ type Config struct {
 	CORSAllowedOrigins string
 	CORSAllowedMethods string
 
-	ScanTimeout      time.Duration
-	ScanConcurrency  int
-	ScanDefaultPorts string
-	MikroTikAPITimeout time.Duration
+	ScanTimeout           time.Duration
+	ScanConcurrency       int
+	ScanDefaultPorts      string
+	MikroTikAPITimeout    time.Duration
 	MikroTikAPIRetryCount int
-	PingTimeout      time.Duration
-	TracerouteMaxHops int
+	PingTimeout           time.Duration
+	TracerouteMaxHops     int
 
 	// Router safety switches. Policy engines never modify the production router
 	// unless RouterPolicyWrites is explicitly enabled; otherwise they only compute
 	// and log the plan (dry-run).
-	RouterPolicyWrites     bool
-	RouterEnableLayer7     bool
-	RouterEnableDNSBlock   bool
-	RouterProtectedIPs     []string
+	RouterPolicyWrites      bool
+	RouterEnableLayer7      bool
+	RouterEnableDNSBlock    bool
+	RouterProtectedIPs      []string
 	RouterMaxManagedEntries int
+	// RouterPruneStale lets the Marco sync remove managed entries it no longer
+	// wants (old groups, duplicates). Off by default: the sync only adds/updates.
+	RouterPruneStale bool
+	// RouterLegacyPolicyWrites lets the legacy policy engine write to the router
+	// when RouterPolicyWrites is on. Off by default so it stays a dry-run.
+	RouterLegacyPolicyWrites bool
+	// RouterPlatformDstLists maps a platform key to an existing router address-list
+	// whose addresses are blocked instead of the built-in IP ranges.
+	RouterPlatformDstLists map[string]string
 }
 
 func Load(cliPort int) (*Config, error) {
@@ -88,8 +97,8 @@ func Load(cliPort int) (*Config, error) {
 	}
 
 	cfg := &Config{
-		ServerPort: serverPort,
-		ServerHost: getEnv("SERVER_HOST", "0.0.0.0"),
+		ServerPort:  serverPort,
+		ServerHost:  getEnv("SERVER_HOST", "0.0.0.0"),
 		Environment: getEnv("ENVIRONMENT", "development"),
 
 		DBHost:     getEnv("DB_HOST", "localhost"),
@@ -190,6 +199,9 @@ func Load(cliPort int) (*Config, error) {
 	cfg.RouterEnableDNSBlock = getEnvBool("ROUTER_ENABLE_DNS_BLOCK", false)
 	cfg.RouterMaxManagedEntries = getEnvInt("ROUTER_MAX_MANAGED_ENTRIES", 400)
 	cfg.RouterProtectedIPs = splitCSV(getEnv("ROUTER_PROTECTED_IPS", ""))
+	cfg.RouterPruneStale = getEnvBool("ROUTER_PRUNE_STALE", false)
+	cfg.RouterLegacyPolicyWrites = getEnvBool("ROUTER_LEGACY_POLICY_WRITES", false)
+	cfg.RouterPlatformDstLists = parseKeyValueList(getEnv("ROUTER_PLATFORM_DST_LISTS", ""))
 
 	return cfg, nil
 }
@@ -227,4 +239,18 @@ func getEnvBool(key string, fallback bool) bool {
 		}
 	}
 	return fallback
+}
+
+// parseKeyValueList parses "key=value;key=value". Values may contain spaces
+// (RouterOS list names do), so ";" is the separator.
+func parseKeyValueList(value string) map[string]string {
+	out := map[string]string{}
+	for _, part := range strings.Split(value, ";") {
+		k, v, ok := strings.Cut(part, "=")
+		k, v = strings.TrimSpace(k), strings.TrimSpace(v)
+		if ok && k != "" && v != "" {
+			out[strings.ToLower(k)] = v
+		}
+	}
+	return out
 }

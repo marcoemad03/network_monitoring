@@ -208,10 +208,10 @@ func TestMarcoReconcileIsIdempotentAndPrefixSafe(t *testing.T) {
 	router.tables["/ip/firewall/filter"] = []map[string]string{{".id": "*A", "comment": "hospital-core-allow", "action": "accept"}}
 
 	journal := &changeJournal{}
-	if err := applyMarcoDesiredState(router, desired, journal); err != nil {
+	if err := applyMarcoDesiredState(router, desired, journal, true); err != nil {
 		t.Fatal(err)
 	}
-	if err := verifyMarcoDesiredState(router, desired); err != nil {
+	if err := verifyMarcoDesiredState(router, desired, true); err != nil {
 		t.Fatalf("verify after apply: %v", err)
 	}
 	if router.count("/ip/firewall/filter", "hospital-core-allow") != 1 {
@@ -219,7 +219,7 @@ func TestMarcoReconcileIsIdempotentAndPrefixSafe(t *testing.T) {
 	}
 
 	writes := router.writes
-	if err := applyMarcoDesiredState(router, desired, &changeJournal{}); err != nil {
+	if err := applyMarcoDesiredState(router, desired, &changeJournal{}, true); err != nil {
 		t.Fatal(err)
 	}
 	if router.writes != writes {
@@ -231,7 +231,7 @@ func TestMarcoReconcileCleansDuplicatesAndStaleEntries(t *testing.T) {
 	groups, members := testMarcoGroup(models.MarcoGroupPolicy{InternetEnabled: boolPtr(false)})
 	desired := buildMarcoDesiredState(groups, members, marcoOpts())
 	router := newMemRouter()
-	if err := applyMarcoDesiredState(router, desired, &changeJournal{}); err != nil {
+	if err := applyMarcoDesiredState(router, desired, &changeJournal{}, true); err != nil {
 		t.Fatal(err)
 	}
 	// Simulate earlier faulty syncs: duplicated rule plus a stale one.
@@ -246,10 +246,10 @@ func TestMarcoReconcileCleansDuplicatesAndStaleEntries(t *testing.T) {
 	}
 	router.tables["/ip/firewall/filter"] = append(router.tables["/ip/firewall/filter"], map[string]string{".id": "*OLD", "comment": "nms-marco-oldgroup-net-off", "action": "drop"})
 
-	if err := applyMarcoDesiredState(router, desired, &changeJournal{}); err != nil {
+	if err := applyMarcoDesiredState(router, desired, &changeJournal{}, true); err != nil {
 		t.Fatal(err)
 	}
-	if err := verifyMarcoDesiredState(router, desired); err != nil {
+	if err := verifyMarcoDesiredState(router, desired, true); err != nil {
 		t.Fatalf("verify after cleanup: %v", err)
 	}
 }
@@ -265,7 +265,7 @@ func TestMarcoRollbackRestoresRouter(t *testing.T) {
 		return nil
 	}
 	journal := &changeJournal{}
-	if err := applyMarcoDesiredState(router, desired, journal); err == nil {
+	if err := applyMarcoDesiredState(router, desired, journal, true); err == nil {
 		t.Fatal("expected apply to fail")
 	}
 	if err := journal.rollback(router); err != nil {
@@ -354,5 +354,78 @@ func TestEntryCountLimit(t *testing.T) {
 	}
 	if err := validateEntryCount(cfg, 6, 5); err == nil {
 		t.Fatal("expected the limit to be enforced")
+	}
+}
+
+func TestMarcoWithoutPruneOnlyAddsAndLeavesOldEntries(t *testing.T) {
+	groups, members := testMarcoGroup(models.MarcoGroupPolicy{InternetEnabled: boolPtr(false)})
+	desired := buildMarcoDesiredState(groups, members, marcoOpts())
+	router := newMemRouter()
+	router.tables["/ip/firewall/filter"] = []map[string]string{
+		{".id": "*OLD", "comment": "nms-marco-oldgroup-net-off", "action": "drop", "disabled": "true"},
+		{".id": "*OLD2", "comment": "nms-marco-oldgroup-net-off", "action": "drop", "disabled": "true"},
+	}
+
+	if err := applyMarcoDesiredState(router, desired, &changeJournal{}, false); err != nil {
+		t.Fatal(err)
+	}
+	if got := router.count("/ip/firewall/filter", "nms-marco-oldgroup-net-off"); got != 2 {
+		t.Fatalf("old entries were touched: %d left, want 2", got)
+	}
+	if err := verifyMarcoDesiredState(router, desired, false); err != nil {
+		t.Fatalf("verify without prune must ignore old entries: %v", err)
+	}
+	for comment := range desired.firewall {
+		if router.count("/ip/firewall/filter", comment) != 1 {
+			t.Fatalf("desired rule %q was not added exactly once", comment)
+		}
+	}
+}
+
+func TestMarcoYouTubeNeverUsesGoogleAddressRanges(t *testing.T) {
+	groups, members := testMarcoGroup(models.MarcoGroupPolicy{BlockedWebsites: []string{"youtube"}})
+	desired := buildMarcoDesiredState(groups, members, marcoOpts())
+
+	if len(desired.firewall) != 0 {
+		t.Fatalf("no rule may be generated without a configured list; YouTube shares Google frontends with Gmail: %v", desired.firewall)
+	}
+	for comment := range desired.addrLists {
+		if strings.HasPrefix(comment, marcoPlatListPrefix+"youtube") {
+			t.Fatalf("YouTube must not publish an address list: %q", comment)
+		}
+	}
+	if len(desired.warnings) == 0 {
+		t.Fatal("an unenforceable platform must be reported as a warning")
+	}
+}
+
+func TestMarcoPlatformBlocksThroughConfiguredRouterList(t *testing.T) {
+	groups, members := testMarcoGroup(models.MarcoGroupPolicy{BlockedWebsites: []string{"youtube"}})
+	opts := marcoBuildOptions{platformLists: map[string]string{"youtube": "collect all youtube ips"}}
+	desired := buildMarcoDesiredState(groups, members, opts)
+	if err := validateFirewallScope(desired.firewall); err != nil {
+		t.Fatal(err)
+	}
+
+	var found bool
+	for comment, rule := range desired.firewall {
+		if rule.attrs["dst-address-list"] != "collect all youtube ips" {
+			continue
+		}
+		found = true
+		if rule.attrs["action"] != "drop" || rule.attrs["chain"] != "forward" || rule.attrs["src-address-list"] == "" {
+			t.Fatalf("rule %q is not a scoped forward drop: %v", comment, rule.attrs)
+		}
+	}
+	if !found {
+		t.Fatal("no rule uses the configured address list")
+	}
+	for comment := range desired.addrLists {
+		if strings.HasPrefix(comment, marcoPlatListPrefix) {
+			t.Fatalf("the configured list replaces built-in ranges, got %q", comment)
+		}
+	}
+	if len(desired.warnings) != 0 {
+		t.Fatalf("unexpected warnings: %v", desired.warnings)
 	}
 }

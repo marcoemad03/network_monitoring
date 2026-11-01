@@ -35,3 +35,12 @@ Enable writes only after reviewing the plan:
 /queue simple remove [find where comment~"^nms-"]
 /ip dns static remove [find where comment~"^nms-"]
 ```
+
+## Write switches (all default to the safe value)
+* `ROUTER_POLICY_WRITES` - master switch. `false` records the plan only (dry-run).
+* `ROUTER_PRUNE_STALE` - `false` means the Marco sync only adds and updates. Removing a device from a group, or editing a policy so a rule is no longer wanted, then leaves the old rule on the router: disable it by hand or turn this on.
+* `ROUTER_LEGACY_POLICY_WRITES` - the legacy policy engine writes only when this and `ROUTER_POLICY_WRITES` are both `true`.
+* `ROUTER_PLATFORM_DST_LISTS` - `key=router address-list` pairs, separated by `;`. YouTube has no built-in ranges (its addresses are shared with Gmail), so it needs this, e.g. `youtube=collect all youtube ips`. The list must exist on the router and be kept up to date by you.
+
+## Write account
+Use a dedicated RouterOS user (policy `read,write,api`, restricted with `address=<server ip>/32`) for writes and a read-only one (`read,api`) while previewing.

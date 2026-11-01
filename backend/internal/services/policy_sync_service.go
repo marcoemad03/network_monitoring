@@ -99,9 +99,9 @@ func (s *PolicySyncService) SyncPoliciesToMikroTik(ctx context.Context, orgID uu
 	if err := validateEntryCount(s.cfg, len(firewall), len(queues)); err != nil {
 		return s.fail(ctx, log, err)
 	}
-	conn, err := openRouterSession(ctx, vendor, s.cfg, func(v *models.VendorIntegration, _ *config.Config) (routerCommander, error) {
+	conn, err := openRouterSessionWith(ctx, vendor, s.cfg, func(v *models.VendorIntegration, _ *config.Config) (routerCommander, error) {
 		return s.dialRouter(v)
-	}, true)
+	}, true, s.cfg.RouterPolicyWrites && s.cfg.RouterLegacyPolicyWrites)
 	if err != nil {
 		return s.fail(ctx, log, fmt.Errorf("connect MikroTik: %w", err))
 	}

@@ -88,6 +88,12 @@ func (s *routerSession) Close() error {
 // openRouterSession acquires the global gate, dials the router and wraps the
 // connection. wait=false returns (nil, nil) when another session is running.
 func openRouterSession(ctx context.Context, vendor *models.VendorIntegration, cfg *config.Config, dial func(*models.VendorIntegration, *config.Config) (routerCommander, error), wait bool) (*routerSession, error) {
+	return openRouterSessionWith(ctx, vendor, cfg, dial, wait, cfg.RouterPolicyWrites)
+}
+
+// openRouterSessionWith is openRouterSession with an explicit write permission,
+// for engines that need a stricter switch than ROUTER_POLICY_WRITES.
+func openRouterSessionWith(ctx context.Context, vendor *models.VendorIntegration, cfg *config.Config, dial func(*models.VendorIntegration, *config.Config) (routerCommander, error), wait bool, write bool) (*routerSession, error) {
 	var release func()
 	if wait {
 		r, err := acquireRouterGate(ctx)
@@ -107,7 +113,7 @@ func openRouterSession(ctx context.Context, vendor *models.VendorIntegration, cf
 		release()
 		return nil, err
 	}
-	return newRouterSession(ctx, conn, cfg.RouterPolicyWrites, release), nil
+	return newRouterSession(ctx, conn, write, release), nil
 }
 
 // ---------------------------------------------------------------------------

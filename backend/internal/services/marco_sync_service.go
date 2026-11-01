@@ -81,8 +81,11 @@ type marcoDesiredState struct {
 }
 
 type marcoBuildOptions struct {
-	layer7    bool
-	protected []*net.IPNet
+	layer7 bool
+	// platformLists maps a platform key to an existing router address-list that
+	// replaces the built-in IP ranges (ROUTER_PLATFORM_DST_LISTS).
+	platformLists map[string]string
+	protected     []*net.IPNet
 }
 
 type marcoSyncResult struct {
@@ -124,8 +127,9 @@ func (s *MarcoSyncService) SyncAll(ctx context.Context, orgID uuid.UUID) (*marco
 	}
 
 	desired := buildMarcoDesiredState(groups, membersByGroup, marcoBuildOptions{
-		layer7:    s.cfg.RouterEnableLayer7,
-		protected: protectedNetworks(vendor, s.cfg),
+		layer7:        s.cfg.RouterEnableLayer7,
+		protected:     protectedNetworks(vendor, s.cfg),
+		platformLists: s.cfg.RouterPlatformDstLists,
 	})
 	if err := validateFirewallScope(desired.firewall); err != nil {
 		return nil, err
@@ -151,11 +155,11 @@ func (s *MarcoSyncService) SyncAll(ctx context.Context, orgID uuid.UUID) (*marco
 		return fmt.Errorf("%s: %w (changes rolled back)", step, err)
 	}
 
-	if err := applyMarcoDesiredState(sess, desired, journal); err != nil {
+	if err := applyMarcoDesiredState(sess, desired, journal, s.cfg.RouterPruneStale); err != nil {
 		return nil, fail("apply RouterOS configuration", err)
 	}
 	if sess.write {
-		if err := verifyMarcoDesiredState(sess, desired); err != nil {
+		if err := verifyMarcoDesiredState(sess, desired, s.cfg.RouterPruneStale); err != nil {
 			return nil, fail("verify RouterOS configuration", err)
 		}
 	}
@@ -320,6 +324,16 @@ func buildMarcoDesiredState(groups []models.MarcoGroup, membersByGroup map[uuid.
 		if needsSrcList {
 			for _, key := range platforms {
 				def := marcoPlatformByKey[key]
+				if list := opts.platformLists[key]; list != "" {
+					// The hospital already maintains an address-list of this service's real
+					// addresses (collected from live traffic); block that instead of ranges.
+					comment := fmt.Sprintf("%s%s-plat-%s", marcoManagedPrefix, g8, key)
+					d.addFirewall(comment, map[string]string{
+						"chain": "forward", "action": "drop", "src-address-list": srcList,
+						"dst-address-list": list,
+					}, true)
+					continue
+				}
 				enforced := false
 				if len(def.IPRanges) > 0 {
 					blockedPlatforms[key] = true
@@ -519,7 +533,7 @@ func sortedKeys(m map[string]desiredRouterEntry) []string {
 	return keys
 }
 
-func applyMarcoDesiredState(conn routerCommander, d marcoDesiredState, journal *changeJournal) error {
+func applyMarcoDesiredState(conn routerCommander, d marcoDesiredState, journal *changeJournal, prune bool) error {
 	tables := marcoTables(d)
 	existing := make(map[string]map[string]map[string]string)
 	dups := make(map[string][]map[string]string)
@@ -533,6 +547,9 @@ func applyMarcoDesiredState(conn routerCommander, d marcoDesiredState, journal *
 	}
 
 	for _, path := range marcoRemoveOrder {
+		if !prune {
+			break
+		}
 		t := tables[path]
 		for _, e := range dups[path] {
 			if _, err := conn.Command(path+"/remove", "=.id="+e[".id"]); err != nil {
@@ -590,17 +607,17 @@ func applyMarcoDesiredState(conn routerCommander, d marcoDesiredState, journal *
 // ---------------------------------------------------------------------------
 // Verification
 
-func verifyMarcoDesiredState(conn routerCommander, d marcoDesiredState) error {
+func verifyMarcoDesiredState(conn routerCommander, d marcoDesiredState, prune bool) error {
 	for _, path := range marcoApplyOrder {
 		t := marcoTables(d)[path]
 		byComment, dups, err := listManaged(conn, path, marcoManagedPrefix, isMarcoExcluded)
 		if err != nil {
 			return err
 		}
-		if len(dups) > 0 {
+		if prune && len(dups) > 0 {
 			return fmt.Errorf("verification mismatch on %s: %d duplicate managed entries", path, len(dups))
 		}
-		if len(byComment) != len(t.desired) {
+		if prune && len(byComment) != len(t.desired) {
 			return fmt.Errorf("verification mismatch on %s: found %d managed entries, expected %d", path, len(byComment), len(t.desired))
 		}
 		for comment, want := range t.desired {
