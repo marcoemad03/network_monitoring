@@ -7,6 +7,8 @@ import '../screens/auth/forgot_password_screen.dart';
 import '../screens/connect/mikrotik_connect_screen.dart';
 import '../screens/dashboard/dashboard_screen.dart';
 import '../screens/devices/equipment_screen.dart';
+import '../screens/security/security_screen.dart';
+import '../screens/sites/sites_screen.dart';
 import '../screens/devices/devices_screen.dart';
 import '../screens/devices/device_detail_screen.dart';
 import '../screens/devices/device_form_screen.dart';
@@ -208,6 +210,14 @@ class AppRouter {
               GoRoute(
                 path: RouteNames.telegramSettings,
                 builder: (context, state) => const TelegramSettingsScreen(),
+              ),
+              GoRoute(
+                path: RouteNames.security,
+                builder: (context, state) => const SecurityScreen(),
+              ),
+              GoRoute(
+                path: RouteNames.securitySites,
+                builder: (context, state) => const SitesScreen(),
               ),
               GoRoute(
                 path: RouteNames.auditLog,

@@ -21,6 +21,8 @@ class RouteNames {
   static const String hotspotWelcome = '/settings/hotspot-welcome';
   static const String telegramSettings = '/settings/telegram';
   static const String auditLog = '/audit';
+  static const String security = '/security';
+  static const String securitySites = '/security/sites';
   static const String about = '/about';
   static const String internetManagement = '/internet';
   static const String internetPolicies = '/internet/policies';

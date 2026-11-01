@@ -14,6 +14,7 @@ import (
 	"github.com/hospital/nms-backend/internal/security"
 	"github.com/hospital/nms-backend/internal/services"
 	"github.com/hospital/nms-backend/internal/websocket"
+	"github.com/hospital/nms-backend/pkg/logger"
 )
 
 func RegisterRoutes(router *gin.Engine, db *database.DB, hub *websocket.Hub, cfg *config.Config) {
@@ -69,6 +70,26 @@ func RegisterRoutes(router *gin.Engine, db *database.DB, hub *websocket.Hub, cfg
 	clientInventory := services.NewClientInventoryService(clientRepo, internetRepo, cfg)
 	clientInventory.Start(context.Background(), cfg.RouterClientPollInterval, wanRepo.OrgsWithRouter)
 	clientHandler := handlers.NewClientHandler(clientInventory)
+	securityRepo := repository.NewSecurityRepository(db)
+	securityScan := services.NewSecurityScanService(securityRepo, internetRepo, clientInventory, cfg)
+	securityScan.Start(context.Background(), cfg.RouterSecurityScanInterval, wanRepo.OrgsWithRouter)
+	securityHandler := handlers.NewSecurityHandler(securityScan, auditRepo)
+	dnsRepo := repository.NewDNSRepository(db)
+	dnsCollector := services.NewDNSCollector(dnsRepo, clientInventory, cfg.DNSRetentionDays)
+	dnsCollector.Start(context.Background(), wanRepo.OrgsWithRouter)
+	dnsCollector.RegisterSource(services.SourceSyslog, cfg.DNSSyslogListen != "")
+	dnsCollector.RegisterSource(services.SourcePihole, cfg.PiholeURL != "")
+	if cfg.DNSSyslogListen != "" {
+		if err := dnsCollector.StartSyslog(context.Background(), cfg.DNSSyslogListen, cfg.DNSSyslogAllow); err != nil {
+			logger.Warn("DNS syslog listener not started", "error", err)
+		}
+	}
+	if cfg.PiholeURL != "" && (cfg.PiholePassword != "" || cfg.PiholeToken != "") {
+		dnsCollector.StartPihole(context.Background(), services.NewPiholeReader(cfg.PiholeURL, cfg.PiholePassword, cfg.PiholeToken, cfg.PiholeInsecureTLS), cfg.PiholePollInterval)
+	} else if cfg.PiholeURL != "" {
+		dnsCollector.SourceError(services.SourcePihole, "PIHOLE_URL is set but neither PIHOLE_PASSWORD nor PIHOLE_API_TOKEN is")
+	}
+	sitesHandler := handlers.NewSitesHandler(services.NewSitesService(dnsRepo, dnsCollector, clientInventory), auditRepo, cfg.DNSRetentionDays)
 	hotspotWelcomeService := services.NewHotspotWelcomeService(hotspotWelcomeRepo)
 
 	// Reporting services
@@ -203,6 +224,24 @@ func RegisterRoutes(router *gin.Engine, db *database.DB, hub *websocket.Hub, cfg
 
 		protected.GET("/audit-logs", auditHandler.List)
 		protected.GET("/audit-logs/export", auditHandler.Export)
+
+		security := protected.Group("/security")
+		{
+			security.GET("/overview", securityHandler.Overview)
+			security.POST("/scan", securityHandler.Scan)
+			security.GET("/devices/:key", securityHandler.Device)
+			security.GET("/sites", sitesHandler.Overview)
+			security.GET("/sites/device/:key", sitesHandler.Device)
+			security.GET("/sites/logo/:domain", sitesHandler.Logo)
+			security.GET("/sites/detail/:domain", sitesHandler.Site)
+			security.POST("/sites/adopt", sitesHandler.Adopt)
+			security.POST("/catalog", sitesHandler.Create)
+			security.PUT("/catalog/:id", sitesHandler.Update)
+			security.DELETE("/catalog/:id", sitesHandler.Delete)
+			security.POST("/catalog/:id/logo/fetch", sitesHandler.FetchLogo)
+			security.PUT("/catalog/:id/logo", sitesHandler.UploadLogo)
+			security.DELETE("/catalog/:id/logo", sitesHandler.ClearLogo)
+		}
 
 		monitoring := protected.Group("/monitoring")
 		{

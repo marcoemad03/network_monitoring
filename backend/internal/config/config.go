@@ -92,6 +92,29 @@ type Config struct {
 	// RouterClientPollInterval is how often the router is read for the device
 	// inventory and per-device usage (0 disables it).
 	RouterClientPollInterval time.Duration
+	// Security scans read the router's whole connection table, which on a busy router
+	// means thousands of rows and seconds of full CPU. They run only when someone
+	// asks (interval 0) unless RouterSecurityScanInterval is set, never while the
+	// router is above RouterScanMaxCPU, and never twice within RouterScanCooldown.
+	RouterSecurityScanInterval time.Duration
+	RouterScanMaxCPU           int
+	RouterScanCooldown         time.Duration
+	SecurityRetentionDays      int
+	// RouterScanPlatformLists maps a platform name to a router address-list that
+	// the hospital maintains for it (for example the tls-host "collect" lists).
+	RouterScanPlatformLists map[string]string
+	// Websites by name come from DNS lookups the hospital's own resolver sees. Two
+	// sources, either or both: a UDP syslog listener (the resolver or router forwards
+	// its query log here) and a Pi-hole whose query log is read over its API.
+	// Nothing is listened on or polled unless it is configured.
+	DNSSyslogListen    string // for example ":5514"; empty = off
+	DNSSyslogAllow     []string
+	PiholeURL          string
+	PiholePassword     string // Pi-hole v6
+	PiholeToken        string // Pi-hole v5 API token
+	PiholeInsecureTLS  bool
+	PiholePollInterval time.Duration
+	DNSRetentionDays   int
 	// MonitorSimulateMetrics makes the monitor store random device metrics (demo
 	// data). Off by default: the dashboard must only show measured values.
 	MonitorSimulateMetrics bool
@@ -224,6 +247,31 @@ func Load(cliPort int) (*Config, error) {
 		return nil, fmt.Errorf("invalid ROUTER_CLIENT_POLL_INTERVAL: %w", err)
 	}
 	cfg.RouterClientPollInterval = clientInterval
+	scanInterval, err := time.ParseDuration(getEnv("ROUTER_SECURITY_SCAN_INTERVAL", "0"))
+	if err != nil {
+		return nil, fmt.Errorf("invalid ROUTER_SECURITY_SCAN_INTERVAL: %w", err)
+	}
+	cfg.RouterSecurityScanInterval = scanInterval
+	cfg.RouterScanMaxCPU = getEnvInt("ROUTER_SCAN_MAX_CPU", 85)
+	scanCooldown, err := time.ParseDuration(getEnv("ROUTER_SCAN_COOLDOWN", "5m"))
+	if err != nil {
+		return nil, fmt.Errorf("invalid ROUTER_SCAN_COOLDOWN: %w", err)
+	}
+	cfg.RouterScanCooldown = scanCooldown
+	cfg.SecurityRetentionDays = getEnvInt("SECURITY_RETENTION_DAYS", 30)
+	cfg.RouterScanPlatformLists = parseKeyValueList(getEnv("ROUTER_SCAN_PLATFORM_LISTS", ""))
+	cfg.DNSSyslogListen = getEnv("DNS_SYSLOG_LISTEN", "")
+	cfg.DNSSyslogAllow = splitCSV(getEnv("DNS_SYSLOG_ALLOW", ""))
+	cfg.PiholeURL = strings.TrimRight(getEnv("PIHOLE_URL", ""), "/")
+	cfg.PiholePassword = getEnv("PIHOLE_PASSWORD", "")
+	cfg.PiholeToken = getEnv("PIHOLE_API_TOKEN", "")
+	cfg.PiholeInsecureTLS = getEnvBool("PIHOLE_INSECURE_TLS", false)
+	piholePoll, err := time.ParseDuration(getEnv("PIHOLE_POLL_INTERVAL", "30s"))
+	if err != nil {
+		return nil, fmt.Errorf("invalid PIHOLE_POLL_INTERVAL: %w", err)
+	}
+	cfg.PiholePollInterval = piholePoll
+	cfg.DNSRetentionDays = getEnvInt("DNS_RETENTION_DAYS", 30)
 	cfg.MonitorSimulateMetrics = getEnvBool("MONITOR_SIMULATE_METRICS", false)
 
 	return cfg, nil

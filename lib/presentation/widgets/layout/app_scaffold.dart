@@ -117,6 +117,7 @@ class AppScaffold extends StatelessWidget {
     if (location.startsWith(RouteNames.marcoGroups)) return 8;
     if (location.startsWith('/asset')) return 9;
     if (location.startsWith('/audit')) return 10;
+    if (location.startsWith(RouteNames.security)) return 11;
     return 0;
   }
 
@@ -144,6 +145,8 @@ class AppScaffold extends StatelessWidget {
         context.go(RouteNames.assetList);
       case 10:
         context.go(RouteNames.auditLog);
+      case 11:
+        context.go(RouteNames.security);
     }
   }
 }
@@ -160,6 +163,7 @@ const _navItems = <_NavItem>[
   _NavItem(Icons.group_outlined, Icons.group, 'Groups'),
   _NavItem(Icons.inventory_2_outlined, Icons.inventory_2, 'Assets'),
   _NavItem(Icons.history_outlined, Icons.history, 'Audit'),
+  _NavItem(Icons.shield_outlined, Icons.shield, 'Security'),
 ];
 
 class _NavItem {
