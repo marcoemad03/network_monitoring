@@ -58,3 +58,5 @@ backend/tmp/
 
 # IDE
 .vscode/
+*.exe~
+/null

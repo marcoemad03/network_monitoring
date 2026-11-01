@@ -4,10 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/services/marco_state_service.dart';
+import '../../../data/models/marco_models.dart';
 import '../../../domain/entities/connected_device.dart';
 import '../../../domain/entities/router_connection_status.dart';
 import '../../../shared/extensions/datetime_extensions.dart';
 import '../../providers/device/device_provider.dart';
+import '../../providers/marco/marco_provider.dart';
+import '../marco/marco_groups_screen.dart' show marcoColor;
 import '../../router/route_names.dart';
 import '../../widgets/common/search_input.dart';
 
@@ -65,26 +68,19 @@ class _ConnectedDevicesScreenState extends ConsumerState<ConnectedDevicesScreen>
     await ref.read(connectedDevicesProvider.future);
   }
 
-  String _groupNameFor(String deviceId) {
-    final profile = ref.read(marcoStateServiceProvider).profileFor(deviceId);
-    if (profile?.groupId == null) return '';
-    final group = ref.read(marcoStateServiceProvider).groups.where((g) => g.id == profile!.groupId).firstOrNull;
-    return group?.name ?? '';
-  }
+  List<MarcoGroup> get _marcoGroups => ref.read(marcoGroupsProvider).valueOrNull?.groups ?? const [];
+
+  // Group membership is keyed by MAC address on the backend.
+  MarcoGroup? _groupOf(ConnectedDevice device) =>
+      _marcoGroups.where((g) => g.hasMac(device.macAddress)).firstOrNull;
+
+  String _groupNameFor(ConnectedDevice device) => _groupOf(device)?.name ?? '';
 
   Color _groupColor(String groupName) {
     if (groupName.isEmpty) return Colors.transparent;
-    final group = ref.read(marcoStateServiceProvider).groups.where((g) => g.name == groupName).firstOrNull;
+    final group = _marcoGroups.where((g) => g.name == groupName).firstOrNull;
     if (group == null) return Colors.grey;
-    switch (group.color) {
-      case 'blue': return Colors.blue;
-      case 'green': return Colors.green;
-      case 'orange': return Colors.orange;
-      case 'red': return Colors.red;
-      case 'purple': return Colors.purple;
-      case 'teal': return Colors.teal;
-      default: return Colors.grey;
-    }
+    return marcoColor(group.color);
   }
 
   List<ConnectedDevice> _visibleDevices(List<ConnectedDevice> source) {
@@ -120,6 +116,7 @@ class _ConnectedDevicesScreenState extends ConsumerState<ConnectedDevicesScreen>
   @override
   Widget build(BuildContext context) {
     ref.listen(liveNotificationProvider, (_, __) {});
+    ref.watch(marcoGroupsProvider);
     final state = ref.watch(connectedDevicesProvider);
     return Scaffold(
       appBar: AppBar(
@@ -280,7 +277,7 @@ class _ConnectedDevicesScreenState extends ConsumerState<ConnectedDevicesScreen>
           const DataColumn(label: Text('Actions')),
         ],
         rows: devices.map((device) {
-          final groupName = _groupNameFor(device.id);
+          final groupName = _groupNameFor(device);
           final gColor = _groupColor(groupName);
           return DataRow(
             selected: _selectedDeviceIds.contains(device.id),
@@ -374,7 +371,7 @@ class _ConnectedDevicesScreenState extends ConsumerState<ConnectedDevicesScreen>
     itemCount: devices.length,
     itemBuilder: (context, index) {
       final device = devices[index];
-      final groupName = _groupNameFor(device.id);
+      final groupName = _groupNameFor(device);
       final gColor = _groupColor(groupName);
       return Card(
         margin: const EdgeInsets.only(bottom: 10),
@@ -485,14 +482,17 @@ class _ConnectedDevicesScreenState extends ConsumerState<ConnectedDevicesScreen>
       return;
     }
     if (action == 'assign') {
-      final groups = ref.read(marcoStateServiceProvider).groups;
+      final groups = _marcoGroups;
       if (groups.isEmpty) {
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Create a Marco Group first')));
         return;
       }
-      final existingProfile = ref.read(marcoStateServiceProvider).profileFor(device.id);
-      final existingGroupId = existingProfile?.groupId;
-      final existingGroup = existingGroupId != null ? groups.where((g) => g.id == existingGroupId).firstOrNull : null;
+      if (device.macAddress.isEmpty) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('This device has no MAC address, so it cannot join a group')));
+        return;
+      }
+      final existingGroup = _groupOf(device);
+      final existingGroupId = existingGroup?.id;
 
       final selected = await showDialog<String>(context: context, builder: (ctx) => SimpleDialog(
         title: Text(existingGroup != null ? 'Device already belongs to ${existingGroup.name}' : 'Assign to Marco Group'),
@@ -531,26 +531,33 @@ class _ConnectedDevicesScreenState extends ConsumerState<ConnectedDevicesScreen>
         ],
       ));
       if (selected == null || !mounted) return;
+      final controller = ref.read(marcoGroupsProvider.notifier);
+      void toast(String text) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+      }
       if (selected.startsWith('remove_')) {
         final gid = selected.substring(7);
-        final profile = ref.read(marcoStateServiceProvider).profileFor(device.id);
-        if (profile?.groupId == gid) {
-          await ref.read(marcoStateServiceProvider).saveProfile(MarcoDeviceProfile(
-            deviceId: device.id, displayName: profile?.displayName, comment: profile?.comment,
-            groupId: null, pinned: profile?.pinned ?? false, updatedAt: DateTime.now(),
-          ));
+        final member = existingGroup?.members.where((m) => (m.macAddress ?? '').toUpperCase() == device.macAddress.toUpperCase()).firstOrNull;
+        if (member == null) return;
+        try {
+          final result = await controller.removeMember(gid, member.deviceId);
+          toast(result.dryRun ? '${device.deviceName} removed from group (router writes are disabled)' : '${device.deviceName} removed from group');
+        } catch (e) {
+          toast('Could not remove device: $e');
         }
         return;
       }
-      final profile = ref.read(marcoStateServiceProvider).profileFor(device.id);
+      final targetName = groups.firstWhere((g) => g.id == selected).name;
       final msg = existingGroup != null
-          ? '${device.deviceName} moved from ${existingGroup.name} to ${groups.firstWhere((g) => g.id == selected).name}'
-          : '${device.deviceName} assigned to a Marco Group';
-      await ref.read(marcoStateServiceProvider).saveProfile(MarcoDeviceProfile(
-        deviceId: device.id, displayName: profile?.displayName, comment: profile?.comment,
-        groupId: selected, pinned: profile?.pinned ?? false, updatedAt: DateTime.now(),
-      ));
-      await ref.read(marcoStateServiceProvider).addNotification(title: 'Device assigned', message: msg, type: 'group_assignment', deviceId: device.id);
+          ? '${device.deviceName} moved from ${existingGroup.name} to $targetName'
+          : '${device.deviceName} assigned to $targetName';
+      try {
+        final result = await controller.assignDevice(selected, device.macAddress);
+        await ref.read(marcoStateServiceProvider).addNotification(title: 'Device assigned', message: msg, type: 'group_assignment', deviceId: device.id);
+        toast(result.dryRun ? '$msg (router writes are disabled)' : msg);
+      } catch (e) {
+        toast('Could not assign device: $e');
+      }
       return;
     }
     if (action == 'pin') {

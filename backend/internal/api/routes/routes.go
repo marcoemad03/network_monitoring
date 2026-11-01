@@ -1,7 +1,9 @@
 package routes
 
 import (
+	"context"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/hospital/nms-backend/internal/api/handlers"
@@ -27,6 +29,7 @@ func RegisterRoutes(router *gin.Engine, db *database.DB, hub *websocket.Hub, cfg
 	monRepo := repository.NewMonitoringRepository(db)
 	internetRepo := repository.NewInternetRepository(db)
 	assetRepo := repository.NewAssetRepository(db)
+	marcoRepo := repository.NewMarcoRepository(db)
 	deviceCtrlRepo := repository.NewDeviceControlRepository(db)
 	deviceEventRepo := repository.NewDeviceEventRepository(db)
 	hotspotWelcomeRepo := repository.NewHotspotWelcomeRepository(db)
@@ -55,6 +58,9 @@ func RegisterRoutes(router *gin.Engine, db *database.DB, hub *websocket.Hub, cfg
 	deviceControlService := services.NewDeviceControlService(deviceRepo, deviceCtrlRepo, monRepo, auditRepo)
 	deviceEventService := services.NewDeviceEventService(deviceEventRepo, deviceRepo, alertRepo)
 	enhancedDiscoverySvc := services.NewEnhancedDiscoveryService(deviceRepo, scanRepo, deviceEventRepo, deviceCtrlRepo, internetRepo, hub, cfg, telegramService)
+	marcoGroupService := services.NewMarcoGroupService(marcoRepo, deviceRepo, internetRepo, cfg, hub, telegramService)
+	marcoQuotaService := services.NewMarcoQuotaService(marcoRepo, internetRepo, cfg)
+	marcoQuotaService.Start(context.Background(), 60*time.Second)
 	hotspotWelcomeService := services.NewHotspotWelcomeService(hotspotWelcomeRepo)
 
 	// Reporting services
@@ -73,7 +79,8 @@ func RegisterRoutes(router *gin.Engine, db *database.DB, hub *websocket.Hub, cfg
 	monitoringHandler := handlers.NewMonitoringHandler(monitoringService)
 	internetHandler := handlers.NewInternetHandler(internetService, scanRepo, discoveryService)
 	assetHandler := handlers.NewAssetHandler(assetService, policySyncService)
-	deviceCtrlHandler := handlers.NewDeviceControlHandler(deviceControlService, deviceEventService, enhancedDiscoverySvc)
+	deviceCtrlHandler := handlers.NewDeviceControlHandler(deviceControlService, deviceEventService, enhancedDiscoverySvc, marcoGroupService)
+	marcoGroupHandler := handlers.NewMarcoGroupHandler(marcoGroupService)
 	hotspotWelcomeHandler := handlers.NewHotspotWelcomeHandler(hotspotWelcomeService)
 	telegramHandler := handlers.NewTelegramHandler(telegramService)
 	healthHandler := handlers.NewHealthHandler(db, enhancedDiscoverySvc)
@@ -411,6 +418,23 @@ func RegisterRoutes(router *gin.Engine, db *database.DB, hub *websocket.Hub, cfg
 			deviceEvents.GET("/summary", deviceCtrlHandler.GetDeviceEventSummary)
 		}
 		protected.GET("/events", deviceCtrlHandler.GetOrganizationEvents)
+
+		// Marco Groups policy engine
+		marco := protected.Group("/marco")
+		{
+			marco.GET("/platforms", marcoGroupHandler.ListPlatforms)
+			marco.GET("/groups", marcoGroupHandler.ListGroups)
+			marco.GET("/groups/:id", marcoGroupHandler.GetGroup)
+			marco.POST("/groups", marcoGroupHandler.CreateGroup)
+			marco.PUT("/groups/:id", marcoGroupHandler.UpdateGroup)
+			marco.DELETE("/groups/:id", marcoGroupHandler.DeleteGroup)
+			marco.POST("/groups/:id/members", marcoGroupHandler.AddMembers)
+			marco.DELETE("/groups/:id/members/:deviceId", marcoGroupHandler.RemoveMember)
+			marco.PUT("/groups/:id/policy", marcoGroupHandler.UpdatePolicy)
+			marco.POST("/sync", marcoGroupHandler.Sync)
+			marco.GET("/logs", marcoGroupHandler.ListLogs)
+			marco.GET("/devices/status", marcoGroupHandler.DeviceStatuses)
+		}
 
 		// Enhanced Discovery
 		protected.GET("/monitoring/connected-devices", deviceCtrlHandler.GetConnectedDevices)

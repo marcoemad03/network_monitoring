@@ -60,9 +60,7 @@ func (c *SNMPCollector) collectAll() {
 		return
 	}
 
-	for _, deviceID := range deviceIDs {
-		c.collectDevice(ctx, deviceID)
-	}
+	forEachDevice(ctx, deviceIDs, c.collectDevice)
 
 	orgID := uuid.MustParse("00000000-0000-0000-0000-000000000001")
 	summary, err := c.monRepo.GetDashboardLiveSummary(ctx, orgID)
@@ -74,6 +72,10 @@ func (c *SNMPCollector) collectAll() {
 func (c *SNMPCollector) collectDevice(ctx context.Context, deviceID uuid.UUID) {
 	device, err := c.monRepo.GetDeviceByID(ctx, deviceID)
 	if err != nil {
+		return
+	}
+
+	if !pollable(device.IPAddress) {
 		return
 	}
 

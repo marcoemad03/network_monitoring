@@ -54,13 +54,15 @@ type DeviceControlHandler struct {
 	controlService *services.DeviceControlService
 	eventService   *services.DeviceEventService
 	discoverySvc   *services.EnhancedDiscoveryService
+	marcoService   *services.MarcoGroupService
 }
 
-func NewDeviceControlHandler(controlService *services.DeviceControlService, eventService *services.DeviceEventService, discoverySvc *services.EnhancedDiscoveryService) *DeviceControlHandler {
+func NewDeviceControlHandler(controlService *services.DeviceControlService, eventService *services.DeviceEventService, discoverySvc *services.EnhancedDiscoveryService, marcoService *services.MarcoGroupService) *DeviceControlHandler {
 	return &DeviceControlHandler{
 		controlService: controlService,
 		eventService:   eventService,
 		discoverySvc:   discoverySvc,
+		marcoService:   marcoService,
 	}
 }
 
@@ -289,6 +291,21 @@ func (h *DeviceControlHandler) MoveToGroup(c *gin.Context) {
 	groupID, err := uuid.Parse(req.GroupID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid group ID"})
+		return
+	}
+
+	// Moving a device applies its Marco group policy immediately: the previous
+	// group's rules are removed and the new group's rules are synced to MikroTik.
+	if h.marcoService != nil {
+		if err := h.marcoService.MoveDevice(c.Request.Context(), *orgID, *deviceID, groupID); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": err.Error()})
+			return
+		}
+		message := "Device moved to group and policies applied"
+		if h.marcoService.DryRun() {
+			message = "Device moved to group. Router writes are disabled, policy saved but not applied to the router"
+		}
+		c.JSON(http.StatusOK, gin.H{"success": true, "message": message})
 		return
 	}
 

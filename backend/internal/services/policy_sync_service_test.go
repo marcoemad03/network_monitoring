@@ -108,7 +108,8 @@ func TestReconcileEntriesUsesSeparateAttributeWordsAndIsIdempotent(t *testing.T)
 	if err := reconcileEntries(router, "/queue/simple", desired); err != nil {
 		t.Fatal(err)
 	}
-	want := []recordedCommand{{path: "/queue/simple/print", attrs: []string{"?comment=nms-policy-"}}}
+	// The API "?comment=" query is an exact match, so the table is printed whole.
+	want := []recordedCommand{{path: "/queue/simple/print"}}
 	if !reflect.DeepEqual(router.commands, want) {
 		t.Fatalf("idempotent reconciliation sent mutations: %#v", router.commands)
 	}

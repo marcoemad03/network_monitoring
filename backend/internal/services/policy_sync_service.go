@@ -19,36 +19,14 @@ import (
 )
 
 var platformDomains = map[string][]string{
-	"youtube":    {"youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be", "googlevideo.com", "ytimg.com", "ggpht.com", "googleapis.com", "youtubei.googleapis.com", "youtube-nocookie.com"},
+	"youtube":    {"youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be", "googlevideo.com", "ytimg.com", "youtubei.googleapis.com", "youtube-nocookie.com"},
 	"facebook":   {"facebook.com", "fbcdn.net", "fb.com", "messenger.com"},
 	"tiktok":     {"tiktok.com", "tiktokcdn.com", "tiktokv.com", "musical.ly"},
 	"instagram":  {"instagram.com", "cdninstagram.com"},
 }
 
 var platformIPRanges = map[string][]string{
-	"youtube": {
-		"173.194.0.0/16", "74.125.0.0/16", "216.58.0.0/16", "172.217.0.0/16",
-		"172.253.0.0/16", "142.250.0.0/16", "142.251.0.0/16", "108.177.0.0/16",
-		"216.239.32.0/19", "64.233.160.0/19", "66.249.64.0/19", "72.14.192.0/18",
-		"209.85.128.0/17", "35.184.0.0/16", "35.186.0.0/16", "35.188.0.0/16",
-		"35.190.0.0/16", "35.192.0.0/16", "35.196.0.0/16", "35.198.0.0/16",
-		"35.200.0.0/16", "35.201.0.0/16", "35.202.0.0/16", "35.203.0.0/16",
-		"35.204.0.0/16", "35.205.0.0/16", "35.206.0.0/16", "35.207.0.0/16",
-		"35.208.0.0/16", "35.209.0.0/16", "35.210.0.0/16", "35.211.0.0/16",
-		"35.212.0.0/16", "35.213.0.0/16", "35.214.0.0/16", "35.215.0.0/16",
-		"35.216.0.0/16", "35.217.0.0/16", "35.220.0.0/16", "35.221.0.0/16",
-		"35.222.0.0/16", "35.223.0.0/16", "35.224.0.0/16", "35.225.0.0/16",
-		"35.226.0.0/16", "35.227.0.0/16", "35.228.0.0/16", "35.229.0.0/16",
-		"35.230.0.0/16", "35.231.0.0/16", "35.232.0.0/16", "35.233.0.0/16",
-		"35.234.0.0/16", "35.235.0.0/16", "35.236.0.0/16", "35.237.0.0/16",
-		"35.238.0.0/16", "35.239.0.0/16", "35.240.0.0/16", "35.241.0.0/16",
-		"35.242.0.0/16", "35.243.0.0/16", "35.244.0.0/16", "35.245.0.0/16",
-		"35.246.0.0/16", "35.247.0.0/16", "104.154.0.0/15", "104.196.0.0/14",
-		"107.167.160.0/19", "107.178.192.0/18", "130.211.0.0/16", "146.148.0.0/17",
-		"162.216.148.0/22", "162.222.176.0/21", "172.110.32.0/21", "173.255.112.0/20",
-		"192.158.28.0/22", "193.186.4.0/24", "199.192.112.0/22", "199.223.232.0/21",
-		"207.223.160.0/20", "208.68.108.0/23", "209.85.128.0/17",
-	},
+	"youtube": youtubeIPRanges,
 }
 
 const managedPlatformAddressList = "nms-blocked-platforms"
@@ -65,6 +43,8 @@ type routerCommander interface {
 type desiredRouterEntry struct {
 	path  string
 	attrs map[string]string
+	// top places a new filter rule at the head of its chain.
+	top bool
 }
 
 type PolicySyncService struct {
@@ -82,7 +62,21 @@ func NewPolicySyncService(assetRepo *repository.AssetRepository, internetRepo *r
 	return s
 }
 
+// legacyOptions switches the heavier enforcement mechanisms of the legacy
+// policy engine. Both default to off (see ROUTER_ENABLE_LAYER7 / ROUTER_ENABLE_DNS_BLOCK).
+type legacyOptions struct {
+	layer7 bool
+	dns    bool
+}
+
+func (s *PolicySyncService) options() legacyOptions {
+	return legacyOptions{layer7: s.cfg.RouterEnableLayer7, dns: s.cfg.RouterEnableDNSBlock}
+}
+
 func (s *PolicySyncService) SyncPoliciesToMikroTik(ctx context.Context, orgID uuid.UUID) error {
+	ctx, cancel := context.WithTimeout(ctx, marcoSyncTimeout)
+	defer cancel()
+
 	vendor, err := s.internetRepo.GetActiveMikroTikIntegration(ctx, orgID)
 	if err != nil {
 		return fmt.Errorf("active MikroTik integration is not configured: %w", err)
@@ -94,15 +88,27 @@ func (s *PolicySyncService) SyncPoliciesToMikroTik(ctx context.Context, orgID uu
 	if err != nil {
 		return s.fail(ctx, log, fmt.Errorf("resolve policy assignments: %w", err))
 	}
-	firewall, queues, err := desiredEntries(targets)
+	opts := s.options()
+	firewall, queues, err := desiredEntriesWith(targets, opts)
 	if err != nil {
 		return s.fail(ctx, log, err)
 	}
-	conn, err := s.dialRouter(vendor)
+	if err := validateFirewallScope(firewall); err != nil {
+		return s.fail(ctx, log, err)
+	}
+	if err := validateEntryCount(s.cfg, len(firewall), len(queues)); err != nil {
+		return s.fail(ctx, log, err)
+	}
+	conn, err := openRouterSession(ctx, vendor, s.cfg, func(v *models.VendorIntegration, _ *config.Config) (routerCommander, error) {
+		return s.dialRouter(v)
+	}, true)
 	if err != nil {
 		return s.fail(ctx, log, fmt.Errorf("connect MikroTik: %w", err))
 	}
 	defer conn.Close()
+	if conn.DryRun() {
+		log.Details["dry_run"] = true
+	}
 
 	if err := reconcileEntries(conn, "/ip/firewall/filter", firewall); err != nil {
 		return s.fail(ctx, log, fmt.Errorf("reconcile Internet access rules: %w", err))
@@ -113,19 +119,22 @@ func (s *PolicySyncService) SyncPoliciesToMikroTik(ctx context.Context, orgID uu
 	if err := s.reconcilePlatformAddressLists(ctx, conn, targets); err != nil {
 		return s.fail(ctx, log, fmt.Errorf("reconcile platform address lists: %w", err))
 	}
-	if err := s.reconcilePlatformLayer7(ctx, conn, targets); err != nil {
+	if err := s.reconcilePlatformLayer7(ctx, conn, activeTargets(targets, opts.layer7)); err != nil {
 		return s.fail(ctx, log, fmt.Errorf("reconcile platform layer7 protocols: %w", err))
 	}
-	if err := s.reconcilePlatformDNS(ctx, conn, targets); err != nil {
+	if err := s.reconcilePlatformDNS(ctx, conn, activeTargets(targets, opts.dns)); err != nil {
 		return s.fail(ctx, log, fmt.Errorf("reconcile platform DNS blocks: %w", err))
 	}
 
 	log.ID = uuid.New()
 	log.Status = "completed"
-	log.Details = map[string]interface{}{"targets": len(targets), "firewall_rules": len(firewall), "queues": len(queues), "completed_at": time.Now().Format(time.RFC3339)}
+	log.Details = map[string]interface{}{"targets": len(targets), "firewall_rules": len(firewall), "queues": len(queues), "completed_at": time.Now().Format(time.RFC3339), "dry_run": conn.DryRun()}
+	if conn.DryRun() {
+		log.Details["planned_changes"] = conn.Planned()
+	}
 	_ = s.assetRepo.CreateSyncLog(ctx, log)
 
-	if len(targets) > 0 {
+	if len(targets) > 0 && !conn.DryRun() {
 		if s.hub != nil {
 			s.hub.BroadcastMessage("notification", models.LiveNotification{
 				Title:   "Policy sync completed",
@@ -185,7 +194,20 @@ func (s *PolicySyncService) dial(vendor *models.VendorIntegration) (routerComman
 	return conn, nil
 }
 
+// activeTargets returns the targets when enabled, or none, so reconciliation
+// removes previously created entries of a mechanism that was switched off.
+func activeTargets(targets []models.AssignedPolicyDevice, enabled bool) []models.AssignedPolicyDevice {
+	if enabled {
+		return targets
+	}
+	return nil
+}
+
 func desiredEntries(targets []models.AssignedPolicyDevice) (map[string]desiredRouterEntry, map[string]desiredRouterEntry, error) {
+	return desiredEntriesWith(targets, legacyOptions{layer7: true, dns: true})
+}
+
+func desiredEntriesWith(targets []models.AssignedPolicyDevice, opts legacyOptions) (map[string]desiredRouterEntry, map[string]desiredRouterEntry, error) {
 	firewall := make(map[string]desiredRouterEntry)
 	queues := make(map[string]desiredRouterEntry)
 	for _, target := range targets {
@@ -201,7 +223,7 @@ func desiredEntries(targets []models.AssignedPolicyDevice) (map[string]desiredRo
 				return nil, nil, fmt.Errorf("policy %s: internet_access requires boolean enabled", p.ID)
 			}
 			if !enabled {
-				firewall[comment] = desiredRouterEntry{path: "/ip/firewall/filter", attrs: map[string]string{"chain": "forward", "action": "drop", "src-address": hostCIDR(d.IPAddress), "src-mac-address": strings.ToUpper(*d.MACAddress), "comment": comment}}
+				firewall[comment] = desiredRouterEntry{path: "/ip/firewall/filter", attrs: map[string]string{"chain": "forward", "action": "drop", "src-address": hostCIDR(d.IPAddress), "src-mac-address": strings.ToUpper(*d.MACAddress), "comment": comment}, top: true}
 			}
 		case "bandwidth_limit", "upload_limit", "download_limit":
 			upload, uok := positiveInt64(p.Config["upload_limit_bps"])
@@ -231,12 +253,17 @@ func desiredEntries(targets []models.AssignedPolicyDevice) (map[string]desiredRo
 				firewall[dnsDropComment] = desiredRouterEntry{
 					path:  "/ip/firewall/filter",
 					attrs: map[string]string{"chain": "forward", "action": "drop", "src-mac-address": strings.ToUpper(*d.MACAddress), "dst-address-list": managedPlatformAddressList + "-" + name, "comment": dnsDropComment},
+						top:   true,
 				}
 
-				layer7Comment := ruleComment + "-l7"
+				if !opts.layer7 {
+						continue
+					}
+					layer7Comment := ruleComment + "-l7"
 				firewall[layer7Comment] = desiredRouterEntry{
 					path:  "/ip/firewall/filter",
 					attrs: map[string]string{"chain": "forward", "action": "drop", "src-mac-address": strings.ToUpper(*d.MACAddress), "layer7-protocol": "nms-" + name, "comment": layer7Comment},
+						top:   true,
 				}
 			}
 		case "website_whitelist":
@@ -261,14 +288,17 @@ func desiredEntries(targets []models.AssignedPolicyDevice) (map[string]desiredRo
 				continue
 			}
 			scheduleComment := comment + "-schedule"
-			ruleAttrs := map[string]string{"chain": "forward", "action": action, "comment": scheduleComment}
+			// Scoped to this device. An unscoped time rule would drop (or accept)
+			// the traffic of every device on the network.
+			ruleAttrs := map[string]string{"chain": "forward", "action": action, "comment": scheduleComment,
+				"src-address": hostCIDR(d.IPAddress), "src-mac-address": strings.ToUpper(*d.MACAddress)}
 			if startTime != "" && endTime != "" {
-				ruleAttrs["time"] = startTime + "-" + endTime
+				ruleAttrs["time"] = scheduleClock(startTime) + "-" + scheduleClock(endTime)
 			}
 			if days != "" {
 				ruleAttrs["days"] = days
 			}
-			firewall[scheduleComment] = desiredRouterEntry{path: "/ip/firewall/filter", attrs: ruleAttrs}
+			firewall[scheduleComment] = desiredRouterEntry{path: "/ip/firewall/filter", attrs: ruleAttrs, top: true}
 		default:
 			return nil, nil, fmt.Errorf("%w: unknown policy type %q", ErrPolicyUnsupported, p.PolicyType)
 		}
@@ -276,45 +306,41 @@ func desiredEntries(targets []models.AssignedPolicyDevice) (map[string]desiredRo
 	return firewall, queues, nil
 }
 
+// reconcileEntries diffs the "nms-policy-" entries of one table against the
+// desired set. The RouterOS API "?comment=" query is an exact match, so the
+// table is printed and filtered by prefix here.
 func reconcileEntries(conn routerCommander, basePath string, desired map[string]desiredRouterEntry) error {
-	existing, err := conn.Command(basePath+"/print", "?comment="+managedPolicyPrefix)
+	existing, dups, err := listManaged(conn, basePath, managedPolicyPrefix, nil)
 	if err != nil {
 		return err
 	}
-	seen := make(map[string]bool)
-	for _, current := range existing {
-		comment := current["comment"]
-		if !strings.HasPrefix(comment, managedPolicyPrefix) {
-			continue
-		}
-		want, ok := desired[comment]
-		if !ok {
-			if _, err := conn.Command(basePath+"/remove", "=.id="+current[".id"]); err != nil {
-				return err
-			}
-			continue
-		}
-		seen[comment] = true
-		changed := false
-		for key, value := range want.attrs {
-			if current[key] != value {
-				changed = true
-				break
-			}
-		}
-		if changed {
-			attrs := attributeWords(want.attrs)
-			attrs = append([]string{"=.id=" + current[".id"]}, attrs...)
-			if _, err := conn.Command(basePath+"/set", attrs...); err != nil {
-				return err
-			}
+	for _, e := range dups {
+		if _, err := conn.Command(basePath+"/remove", "=.id="+e[".id"]); err != nil {
+			return err
 		}
 	}
-	for comment, want := range desired {
-		if seen[comment] {
+	for comment, current := range existing {
+		if _, ok := desired[comment]; ok {
 			continue
 		}
-		if _, err := conn.Command(want.path+"/add", attributeWords(want.attrs)...); err != nil {
+		if _, err := conn.Command(basePath+"/remove", "=.id="+current[".id"]); err != nil {
+			return err
+		}
+	}
+	for _, comment := range sortedKeys(desired) {
+		want := desired[comment]
+		current, ok := existing[comment]
+		if !ok {
+			if err := addRouterEntry(conn, want.path, want.attrs, want.top); err != nil {
+				return fmt.Errorf("add %s %q: %w", want.path, comment, err)
+			}
+			continue
+		}
+		if entryMatches(current, want.attrs) {
+			continue
+		}
+		args := append([]string{"=.id=" + current[".id"]}, attributeWords(want.attrs)...)
+		if _, err := conn.Command(basePath+"/set", args...); err != nil {
 			return err
 		}
 	}
@@ -413,7 +439,7 @@ func (s *PolicySyncService) reconcilePlatformLayer7(ctx context.Context, conn ro
 	seen := make(map[string]bool)
 	for _, entry := range existing {
 		name := entry["name"]
-		if !strings.HasPrefix(name, "nms-") {
+		if !strings.HasPrefix(name, "nms-") || strings.HasPrefix(name, marcoManagedPrefix) {
 			continue
 		}
 		platform := strings.TrimPrefix(name, "nms-")

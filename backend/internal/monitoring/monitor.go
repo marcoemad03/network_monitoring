@@ -3,6 +3,7 @@ package monitoring
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -20,6 +21,7 @@ type Monitor struct {
 	interval  time.Duration
 	pingCount int
 	stopCh    chan struct{}
+	polling   atomic.Bool
 }
 
 func NewMonitor(db *database.DB, hub *websocket.Hub, interval time.Duration) *Monitor {
@@ -59,7 +61,13 @@ func (m *Monitor) Stop() {
 }
 
 func (m *Monitor) pollOnce() {
-	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	// A slow round must not stack on top of the next one.
+	if !m.polling.CompareAndSwap(false, true) {
+		return
+	}
+	defer m.polling.Store(false)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 
 	deviceIDs, err := m.monRepo.GetMonitoredDevices(ctx)
@@ -68,9 +76,7 @@ func (m *Monitor) pollOnce() {
 		return
 	}
 
-	for _, deviceID := range deviceIDs {
-		m.pollDevice(ctx, deviceID)
-	}
+	forEachDevice(ctx, deviceIDs, m.pollDevice)
 
 	m.broadcastDashboardSummary(ctx)
 }
@@ -81,6 +87,9 @@ func (m *Monitor) pollDevice(ctx context.Context, deviceID uuid.UUID) {
 		return
 	}
 
+	if !pollable(device.IPAddress) {
+		return
+	}
 	ip := device.IPAddress.String()
 	deviceType := "unknown"
 	if d, err := m.devRepo.GetByID(ctx, deviceID); err == nil {

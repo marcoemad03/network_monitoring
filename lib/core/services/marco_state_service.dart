@@ -4,50 +4,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../domain/entities/connected_device.dart';
 
-class MarcoGroup {
-  final String id;
-  final String name;
-  final String description;
-  final String color;
-  final String icon;
-  final List<String> macAddresses;
-  final Map<String, dynamic> policy;
-  final DateTime createdAt;
-
-  const MarcoGroup({
-    required this.id,
-    required this.name,
-    required this.description,
-    required this.color,
-    required this.icon,
-    required this.macAddresses,
-    required this.policy,
-    required this.createdAt,
-  });
-
-  Map<String, dynamic> toJson() => {
-    'id': id,
-    'name': name,
-    'description': description,
-    'color': color,
-    'icon': icon,
-    'mac_addresses': macAddresses,
-    'policy': policy,
-    'created_at': createdAt.toIso8601String(),
-  };
-
-  factory MarcoGroup.fromJson(Map<String, dynamic> json) => MarcoGroup(
-    id: json['id'] as String,
-    name: json['name'] as String,
-    description: json['description'] as String? ?? '',
-    color: json['color'] as String? ?? 'blue',
-    icon: json['icon'] as String? ?? 'group',
-    macAddresses: List<String>.from(json['mac_addresses'] ?? const []),
-    policy: Map<String, dynamic>.from(json['policy'] ?? const {}),
-    createdAt: DateTime.parse(json['created_at'] as String),
-  );
-}
-
 class MarcoDeviceProfile {
   final String deviceId;
   final String? displayName;
@@ -138,23 +94,35 @@ class MarcoStateService {
   static const _notificationsKey = 'marco_notifications';
   static const _snapshotKey = 'marco_last_snapshot';
 
-  final List<MarcoGroup> _groups = [];
+  static const _legacyImportedKey = 'marco_legacy_groups_imported';
+
   final Map<String, MarcoDeviceProfile> _profiles = {};
   final List<MarcoNotification> _notifications = [];
   final Set<String> _lastSnapshot = <String>{};
 
-  List<MarcoGroup> get groups => List.unmodifiable(_groups);
   List<MarcoNotification> get notifications => List.unmodifiable(_notifications);
   int get unreadCount => _notifications.where((n) => !n.isRead).length;
+
+  /// Groups used to live only in this device's SharedPreferences. They are now
+  /// stored on the backend; this returns the old local ones once so they can be
+  /// imported (see marcoGroupsProvider).
+  List<Map<String, dynamic>> pendingLegacyGroups() {
+    if (_prefs.getBool(_legacyImportedKey) ?? false) return const [];
+    final raw = _prefs.getStringList(_groupsKey) ?? const <String>[];
+    final out = <Map<String, dynamic>>[];
+    for (final entry in raw) {
+      try {
+        out.add(Map<String, dynamic>.from(jsonDecode(entry) as Map));
+      } catch (_) {}
+    }
+    return out;
+  }
+
+  Future<void> markLegacyGroupsImported() => _prefs.setBool(_legacyImportedKey, true);
 
   Future<void> load() async => _load();
 
   Future<void> _load() async {
-    final groupsJson = _prefs.getStringList(_groupsKey) ?? <String>[];
-    _groups
-      ..clear()
-      ..addAll(groupsJson.map((entry) => MarcoGroup.fromJson(jsonDecode(entry))));
-
     final profilesJson = _prefs.getStringList(_profilesKey) ?? <String>[];
     _profiles.clear();
     for (final entry in profilesJson) {
@@ -176,21 +144,6 @@ class MarcoStateService {
     _lastSnapshot
       ..clear()
       ..addAll(snapshotJson);
-  }
-
-  Future<void> saveGroup(MarcoGroup group) async {
-    final existingIndex = _groups.indexWhere((entry) => entry.id == group.id);
-    if (existingIndex >= 0) {
-      _groups[existingIndex] = group;
-    } else {
-      _groups.add(group);
-    }
-    await _persistGroups();
-  }
-
-  Future<void> deleteGroup(String id) async {
-    _groups.removeWhere((entry) => entry.id == id);
-    await _persistGroups();
   }
 
   Future<void> saveProfile(MarcoDeviceProfile profile) async {
@@ -292,11 +245,6 @@ class MarcoStateService {
       ..clear()
       ..addAll(current);
     await _persistSnapshot();
-  }
-
-  Future<void> _persistGroups() async {
-    final encoded = _groups.map((group) => jsonEncode(group.toJson())).toList();
-    await _prefs.setStringList(_groupsKey, encoded);
   }
 
   Future<void> _persistProfiles() async {

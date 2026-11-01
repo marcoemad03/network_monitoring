@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -65,6 +66,15 @@ type Config struct {
 	MikroTikAPIRetryCount int
 	PingTimeout      time.Duration
 	TracerouteMaxHops int
+
+	// Router safety switches. Policy engines never modify the production router
+	// unless RouterPolicyWrites is explicitly enabled; otherwise they only compute
+	// and log the plan (dry-run).
+	RouterPolicyWrites     bool
+	RouterEnableLayer7     bool
+	RouterEnableDNSBlock   bool
+	RouterProtectedIPs     []string
+	RouterMaxManagedEntries int
 }
 
 func Load(cliPort int) (*Config, error) {
@@ -175,7 +185,23 @@ func Load(cliPort int) (*Config, error) {
 	cfg.ScanConcurrency = getEnvInt("SCAN_CONCURRENCY", 50)
 	cfg.TracerouteMaxHops = getEnvInt("TRACEROUTE_MAX_HOPS", 30)
 
+	cfg.RouterPolicyWrites = getEnvBool("ROUTER_POLICY_WRITES", false)
+	cfg.RouterEnableLayer7 = getEnvBool("ROUTER_ENABLE_LAYER7", false)
+	cfg.RouterEnableDNSBlock = getEnvBool("ROUTER_ENABLE_DNS_BLOCK", false)
+	cfg.RouterMaxManagedEntries = getEnvInt("ROUTER_MAX_MANAGED_ENTRIES", 400)
+	cfg.RouterProtectedIPs = splitCSV(getEnv("ROUTER_PROTECTED_IPS", ""))
+
 	return cfg, nil
+}
+
+func splitCSV(value string) []string {
+	var out []string
+	for _, part := range strings.Split(value, ",") {
+		if part = strings.TrimSpace(part); part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
 }
 
 func getEnv(key, fallback string) string {
