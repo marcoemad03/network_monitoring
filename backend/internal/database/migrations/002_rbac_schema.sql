@@ -83,10 +83,10 @@ INSERT INTO permissions (id, name, slug, description, module) VALUES
     ('f0000000-0000-0000-0000-000000000001', 'View Audit Logs', 'audit.view', 'View audit trail', 'audit'),
     ('f0000000-0000-0000-0000-000000000002', 'Export Audit Logs', 'audit.export', 'Export audit log data', 'audit'),
     -- System
-    ('g0000000-0000-0000-0000-000000000001', 'System Configuration', 'system.configure', 'Modify system settings', 'system'),
-    ('g0000000-0000-0000-0000-000000000002', 'View Dashboard', 'system.dashboard', 'View main dashboard', 'system'),
+    ('90000000-0000-0000-0000-000000000001', 'System Configuration', 'system.configure', 'Modify system settings', 'system'),
+    ('90000000-0000-0000-0000-000000000002', 'View Dashboard', 'system.dashboard', 'View main dashboard', 'system'),
     -- Permissions
-    ('h0000000-0000-0000-0000-000000000001', 'Manage Permissions', 'permissions.manage', 'Manage role-permission assignments', 'permissions')
+    ('91000000-0000-0000-0000-000000000001', 'Manage Permissions', 'permissions.manage', 'Manage role-permission assignments', 'permissions')
 ON CONFLICT (slug) DO NOTHING;
 
 -- Assign permissions to Super Admin (all permissions)

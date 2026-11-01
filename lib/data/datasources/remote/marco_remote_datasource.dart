@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import '../../../core/constants/api_constants.dart';
 import '../../../core/network/dio_client.dart';
 import '../../models/marco_models.dart';
 
@@ -10,6 +11,8 @@ class MarcoApiException implements Exception {
   @override
   String toString() => message;
 }
+
+const _base = '${ApiConstants.basePath}/marco';
 
 class MarcoRemoteDataSource {
   final DioClient _client;
@@ -40,7 +43,7 @@ class MarcoRemoteDataSource {
   }
 
   Future<MarcoGroupsResult> listGroups() => _guard(() async {
-        final body = _body(await _client.get('/marco/groups'));
+        final body = _body(await _client.get('$_base/groups'));
         final groups = ((body['data'] as List?) ?? const [])
             .map((e) => MarcoGroup.fromJson(Map<String, dynamic>.from(e as Map)))
             .toList();
@@ -48,7 +51,7 @@ class MarcoRemoteDataSource {
       });
 
   Future<List<MarcoPlatform>> listPlatforms() => _guard(() async {
-        final body = _body(await _client.get('/marco/platforms'));
+        final body = _body(await _client.get('$_base/platforms'));
         return ((body['data'] as List?) ?? const [])
             .map((e) => MarcoPlatform.fromJson(Map<String, dynamic>.from(e as Map)))
             .toList();
@@ -62,7 +65,7 @@ class MarcoRemoteDataSource {
     Map<String, dynamic>? policy,
   }) =>
       _guard(() async {
-        final body = _body(await _client.post('/marco/groups', data: {
+        final body = _body(await _client.post('$_base/groups', data: {
           'name': name,
           if (description != null && description.isNotEmpty) 'description': description,
           'color': color,
@@ -80,7 +83,7 @@ class MarcoRemoteDataSource {
     required String icon,
   }) =>
       _guard(() async {
-        await _client.put('/marco/groups/$id', data: {
+        await _client.put('$_base/groups/$id', data: {
           'name': name,
           'description': description,
           'color': color,
@@ -89,23 +92,23 @@ class MarcoRemoteDataSource {
       });
 
   Future<MarcoActionResult> deleteGroup(String id) =>
-      _guard(() async => _result(await _client.delete('/marco/groups/$id')));
+      _guard(() async => _result(await _client.delete('$_base/groups/$id')));
 
   Future<MarcoActionResult> addMembers(String groupId, List<String> macAddresses) =>
       _guard(() async => _result(
-            await _client.post('/marco/groups/$groupId/members', data: {'mac_addresses': macAddresses}),
+            await _client.post('$_base/groups/$groupId/members', data: {'mac_addresses': macAddresses}),
           ));
 
   Future<MarcoActionResult> removeMember(String groupId, String deviceId) =>
-      _guard(() async => _result(await _client.delete('/marco/groups/$groupId/members/$deviceId')));
+      _guard(() async => _result(await _client.delete('$_base/groups/$groupId/members/$deviceId')));
 
   Future<MarcoActionResult> updatePolicy(String groupId, Map<String, dynamic> policy) =>
-      _guard(() async => _result(await _client.put('/marco/groups/$groupId/policy', data: policy)));
+      _guard(() async => _result(await _client.put('$_base/groups/$groupId/policy', data: policy)));
 
   /// Recomputes the router plan. While the backend is in dry-run this never
   /// changes the router.
   Future<MarcoSyncPreview> sync() => _guard(() async {
-        final body = _body(await _client.post('/marco/sync'));
+        final body = _body(await _client.post('$_base/sync'));
         final data = Map<String, dynamic>.from(body['data'] as Map? ?? const {});
         return MarcoSyncPreview(
           dryRun: data['dry_run'] as bool? ?? true,
@@ -116,7 +119,7 @@ class MarcoRemoteDataSource {
       });
 
   Future<List<MarcoPolicyLog>> logs() => _guard(() async {
-        final body = _body(await _client.get('/marco/logs'));
+        final body = _body(await _client.get('$_base/logs'));
         return ((body['data'] as List?) ?? const [])
             .map((e) => MarcoPolicyLog.fromJson(Map<String, dynamic>.from(e as Map)))
             .toList();
