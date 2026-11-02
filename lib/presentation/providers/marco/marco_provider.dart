@@ -56,8 +56,9 @@ class MarcoGroupsController extends AsyncNotifier<MarcoGroupsResult> {
     String? description,
     required String color,
     required String icon,
+    Map<String, dynamic>? policy,
   }) async {
-    await _remote.createGroup(name: name, description: description, color: color, icon: icon);
+    await _remote.createGroup(name: name, description: description, color: color, icon: icon, policy: policy);
     await _reload();
     return MarcoActionResult(dryRun: state.valueOrNull?.dryRun ?? true, message: 'Group created');
   }

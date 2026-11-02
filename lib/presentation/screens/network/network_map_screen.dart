@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../data/models/network_map_models.dart';
+import '../../providers/marco/marco_details_provider.dart';
 import '../../providers/network/network_map_provider.dart';
+import '../marco/widgets/device_control_dialog.dart';
 import '../dashboard/widgets/dash_card.dart';
 import 'widgets/map_canvas.dart';
 import 'widgets/map_detail.dart';
@@ -62,6 +64,20 @@ class _NetworkMapScreenState extends ConsumerState<NetworkMapScreen> {
     await runSave(context, () => ref.read(networkMapProvider.notifier).saveDevice(d.mac, displayName: edit.name, kind: edit.kind, place: edit.place));
   }
 
+  String? _controlText(MapDevice d) {
+    final c = ref.read(marcoOverridesProvider).valueOrNull?[d.mac.toUpperCase()];
+    if (c == null) return null;
+    if (c.blocked) return 'Internet blocked';
+    if (c.limited) return 'Speed limited to ${c.downloadMbps ?? '–'} down / ${c.uploadMbps ?? '–'} up Mbps';
+    return null;
+  }
+
+  Future<void> _control(MapDevice d) async {
+    final c = ref.read(marcoOverridesProvider).valueOrNull?[d.mac.toUpperCase()];
+    await showDeviceControlDialog(context, mac: d.mac, name: d.name, ip: d.ip, control: c);
+    ref.invalidate(marcoOverridesProvider);
+  }
+
   Future<void> _setPlaceForChecked(NetworkMapData data) async {
     final place = await showSetPlaceDialog(context, _checked.length, _knownPlaces(data));
     if (place == null || !mounted) return;
@@ -92,6 +108,14 @@ class _NetworkMapScreenState extends ConsumerState<NetworkMapScreen> {
             device: d,
             port: data.port(d.port),
             onClose: () => Navigator.pop(ctx),
+            groupName: ref.read(marcoGroupByMacMapProvider)[d.mac.toUpperCase()]?.name,
+            controlText: _controlText(d),
+            onControl: d.editable
+                ? () {
+                    Navigator.pop(ctx);
+                    _control(d);
+                  }
+                : null,
             onEdit: d.editable
                 ? () {
                     Navigator.pop(ctx);
@@ -149,6 +173,9 @@ class _NetworkMapScreenState extends ConsumerState<NetworkMapScreen> {
   }
 
   Widget _content(NetworkMapState state, NetworkMapData data) {
+    // Watched here so the panel updates when a group or a control changes.
+    ref.watch(marcoOverridesProvider);
+    final groups = ref.watch(marcoGroupByMacMapProvider);
     final shown = _filter(data);
     final sideBySide = MediaQuery.sizeOf(context).width >= 1000;
     final selected = data.devices.where((d) => d.id == _selectedId).firstOrNull;
@@ -240,6 +267,9 @@ class _NetworkMapScreenState extends ConsumerState<NetworkMapScreen> {
                       device: selected,
                       port: data.port(selected.port),
                       onClose: () => setState(() => _selectedId = null),
+                      groupName: groups[selected.mac.toUpperCase()]?.name,
+                      controlText: _controlText(selected),
+                      onControl: selected.editable ? () => _control(selected) : null,
                       onEdit: selected.editable ? () => _edit(selected, data) : null,
                     ),
                   ),

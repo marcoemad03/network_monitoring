@@ -39,10 +39,7 @@ class AppScaffold extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(16, 24, 16, 16),
             child: Row(
               children: [
-                Icon(
-                  Icons.network_check,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
+                Image.asset('assets/images/logo.png', width: 36, height: 36, semanticLabel: 'Harpur Network'),
                 const SizedBox(width: 10),
                 Text(
                   'NMS',
@@ -79,11 +76,7 @@ class AppScaffold extends StatelessWidget {
               labelType: NavigationRailLabelType.selected,
               leading: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 6),
-                child: Icon(
-                  Icons.network_check,
-                  size: 26,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
+                child: Image.asset('assets/images/logo.png', width: 44, height: 44, semanticLabel: 'Harpur Network'),
               ),
               destinations:
                   _navItems

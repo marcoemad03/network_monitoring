@@ -1,9 +1,20 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../providers/reporting/reporting_provider.dart';
-import '../../widgets/common/app_error_widget.dart';
-import '../../../shared/extensions/string_extensions.dart';
+import 'package:go_router/go_router.dart';
+import '../../../core/utils/data_format.dart';
+import '../../../data/models/usage_report_models.dart';
+import '../../providers/reporting/usage_report_provider.dart';
+import '../../router/route_names.dart';
+import '../dashboard/widgets/dash_card.dart';
+import '../network/widgets/map_kinds.dart';
+import 'widgets/report_charts.dart';
+import 'widgets/report_widgets.dart';
 
+/// Reports and analytics: how much internet was used, by whom, when, and what
+/// else happened, for any period. Everything comes from what the NMS server has
+/// recorded; building a report never touches the router.
 class ReportsScreen extends ConsumerStatefulWidget {
   const ReportsScreen({super.key});
 
@@ -11,483 +22,98 @@ class ReportsScreen extends ConsumerStatefulWidget {
   ConsumerState<ReportsScreen> createState() => _ReportsScreenState();
 }
 
-class _ReportsScreenState extends ConsumerState<ReportsScreen> with SingleTickerProviderStateMixin {
-  late TabController _tabController;
+class _ReportsScreenState extends ConsumerState<ReportsScreen> {
+  bool _exporting = false;
 
-  @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+  Future<void> _pickDates() async {
+    final range = ref.read(reportRangeProvider);
+    final today = DateTime.now();
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(today.year, today.month, today.day),
+      initialDateRange: DateTimeRange(start: range.from, end: range.to),
+      helpText: 'Choose the days to report on',
+      saveText: 'Show report',
+    );
+    if (picked == null || !mounted) return;
+    ref.read(reportRangeProvider.notifier).custom(picked.start, picked.end);
   }
 
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
+  Future<void> _export(String view, String what) async {
+    if (_exporting) return;
+    final messenger = ScaffoldMessenger.of(context);
+    final range = ref.read(reportRangeProvider);
+    setState(() => _exporting = true);
+    try {
+      final file = await ref.read(usageReportRemoteProvider).export(range.from, range.to, view);
+      final path = await ref.read(reportFileSaverProvider)(file);
+      if (!mounted) return;
+      messenger.hideCurrentSnackBar();
+      messenger.showSnackBar(
+        SnackBar(
+          duration: const Duration(seconds: 10),
+          content: Text('Saved $what to $path'),
+          action: Platform.isWindows
+              ? SnackBarAction(label: 'Show in folder', onPressed: () => Process.run('explorer.exe', ['/select,', path]))
+              : null,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      messenger.showSnackBar(SnackBar(content: Text('Could not export: $e')));
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final range = ref.watch(reportRangeProvider);
+    final report = ref.watch(usageReportProvider);
+    final data = report.valueOrNull;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Reports & Analytics'),
-        bottom: TabBar(
-          controller: _tabController,
-          tabs: const [
-            Tab(text: 'Summary'),
-            Tab(text: 'Reports'),
-            Tab(text: 'Exports'),
-            Tab(text: 'Top Lists'),
-          ],
-        ),
-      ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          _SummaryTab(),
-          _ReportsTab(),
-          _ExportsTab(),
-          _TopListsTab(),
-        ],
-      ),
-    );
-  }
-}
-
-class _SummaryTab extends ConsumerWidget {
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
-    final summaryAsync = ref.watch(analyticsSummaryProvider);
-    final bandwidthAsync = ref.watch(bandwidthOverTimeProvider);
-
-    return summaryAsync.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => AppErrorWidget(
-        message: 'Failed to load analytics',
-        onRetry: () => ref.invalidate(analyticsSummaryProvider),
-      ),
-      data: (summary) => SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              children: [
-                _AnalyticsCard(title: 'Total Web Logs', value: '${summary?.totalWebLogs ?? 0}', icon: Icons.language, color: Colors.blue),
-                _AnalyticsCard(title: 'Total Connections', value: '${summary?.totalConnections ?? 0}', icon: Icons.swap_vertical_circle, color: Colors.teal),
-                _AnalyticsCard(title: 'Total Downloads', value: '${summary?.totalDownloads ?? 0}', icon: Icons.download, color: Colors.purple),
-                _AnalyticsCard(title: 'Total Bandwidth', value: formatBytes(summary?.totalBandwidthBytes ?? 0), icon: Icons.speed, color: Colors.orange),
-                _AnalyticsCard(title: 'Unread Notifications', value: '${summary?.unreadNotifications ?? 0}', icon: Icons.notifications_active, color: Colors.red),
-              ],
-            ),
-            const SizedBox(height: 24),
-            Text('Bandwidth Over Time', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
-            const SizedBox(height: 12),
-            bandwidthAsync.when(
-              loading: () => const SizedBox(height: 200, child: Center(child: CircularProgressIndicator())),
-              error: (_, __) => const SizedBox(height: 200, child: Center(child: Text('Failed to load bandwidth data'))),
-              data: (data) => SizedBox(
-                height: 200,
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: data.asMap().entries.map((entry) {
-                    final maxVal = data.fold<int>(0, (a, b) => a > b.bytesSent + b.bytesReceived ? a : b.bytesSent + b.bytesReceived);
-                    final val = entry.value.bytesSent + entry.value.bytesReceived;
-                    final heightFraction = maxVal > 0 ? val / maxVal : 0.0;
-                    return Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 2),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
-                            Text(
-                              formatBytes(val),
-                              style: theme.textTheme.labelSmall,
-                            ),
-                            const SizedBox(height: 4),
-                            Container(
-                              height: heightFraction * 160,
-                              decoration: BoxDecoration(
-                                color: Colors.blue.withValues(alpha: 0.7),
-                                borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              '${entry.value.timestamp.hour}:${entry.value.timestamp.minute.toString().padLeft(2, '0')}',
-                              style: theme.textTheme.labelSmall,
-                              textAlign: TextAlign.center,
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                ),
-              ),
-            ),
-            const SizedBox(height: 24),
-            Text('Top Bandwidth Consumers', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
-            const SizedBox(height: 12),
-            ref.watch(topBandwidthConsumersProvider).when(
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (_, __) => const Center(child: Text('Failed to load top consumers')),
-              data: (consumers) => Column(
-                children: consumers.map((c) => ListTile(
-                  leading: CircleAvatar(child: Text('${consumers.indexOf(c) + 1}')),
-                  title: Text(c.deviceName),
-                  trailing: Text(formatBytes(c.totalBytes)),
-                )).toList(),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-
-}
-
-class _AnalyticsCard extends StatelessWidget {
-  final String title;
-  final String value;
-  final IconData icon;
-  final Color color;
-
-  const _AnalyticsCard({required this.title, required this.value, required this.icon, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return SizedBox(
-      width: 200,
-      child: Card(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(icon, color: color, size: 22),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(title, style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-                    const SizedBox(height: 2),
-                    Text(value, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
-                  ],
-                ),
-              ),
+        actions: [
+          PopupMenuButton<String>(
+            tooltip: 'Save as a spreadsheet (CSV)',
+            enabled: data != null && !_exporting,
+            icon: _exporting ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.download),
+            onSelected: (v) {
+              const names = {'devices': 'the devices list', 'daily': 'the daily totals', 'hourly': 'the hourly totals', 'kinds': 'usage by type', 'places': 'usage by place'};
+              _export(v, names[v] ?? v);
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'devices', child: ListTile(dense: true, leading: Icon(Icons.devices), title: Text('All devices'))),
+              PopupMenuItem(value: 'daily', child: ListTile(dense: true, leading: Icon(Icons.calendar_view_day), title: Text('Totals per day'))),
+              PopupMenuItem(value: 'hourly', child: ListTile(dense: true, leading: Icon(Icons.schedule), title: Text('Totals per hour of day'))),
+              PopupMenuItem(value: 'kinds', child: ListTile(dense: true, leading: Icon(Icons.category_outlined), title: Text('By device type'))),
+              PopupMenuItem(value: 'places', child: ListTile(dense: true, leading: Icon(Icons.place_outlined), title: Text('By place'))),
             ],
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ReportsTab extends ConsumerStatefulWidget {
-  @override
-  ConsumerState<_ReportsTab> createState() => _ReportsTabState();
-}
-
-class _ReportsTabState extends ConsumerState<_ReportsTab> {
-  String _selectedType = 'summary';
-  DateTime? _periodFrom;
-  DateTime? _periodTo;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final reportsAsync = ref.watch(reportsListProvider);
-
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Generate Report', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 16),
-                  DropdownButtonFormField<String>(
-                    value: _selectedType,
-                    decoration: const InputDecoration(labelText: 'Report Type'),
-                    items: const [
-                      DropdownMenuItem(value: 'summary', child: Text('Summary Report')),
-                      DropdownMenuItem(value: 'bandwidth', child: Text('Bandwidth Report')),
-                      DropdownMenuItem(value: 'security', child: Text('Security Report')),
-                      DropdownMenuItem(value: 'compliance', child: Text('Compliance Report')),
-                    ],
-                    onChanged: (v) => setState(() => _selectedType = v!),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          decoration: const InputDecoration(
-                            labelText: 'Period From',
-                            prefixIcon: Icon(Icons.calendar_today, size: 18),
-                          ),
-                          readOnly: true,
-                          controller: TextEditingController(text: _periodFrom != null ? '${_periodFrom!.day}/${_periodFrom!.month}/${_periodFrom!.year}' : ''),
-                          onTap: () async {
-                            final picked = await showDatePicker(
-                              context: context,
-                              initialDate: DateTime.now(),
-                              firstDate: DateTime(2020),
-                              lastDate: DateTime.now(),
-                            );
-                            if (picked != null) setState(() => _periodFrom = picked);
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: TextField(
-                          decoration: const InputDecoration(
-                            labelText: 'Period To',
-                            prefixIcon: Icon(Icons.calendar_today, size: 18),
-                          ),
-                          readOnly: true,
-                          controller: TextEditingController(text: _periodTo != null ? '${_periodTo!.day}/${_periodTo!.month}/${_periodTo!.year}' : ''),
-                          onTap: () async {
-                            final picked = await showDatePicker(
-                              context: context,
-                              initialDate: DateTime.now(),
-                              firstDate: DateTime(2020),
-                              lastDate: DateTime.now(),
-                            );
-                            if (picked != null) setState(() => _periodTo = picked);
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  FilledButton.icon(
-                    onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Report generation requires backend connection')),
-                      );
-                    },
-                    icon: const Icon(Icons.play_arrow),
-                    label: const Text('Generate Report'),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 24),
-          Text('Cached Reports', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
-          const SizedBox(height: 12),
-          reportsAsync.when(
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (e, _) => Center(child: Text('Failed to load reports')),
-            data: (reports) {
-              if (reports.isEmpty) {
-                return Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(32),
-                    child: Text('No cached reports', style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-                  ),
-                );
-              }
-              return Column(
-                children: reports.map((r) => Card(
-                  margin: const EdgeInsets.only(bottom: 8),
-                  child: ListTile(
-                    leading: const Icon(Icons.description_outlined),
-                    title: Text(r.reportType),
-                    subtitle: Text('${r.periodStart.day}/${r.periodStart.month}/${r.periodStart.year} - ${r.generatedAt.day}/${r.generatedAt.month}/${r.generatedAt.year}'),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(icon: const Icon(Icons.download), onPressed: () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Download requires backend connection')),
-                          );
-                        }),
-                        IconButton(icon: const Icon(Icons.file_copy_outlined), onPressed: () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Export requires backend connection')),
-                          );
-                        }),
-                      ],
-                    ),
-                  ),
-                )).toList(),
-              );
-            },
+          IconButton(
+            tooltip: 'Refresh',
+            icon: report.isLoading && data != null ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.refresh),
+            onPressed: () => ref.invalidate(usageReportProvider),
           ),
         ],
       ),
-    );
-  }
-}
-
-class _ExportsTab extends ConsumerWidget {
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
-    final exportsAsync = ref.watch(exportsListProvider);
-
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      body: Column(
         children: [
-          FilledButton.icon(
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('New export requires backend connection')),
-              );
-            },
-            icon: const Icon(Icons.add),
-            label: const Text('New Export'),
-          ),
-          const SizedBox(height: 16),
-          exportsAsync.when(
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (e, _) => AppErrorWidget(
-              message: 'Failed to load exports',
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 14, 20, 6),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: PeriodBar(range: range, onPreset: ref.read(reportRangeProvider.notifier).choose, onCustom: _pickDates),
             ),
-            data: (exports) {
-              if (exports.isEmpty) {
-                return Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(32),
-                    child: Column(
-                      children: [
-                        Icon(Icons.file_download_outlined, size: 64, color: theme.colorScheme.outline),
-                        const SizedBox(height: 16),
-                        Text('No exports yet', style: theme.textTheme.titleMedium),
-                      ],
-                    ),
-                  ),
-                );
-              }
-              return Column(
-                children: exports.map((e) => Card(
-                  margin: const EdgeInsets.only(bottom: 8),
-                  child: ListTile(
-                    leading: Icon(_exportIcon(e.format)),
-                    title: Text('${e.reportType} - ${e.format}'),
-                    subtitle: Row(
-                      children: [
-                        _StatusBadge(status: e.status),
-                        const SizedBox(width: 8),
-                        Text(e.generatedAt != null ? '${e.generatedAt!.day}/${e.generatedAt!.month}/${e.generatedAt!.year}' : ''),
-                      ],
-                    ),
-                    trailing: e.status == 'completed'
-                        ? IconButton(
-                            icon: const Icon(Icons.download),
-                            onPressed: () {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Download requires backend connection')),
-                              );
-                            },
-                          )
-                        : null,
-                  ),
-                )).toList(),
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  IconData _exportIcon(String format) {
-    switch (format.toLowerCase()) {
-      case 'pdf':
-        return Icons.picture_as_pdf;
-      case 'csv':
-        return Icons.table_chart;
-      case 'xlsx':
-        return Icons.grid_on;
-      default:
-        return Icons.file_present;
-    }
-  }
-}
-
-class _StatusBadge extends StatelessWidget {
-  final String status;
-
-  const _StatusBadge({required this.status});
-
-  @override
-  Widget build(BuildContext context) {
-    Color color;
-    switch (status) {
-      case 'completed':
-        color = Colors.green;
-      case 'processing':
-        color = Colors.blue;
-      case 'failed':
-        color = Colors.red;
-      default:
-        color = Colors.grey;
-    }
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: color.withValues(alpha: 0.3)),
-      ),
-      child: Text(
-        status[0].toUpperCase() + status.substring(1),
-        style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w600),
-      ),
-    );
-  }
-}
-
-class _TopListsTab extends ConsumerWidget {
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return DefaultTabController(
-      length: 4,
-      child: Column(
-        children: [
-          const TabBar(
-            isScrollable: true,
-            tabs: [
-              Tab(text: 'Top Websites'),
-              Tab(text: 'Top Users'),
-              Tab(text: 'Departments'),
-              Tab(text: 'Bandwidth'),
-            ],
           ),
           Expanded(
-            child: TabBarView(
-              children: [
-                _TopListContent(provider: topWebsitesProvider, label: 'websites'),
-                _TopListContent(provider: topUsersProvider, label: 'users'),
-                _TopListContent(provider: departmentReportsProvider, label: 'departments'),
-                _TopListContent(provider: topBandwidthConsumersProvider, label: 'bandwidth entries'),
-              ],
+            child: report.when(
+              skipLoadingOnRefresh: true,
+              loading: () => const _Loading(),
+              error: (e, _) => data == null ? _Failed(message: e.toString(), onRetry: () => ref.invalidate(usageReportProvider)) : _Body(report: data, staleReason: e.toString()),
+              data: (r) => _Body(report: r),
             ),
           ),
         ],
@@ -496,55 +122,188 @@ class _TopListsTab extends ConsumerWidget {
   }
 }
 
-class _TopListContent extends ConsumerWidget {
-  final dynamic provider;
-  final String label;
+class _Loading extends StatelessWidget {
+  const _Loading();
 
-  const _TopListContent({required this.provider, required this.label});
+  @override
+  Widget build(BuildContext context) {
+    return const SingleChildScrollView(
+      padding: EdgeInsets.all(20),
+      child: Column(
+        children: [
+          Row(children: [Expanded(child: SkeletonBox(height: 120)), SizedBox(width: 12), Expanded(child: SkeletonBox(height: 120)), SizedBox(width: 12), Expanded(child: SkeletonBox(height: 120))]),
+          SizedBox(height: 16),
+          SkeletonBox(height: 280),
+          SizedBox(height: 16),
+          SkeletonBox(height: 320),
+        ],
+      ),
+    );
+  }
+}
+
+class _Failed extends StatelessWidget {
+  const _Failed({required this.message, required this.onRetry});
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          EmptyNotice(icon: Icons.cloud_off, title: 'The report could not be built', detail: message),
+          const SizedBox(height: 8),
+          FilledButton.icon(onPressed: onRetry, icon: const Icon(Icons.refresh), label: const Text('Try again')),
+        ],
+      ),
+    );
+  }
+}
+
+class _Body extends ConsumerWidget {
+  const _Body({required this.report, this.staleReason});
+  final UsageReport report;
+  final String? staleReason;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
-    final asyncData = ref.watch(provider);
+    final days = report.period.days;
+    final updated = report.generatedAt;
+    final hh = '${updated.hour.toString().padLeft(2, '0')}:${updated.minute.toString().padLeft(2, '0')}';
 
-    return asyncData.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => AppErrorWidget(
-        message: 'Failed to load $label',
-      ),
-      data: (items) {
-        if (items.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.list_alt, size: 64, color: theme.colorScheme.outline),
-                const SizedBox(height: 16),
-                Text('No $label found', style: theme.textTheme.titleMedium),
-              ],
-            ),
-          );
-        }
-        return ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: items.length,
-          itemBuilder: (context, index) {
-            final item = items[index];
-            return Card(
-              margin: const EdgeInsets.only(bottom: 8),
-              child: ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
-                  child: Text('${index + 1}', style: TextStyle(color: Theme.of(context).colorScheme.primary)),
-                ),
-                title: Text(item.toString()),
-                trailing: const Text(''),
+    Widget cardDaily() => DashCard(
+      title: 'Internet per day',
+      icon: Icons.bar_chart,
+      subtitle: 'Tap a bar for the exact figures',
+      child: DailyUsageChart(days: report.daily),
+    );
+    Widget cardHourly() => DashCard(
+      title: 'Busiest hours',
+      icon: Icons.schedule,
+      subtitle: days == 1 ? 'Traffic in each hour of the day' : 'All $days days added together, by hour of the day',
+      child: HourlyUsageChart(hours: report.hourly),
+    );
+
+    final empty = report.coverage.noData;
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 1240),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '${periodText(report.period)} · ${days == 1 ? '1 day' : '$days days'}',
+                      style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                  Text('Updated $hh', style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+                ],
               ),
-            );
-          },
-        );
-      },
+              if (staleReason != null) ...[
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(color: toneStyle(context, StatusTone.error).background, borderRadius: BorderRadius.circular(12)),
+                  child: Row(children: [const Icon(Icons.cloud_off, size: 18), const SizedBox(width: 10), Expanded(child: Text('Could not refresh ($staleReason). Showing the report from $hh.'))]),
+                ),
+              ],
+              const SizedBox(height: 12),
+              CoverageBanner(coverage: report.coverage),
+              if (report.coverage.noData || report.coverage.partial) const SizedBox(height: 12),
+              if (!empty) ...[
+                KpiGrid(report: report),
+                const SizedBox(height: 16),
+                if (report.projection != null) ...[_ProjectionCard(projection: report.projection!), const SizedBox(height: 16)],
+                InsightsCard(insights: report.insights),
+                const SizedBox(height: 16),
+                LayoutBuilder(
+                  builder: (context, box) {
+                    if (days == 1) return cardHourly();
+                    if (box.maxWidth < 1000) return Column(children: [cardDaily(), const SizedBox(height: 16), cardHourly()]);
+                    return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(flex: 3, child: cardDaily()), const SizedBox(width: 16), Expanded(flex: 2, child: cardHourly())]);
+                  },
+                ),
+                const SizedBox(height: 16),
+                TopDevicesCard(
+                  report: report,
+                  onExport: () => context.findAncestorStateOfType<_ReportsScreenState>()?._export('devices', 'the devices list'),
+                  onOpenMap: () => context.go(RouteNames.networkMap),
+                ),
+                const SizedBox(height: 16),
+                LayoutBuilder(
+                  builder: (context, box) {
+                    final kinds = GroupCard(
+                      title: 'By device type',
+                      icon: Icons.category_outlined,
+                      groups: report.byKind,
+                      labelFor: (g) => kindStyle(g.key).label,
+                      iconFor: (g) => kindStyle(g.key).icon,
+                      onExport: () => context.findAncestorStateOfType<_ReportsScreenState>()?._export('kinds', 'usage by type'),
+                    );
+                    final places = GroupCard(
+                      title: 'By place',
+                      icon: Icons.place_outlined,
+                      groups: report.byPlace,
+                      labelFor: (g) => g.key,
+                      onExport: () => context.findAncestorStateOfType<_ReportsScreenState>()?._export('places', 'usage by place'),
+                      hint: report.byPlace.length == 1 && report.byPlace.first.key == 'Not set'
+                          ? 'No device has a place yet. Set places in the Network Map and they will show here.'
+                          : null,
+                    );
+                    if (box.maxWidth < 900) return Column(children: [kinds, const SizedBox(height: 16), places]);
+                    return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(child: kinds), const SizedBox(width: 16), Expanded(child: places)]);
+                  },
+                ),
+                const SizedBox(height: 16),
+              ],
+              HealthCard(
+                alerts: report.alerts,
+                security: report.security,
+                events: report.events,
+                onAlerts: () => context.go(RouteNames.alerts),
+                onSecurity: () => context.go(RouteNames.security),
+              ),
+              const SizedBox(height: 16),
+              const MeasuredNote(),
+            ],
+          ),
+        ),
+      ),
     );
   }
+}
 
+class _ProjectionCard extends StatelessWidget {
+  const _ProjectionCard({required this.projection});
+  final ReportProjection projection;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final fraction = projection.projectedBytes == 0 ? 0.0 : projection.usedBytes / projection.projectedBytes;
+    return DashCard(
+      title: 'This month so far',
+      icon: Icons.trending_up,
+      subtitle: '${projection.daysElapsed} of ${projection.daysInMonth} days',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ShareBar(fraction: fraction, label: '${(fraction * 100).toStringAsFixed(0)}%'),
+          const SizedBox(height: 8),
+          Text(
+            'Used ${formatBytes(projection.usedBytes)}. At this pace the month ends near ${formatBytes(projection.projectedBytes)}.',
+            style: theme.textTheme.bodyMedium,
+          ),
+        ],
+      ),
+    );
+  }
 }

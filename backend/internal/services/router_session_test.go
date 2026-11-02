@@ -208,7 +208,7 @@ func TestMarcoReconcileIsIdempotentAndPrefixSafe(t *testing.T) {
 	router.tables["/ip/firewall/filter"] = []map[string]string{{".id": "*A", "comment": "hospital-core-allow", "action": "accept"}}
 
 	journal := &changeJournal{}
-	if err := applyMarcoDesiredState(router, desired, journal, true); err != nil {
+	if err := applyMarcoDesiredState(router, desired, journal, true, 0); err != nil {
 		t.Fatal(err)
 	}
 	if err := verifyMarcoDesiredState(router, desired, true); err != nil {
@@ -219,7 +219,7 @@ func TestMarcoReconcileIsIdempotentAndPrefixSafe(t *testing.T) {
 	}
 
 	writes := router.writes
-	if err := applyMarcoDesiredState(router, desired, &changeJournal{}, true); err != nil {
+	if err := applyMarcoDesiredState(router, desired, &changeJournal{}, true, 0); err != nil {
 		t.Fatal(err)
 	}
 	if router.writes != writes {
@@ -231,7 +231,7 @@ func TestMarcoReconcileCleansDuplicatesAndStaleEntries(t *testing.T) {
 	groups, members := testMarcoGroup(models.MarcoGroupPolicy{InternetEnabled: boolPtr(false)})
 	desired := buildMarcoDesiredState(groups, members, marcoOpts())
 	router := newMemRouter()
-	if err := applyMarcoDesiredState(router, desired, &changeJournal{}, true); err != nil {
+	if err := applyMarcoDesiredState(router, desired, &changeJournal{}, true, 0); err != nil {
 		t.Fatal(err)
 	}
 	// Simulate earlier faulty syncs: duplicated rule plus a stale one.
@@ -246,7 +246,7 @@ func TestMarcoReconcileCleansDuplicatesAndStaleEntries(t *testing.T) {
 	}
 	router.tables["/ip/firewall/filter"] = append(router.tables["/ip/firewall/filter"], map[string]string{".id": "*OLD", "comment": "nms-marco-oldgroup-net-off", "action": "drop"})
 
-	if err := applyMarcoDesiredState(router, desired, &changeJournal{}, true); err != nil {
+	if err := applyMarcoDesiredState(router, desired, &changeJournal{}, true, 0); err != nil {
 		t.Fatal(err)
 	}
 	if err := verifyMarcoDesiredState(router, desired, true); err != nil {
@@ -265,7 +265,7 @@ func TestMarcoRollbackRestoresRouter(t *testing.T) {
 		return nil
 	}
 	journal := &changeJournal{}
-	if err := applyMarcoDesiredState(router, desired, journal, true); err == nil {
+	if err := applyMarcoDesiredState(router, desired, journal, true, 0); err == nil {
 		t.Fatal("expected apply to fail")
 	}
 	if err := journal.rollback(router); err != nil {
@@ -366,7 +366,7 @@ func TestMarcoWithoutPruneOnlyAddsAndLeavesOldEntries(t *testing.T) {
 		{".id": "*OLD2", "comment": "nms-marco-oldgroup-net-off", "action": "drop", "disabled": "true"},
 	}
 
-	if err := applyMarcoDesiredState(router, desired, &changeJournal{}, false); err != nil {
+	if err := applyMarcoDesiredState(router, desired, &changeJournal{}, false, 0); err != nil {
 		t.Fatal(err)
 	}
 	if got := router.count("/ip/firewall/filter", "nms-marco-oldgroup-net-off"); got != 2 {

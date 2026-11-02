@@ -1,9 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import '../../../core/utils/data_format.dart';
 import '../../../data/models/marco_models.dart';
+import '../../../data/models/marco_site_models.dart';
+import '../../providers/marco/marco_details_provider.dart';
 import '../../providers/marco/marco_provider.dart';
-import 'marco_groups_screen.dart' show marcoColor;
+import '../dashboard/widgets/dash_card.dart';
+import '../network/widgets/map_kinds.dart';
+import 'widgets/group_actions.dart';
+import 'widgets/marco_style.dart';
+import 'widgets/member_detail_dialog.dart';
+import 'widgets/rules_tab.dart';
+import 'widgets/sites_tab.dart';
 
+export 'widgets/marco_style.dart' show marcoColor, marcoIcon;
+
+/// One group: its devices, its rules, the sites it blocks and what changed lately.
 class MarcoGroupDetailScreen extends ConsumerStatefulWidget {
   final String groupId;
   const MarcoGroupDetailScreen({super.key, required this.groupId});
@@ -13,354 +26,319 @@ class MarcoGroupDetailScreen extends ConsumerStatefulWidget {
 }
 
 class _MarcoGroupDetailScreenState extends ConsumerState<MarcoGroupDetailScreen> {
-  static final _clock = RegExp(r'^\d{1,2}:\d{2}$');
-  static const _days = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
-
-  final _macController = TextEditingController();
-  final _downloadController = TextEditingController();
-  final _uploadController = TextEditingController();
-  final _dailyController = TextEditingController();
-  final _monthlyController = TextEditingController();
-  final _qosController = TextEditingController();
-  final _startController = TextEditingController();
-  final _endController = TextEditingController();
-  final Set<String> _blocked = <String>{};
-  final Set<String> _scheduleDays = <String>{};
-  bool _internetEnabled = true;
-  bool _unlimitedSpeed = true;
-  bool _draftLoaded = false;
-  bool _isSaving = false;
-
-  @override
-  void dispose() {
-    for (final c in [
-      _macController, _downloadController, _uploadController, _dailyController,
-      _monthlyController, _qosController, _startController, _endController,
-    ]) {
-      c.dispose();
+  Future<void> _savePolicy(Map<String, dynamic> policy) async {
+    try {
+      final result = await ref.read(marcoGroupsProvider.notifier).updatePolicy(widget.groupId, policy);
+      ref.invalidate(marcoDetailsProvider);
+      if (mounted) toast(context, result.dryRun ? 'Saved. Safe mode is on, so the router was not changed.' : 'Saved. The rules are being applied to the router.');
+    } catch (e) {
+      if (mounted) toast(context, 'Could not save: $e');
     }
-    super.dispose();
-  }
-
-  void _loadDraft(MarcoGroup group) {
-    final p = group.policy;
-    _internetEnabled = p['internet_enabled'] as bool? ?? true;
-    _unlimitedSpeed = p['unlimited_speed'] as bool? ?? true;
-    _downloadController.text = p['download_limit_mbps']?.toString() ?? '';
-    _uploadController.text = p['upload_limit_mbps']?.toString() ?? '';
-    _dailyController.text = p['daily_quota_gb']?.toString() ?? '';
-    _monthlyController.text = p['monthly_quota_gb']?.toString() ?? '';
-    _qosController.text = p['qos_priority']?.toString() ?? '';
-    _startController.text = p['schedule_start_time']?.toString() ?? '';
-    _endController.text = p['schedule_end_time']?.toString() ?? '';
-    _blocked
-      ..clear()
-      ..addAll(List<String>.from(p['blocked_websites'] as List? ?? const []));
-    _scheduleDays
-      ..clear()
-      ..addAll(List<String>.from(p['schedule_days'] as List? ?? const []));
-    _draftLoaded = true;
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final groupsAsync = ref.watch(marcoGroupsProvider);
-    final platforms = ref.watch(marcoPlatformsProvider).valueOrNull ?? const <MarcoPlatform>[];
+    final details = ref.watch(marcoDetailsProvider(widget.groupId));
+    final data = details.valueOrNull;
+    final groups = ref.watch(marcoGroupsProvider).valueOrNull?.groups ?? const <MarcoGroup>[];
 
-    return groupsAsync.when(
-      loading: () => Scaffold(
-        appBar: AppBar(title: const Text('Loading group')),
-        body: const Center(child: CircularProgressIndicator()),
+    if (data == null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Group')),
+        body: details.hasError
+            ? Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    EmptyNotice(icon: Icons.cloud_off, title: 'The group could not be loaded', detail: '${details.error}'),
+                    const SizedBox(height: 8),
+                    FilledButton.icon(onPressed: () => ref.invalidate(marcoDetailsProvider(widget.groupId)), icon: const Icon(Icons.refresh), label: const Text('Try again')),
+                  ],
+                ),
+              )
+            : const Padding(padding: EdgeInsets.all(20), child: Column(children: [SkeletonBox(height: 110), SizedBox(height: 16), SkeletonBox(height: 300)])),
+      );
+    }
+
+    final group = data.group;
+    final color = marcoColor(group.color);
+    return DefaultTabController(
+      length: 4,
+      child: Scaffold(
+        appBar: AppBar(
+          leading: BackButton(onPressed: () => context.canPop() ? context.pop() : context.go('/marco-groups')),
+          title: Text(group.name),
+          actions: [
+            IconButton(
+              tooltip: 'Edit name, color and icon',
+              icon: const Icon(Icons.edit_outlined),
+              onPressed: () => editGroupFlow(context, ref, group, otherNames: {for (final g in groups) if (g.id != group.id) g.name.toLowerCase()}),
+            ),
+            IconButton(tooltip: 'Refresh', icon: const Icon(Icons.refresh), onPressed: () => ref.invalidate(marcoDetailsProvider(widget.groupId))),
+            IconButton(
+              tooltip: 'Delete group',
+              icon: const Icon(Icons.delete_outline),
+              onPressed: () async {
+                if (await deleteGroupFlow(context, ref, group) && context.mounted) context.go('/marco-groups');
+              },
+            ),
+          ],
+          bottom: TabBar(
+            tabs: [
+              Tab(icon: const Icon(Icons.devices, size: 18), text: 'Devices (${data.members.length})'),
+              const Tab(icon: Icon(Icons.tune, size: 18), text: 'Rules'),
+              Tab(icon: const Icon(Icons.block, size: 18), text: 'Websites (${data.sites.length})'),
+              const Tab(icon: Icon(Icons.history, size: 18), text: 'Activity'),
+            ],
+          ),
+        ),
+        body: Column(
+          children: [
+            _Header(data: data, color: color),
+            Expanded(
+              child: TabBarView(
+                children: [
+                  _DevicesTab(data: data, onAdd: () => addDevicesFlow(context, ref, group)),
+                  RulesTab(policy: group.policy, dryRun: data.dryRun, onSave: _savePolicy),
+                  SitesTab(details: data, onSave: _savePolicy),
+                  _ActivityTab(logs: data.logs),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
-      error: (e, _) => Scaffold(appBar: AppBar(title: const Text('Marco group')), body: Center(child: Text('$e'))),
-      data: (result) {
-        final matches = result.groups.where((g) => g.id == widget.groupId);
-        if (matches.isEmpty) {
-          return Scaffold(
-            appBar: AppBar(title: const Text('Marco group')),
-            body: const Center(child: Text('Group not found')),
-          );
-        }
-        final group = matches.first;
-        if (!_draftLoaded) _loadDraft(group);
+    );
+  }
+}
 
-        return Scaffold(
-          appBar: AppBar(
-            title: Text(group.name),
-            actions: [
-              IconButton(
-                onPressed: _isSaving ? null : () => _savePolicy(group),
-                icon: const Icon(Icons.save_outlined),
+class _Header extends StatelessWidget {
+  const _Header({required this.data, required this.color});
+  final MarcoGroupDetails data;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final g = data.group;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        border: Border(bottom: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.6))),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              CircleAvatar(radius: 24, backgroundColor: color, child: Icon(marcoIcon(g.icon), color: Colors.white)),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(g.description.isEmpty ? 'No description' : g.description, style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      children: [
+                        StatusPill(tone: StatusTone.neutral, label: '${data.members.length} device${data.members.length == 1 ? '' : 's'}', icon: Icons.devices),
+                        StatusPill(tone: data.onlineCount > 0 ? StatusTone.ok : StatusTone.neutral, label: '${data.onlineCount} online', icon: Icons.wifi),
+                        StatusPill(tone: StatusTone.neutral, label: '${data.todayBytes == 0 ? '0 B' : formatBytes(data.todayBytes)} today', icon: Icons.data_usage),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
-          body: SafeArea(
-            child: ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                if (result.dryRun)
-                  Card(
-                    color: Colors.orange.withOpacity(0.12),
-                    elevation: 0,
-                    child: const Padding(
-                      padding: EdgeInsets.all(12),
-                      child: Text('Safe mode: policies are saved but not applied to the router.'),
-                    ),
-                  ),
-                _membersCard(theme, group),
-                const SizedBox(height: 16),
-                _policyCard(theme, group, platforms),
-              ],
-            ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 14,
+            runSpacing: 4,
+            children: [for (final s in data.summary) Text('• $s', style: theme.textTheme.bodySmall)],
           ),
+          if (data.dryRun)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Row(
+                children: [
+                  Icon(Icons.shield_outlined, size: 16, color: theme.colorScheme.tertiary),
+                  const SizedBox(width: 6),
+                  Expanded(child: Text('Safe mode: changes are saved but the router is not touched.', style: theme.textTheme.bodySmall)),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DevicesTab extends ConsumerStatefulWidget {
+  const _DevicesTab({required this.data, required this.onAdd});
+  final MarcoGroupDetails data;
+  final VoidCallback onAdd;
+
+  @override
+  ConsumerState<_DevicesTab> createState() => _DevicesTabState();
+}
+
+class _DevicesTabState extends ConsumerState<_DevicesTab> {
+  String _query = '';
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final all = widget.data.members;
+    final q = _query.trim().toLowerCase();
+    final shown = q.isEmpty ? all : all.where((m) => [m.name, m.ip, m.mac, m.place, kindStyle(m.kind).label].join(' ').toLowerCase().contains(q)).toList();
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+          child: Row(
+            children: [
+              Expanded(
+                child: SizedBox(
+                  height: 40,
+                  child: TextField(
+                    onChanged: (v) => setState(() => _query = v),
+                    decoration: const InputDecoration(isDense: true, prefixIcon: Icon(Icons.search, size: 20), hintText: 'Search the devices in this group', border: OutlineInputBorder()),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              FilledButton.icon(onPressed: widget.onAdd, icon: const Icon(Icons.add), label: const Text('Add devices')),
+            ],
+          ),
+        ),
+        Expanded(
+          child: all.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const EmptyNotice(icon: Icons.devices_other, title: 'No devices in this group yet', detail: 'Add devices from the ones the router sees. The group\'s rules apply to them as soon as they are added.'),
+                      const SizedBox(height: 8),
+                      FilledButton.icon(onPressed: widget.onAdd, icon: const Icon(Icons.add), label: const Text('Add devices')),
+                    ],
+                  ),
+                )
+              : shown.isEmpty
+              ? const Center(child: EmptyNotice(icon: Icons.search_off, title: 'No device matches'))
+              : ListView.separated(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+                  itemCount: shown.length,
+                  separatorBuilder: (_, __) => Divider(height: 1, color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
+                  itemBuilder: (context, i) => _MemberRow(
+                    member: shown[i],
+                    onTap: () => showMemberDetailDialog(context, group: widget.data.group, member: shown[i]),
+                  ),
+                ),
+        ),
+      ],
+    );
+  }
+}
+
+class _MemberRow extends StatelessWidget {
+  const _MemberRow({required this.member, required this.onTap});
+  final MarcoMemberDetail member;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final style = kindStyle(member.kind);
+    final c = member.control;
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(color: style.color.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(10)),
+              child: Icon(style.icon, size: 21, color: style.color),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(child: Text(member.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600))),
+                      const SizedBox(width: 8),
+                      Tooltip(message: member.online ? 'Online' : 'Offline', child: Container(width: 9, height: 9, decoration: BoxDecoration(shape: BoxShape.circle, color: member.online ? const Color(0xFF2E7D32) : theme.colorScheme.outline))),
+                    ],
+                  ),
+                  Text(
+                    [style.label, if (member.ip.isNotEmpty) member.ip, if (member.place.isNotEmpty) member.place].join(' · '),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                  ),
+                ],
+              ),
+            ),
+            if (c != null && c.blocked) const Padding(padding: EdgeInsets.only(right: 8), child: StatusPill(tone: StatusTone.error, label: 'Blocked', icon: Icons.block)),
+            if (c != null && !c.blocked && c.limited) const Padding(padding: EdgeInsets.only(right: 8), child: StatusPill(tone: StatusTone.warning, label: 'Limited', icon: Icons.speed)),
+            if (!member.enforced) const Padding(padding: EdgeInsets.only(right: 8), child: StatusPill(tone: StatusTone.neutral, label: 'Not seen yet', icon: Icons.hourglass_empty)),
+            SizedBox(
+              width: 84,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(member.todayBytes == 0 ? '0 B' : formatBytes(member.todayBytes), style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+                  Text('today', style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right, size: 20),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ActivityTab extends StatelessWidget {
+  const _ActivityTab({required this.logs});
+  final List<MarcoPolicyLog> logs;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    if (logs.isEmpty) {
+      return const Center(child: EmptyNotice(icon: Icons.history, title: 'Nothing has happened in this group yet'));
+    }
+    IconData icon(String s) => switch (s) {
+      'applied' => Icons.check_circle_outline,
+      'failed' => Icons.error_outline,
+      'dry_run' || 'saved' => Icons.save_outlined,
+      _ => Icons.edit_note,
+    };
+    return ListView.separated(
+      padding: const EdgeInsets.all(16),
+      itemCount: logs.length,
+      separatorBuilder: (_, __) => const Divider(height: 1),
+      itemBuilder: (context, i) {
+        final l = logs[i];
+        return ListTile(
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+          leading: Icon(icon(l.status), size: 20, color: l.status == 'failed' ? theme.colorScheme.error : null),
+          title: Text(l.message),
+          subtitle: Text('${l.status == 'saved' ? 'saved, router not changed' : l.status} · ${formatAge(DateTime.now().difference(l.createdAt))}'),
         );
       },
     );
-  }
-
-  Widget _membersCard(ThemeData theme, MarcoGroup group) {
-    return Card(
-      elevation: 0,
-      color: theme.colorScheme.surfaceContainerLow,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(children: [
-              CircleAvatar(radius: 6, backgroundColor: marcoColor(group.color)),
-              const SizedBox(width: 8),
-              Expanded(child: Text(group.name, style: theme.textTheme.titleLarge)),
-            ]),
-            const SizedBox(height: 6),
-            Text(
-              group.description.isEmpty ? 'No description' : group.description,
-              style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-            ),
-            const SizedBox(height: 16),
-            Text('Devices (managed by MAC address)', style: theme.textTheme.titleMedium),
-            const SizedBox(height: 10),
-            if (group.members.isEmpty)
-              Text('Add MAC addresses to bind devices to this group.', style: theme.textTheme.bodySmall)
-            else
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: group.members
-                    .map((m) => InputChip(
-                          avatar: Icon(Icons.circle, size: 10, color: m.isOnline ? Colors.green : Colors.grey),
-                          label: Text('${m.label}${m.macAddress == null ? '' : ' • ${m.macAddress}'}'),
-                          onDeleted: () => _removeMember(group, m),
-                        ))
-                    .toList(),
-              ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _macController,
-                    decoration: const InputDecoration(labelText: 'Add MAC address (AA:BB:CC:DD:EE:FF)'),
-                    onSubmitted: (_) => _addMac(group),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                FilledButton.icon(onPressed: () => _addMac(group), icon: const Icon(Icons.add), label: const Text('Add')),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _policyCard(ThemeData theme, MarcoGroup group, List<MarcoPlatform> platforms) {
-    return Card(
-      elevation: 0,
-      color: theme.colorScheme.surfaceContainerLow,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(children: [
-              Icon(Icons.policy_outlined, color: theme.colorScheme.primary),
-              const SizedBox(width: 8),
-              Text('Group policies', style: theme.textTheme.titleMedium),
-            ]),
-            const SizedBox(height: 12),
-            SwitchListTile.adaptive(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Internet enabled'),
-              value: _internetEnabled,
-              onChanged: (v) => setState(() => _internetEnabled = v),
-            ),
-            SwitchListTile.adaptive(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Unlimited speed'),
-              subtitle: const Text('Turn off to apply the limits below'),
-              value: _unlimitedSpeed,
-              onChanged: (v) => setState(() => _unlimitedSpeed = v),
-            ),
-            const SizedBox(height: 6),
-            _field(_downloadController, 'Download limit (Mbps)', enabled: !_unlimitedSpeed),
-            const SizedBox(height: 8),
-            _field(_uploadController, 'Upload limit (Mbps)', enabled: !_unlimitedSpeed),
-            const SizedBox(height: 8),
-            _field(_dailyController, 'Daily quota (GB)'),
-            const SizedBox(height: 8),
-            _field(_monthlyController, 'Monthly quota (GB)'),
-            const SizedBox(height: 8),
-            _field(_qosController, 'QoS priority (1 = highest, 8 = lowest)'),
-            const SizedBox(height: 16),
-            Text('Block internet during this time window', style: theme.textTheme.titleSmall),
-            const SizedBox(height: 8),
-            Row(children: [
-              Expanded(child: _field(_startController, 'From (HH:MM)', keyboardType: TextInputType.datetime)),
-              const SizedBox(width: 8),
-              Expanded(child: _field(_endController, 'To (HH:MM)', keyboardType: TextInputType.datetime)),
-            ]),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 6,
-              children: _days
-                  .map((d) => FilterChip(
-                        label: Text(d),
-                        selected: _scheduleDays.contains(d),
-                        onSelected: (on) => setState(() => on ? _scheduleDays.add(d) : _scheduleDays.remove(d)),
-                      ))
-                  .toList(),
-            ),
-            const SizedBox(height: 16),
-            Text('Blocked websites', style: theme.textTheme.titleSmall),
-            const SizedBox(height: 4),
-            Text(
-              'Sites with fixed addresses are blocked by IP range. AI assistants need layer-7 matching on the router.',
-              style: theme.textTheme.bodySmall,
-            ),
-            const SizedBox(height: 8),
-            if (platforms.isEmpty)
-              const Text('Loading catalog...')
-            else
-              Wrap(
-                spacing: 8,
-                runSpacing: 4,
-                children: platforms
-                    .map((p) => FilterChip(
-                          label: Text(p.label),
-                          selected: _blocked.contains(p.key),
-                          onSelected: (on) => setState(() => on ? _blocked.add(p.key) : _blocked.remove(p.key)),
-                        ))
-                    .toList(),
-              ),
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: _isSaving ? null : () => _savePolicy(group),
-                icon: _isSaving
-                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.save_outlined),
-                label: Text(_isSaving ? 'Saving...' : 'Apply policies'),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _field(TextEditingController controller, String label, {bool enabled = true, TextInputType keyboardType = TextInputType.number}) {
-    return TextField(
-      controller: controller,
-      enabled: enabled,
-      keyboardType: keyboardType,
-      decoration: InputDecoration(labelText: label),
-    );
-  }
-
-  void _toast(String message) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
-  }
-
-  Future<void> _addMac(MarcoGroup group) async {
-    final mac = _macController.text.trim().toUpperCase().replaceAll('-', ':');
-    if (mac.isEmpty) return;
-    if (!RegExp(r'^([0-9A-F]{2}:){5}[0-9A-F]{2}$').hasMatch(mac)) {
-      _toast('Enter a valid MAC address like AA:BB:CC:DD:EE:FF');
-      return;
-    }
-    try {
-      final result = await ref.read(marcoGroupsProvider.notifier).addMembers(group.id, [mac]);
-      _macController.clear();
-      _toast(result.dryRun ? 'Device added (router writes are disabled)' : 'Device added and policies applied');
-    } catch (e) {
-      _toast('Could not add device: $e');
-    }
-  }
-
-  Future<void> _removeMember(MarcoGroup group, MarcoMember member) async {
-    try {
-      await ref.read(marcoGroupsProvider.notifier).removeMember(group.id, member.deviceId);
-    } catch (e) {
-      _toast('Could not remove device: $e');
-    }
-  }
-
-  double? _number(TextEditingController c) => double.tryParse(c.text.trim().replaceAll(',', '.'));
-
-  Future<void> _savePolicy(MarcoGroup group) async {
-    if (_isSaving) return;
-
-    final start = _startController.text.trim();
-    final end = _endController.text.trim();
-    if ((start.isEmpty) != (end.isEmpty) || (start.isNotEmpty && (!_clock.hasMatch(start) || !_clock.hasMatch(end)))) {
-      _toast('Enter both times as HH:MM, or leave both empty');
-      return;
-    }
-    final qos = int.tryParse(_qosController.text.trim());
-    if (_qosController.text.trim().isNotEmpty && (qos == null || qos < 1 || qos > 8)) {
-      _toast('QoS priority must be between 1 and 8');
-      return;
-    }
-    if (!_unlimitedSpeed && _number(_downloadController) == null && _number(_uploadController) == null) {
-      _toast('Enter a download or upload limit, or turn on Unlimited speed');
-      return;
-    }
-
-    // Start from the stored policy so values this screen does not edit (burst
-    // settings) are kept, then overwrite everything the screen manages.
-    final policy = Map<String, dynamic>.from(group.policy);
-    void put(String key, dynamic value) {
-      if (value == null || (value is List && value.isEmpty) || (value is String && value.isEmpty)) {
-        policy.remove(key);
-      } else {
-        policy[key] = value;
-      }
-    }
-
-    policy['internet_enabled'] = _internetEnabled;
-    policy['unlimited_speed'] = _unlimitedSpeed;
-    put('download_limit_mbps', _unlimitedSpeed ? null : _number(_downloadController));
-    put('upload_limit_mbps', _unlimitedSpeed ? null : _number(_uploadController));
-    put('daily_quota_gb', _number(_dailyController));
-    put('monthly_quota_gb', _number(_monthlyController));
-    put('qos_priority', qos);
-    put('schedule_start_time', start);
-    put('schedule_end_time', end);
-    put('schedule_days', _scheduleDays.toList());
-    put('blocked_websites', _blocked.toList());
-
-    setState(() => _isSaving = true);
-    try {
-      final result = await ref.read(marcoGroupsProvider.notifier).updatePolicy(group.id, policy);
-      _toast(result.dryRun ? 'Policies saved. Router writes are disabled, nothing was changed on the router.' : 'Policies applied');
-    } catch (e) {
-      _toast('Could not apply policies: $e');
-    } finally {
-      if (mounted) setState(() => _isSaving = false);
-    }
   }
 }

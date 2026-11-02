@@ -28,6 +28,10 @@ type MarcoGroupPolicy struct {
 	ScheduleEndTime            *string   `json:"schedule_end_time,omitempty"`
 	ScheduleDays               []string  `json:"schedule_days,omitempty"`
 	BlockedWebsites            []string  `json:"blocked_websites,omitempty"`
+	// BlockedPacks are ready-made sets of sites (games, social, ...) and
+	// BlockedDomains are sites typed in by hand.
+	BlockedPacks   []string `json:"blocked_packs,omitempty"`
+	BlockedDomains []string `json:"blocked_domains,omitempty"`
 }
 
 type MarcoGroup struct {
@@ -110,6 +114,16 @@ type MarcoDeviceStatus struct {
 	MonthlyQuotaGB    *float64 `json:"monthly_quota_gb,omitempty"`
 	ScheduleStart     string   `json:"schedule_start,omitempty"`
 	ScheduleEnd       string   `json:"schedule_end,omitempty"`
+}
+
+// MarcoDeviceOverride is a block or speed limit set on one device, whatever group it is in.
+type MarcoDeviceOverride struct {
+	MAC               string    `json:"mac"`
+	Blocked           bool      `json:"blocked"`
+	DownloadLimitMbps *float64  `json:"download_limit_mbps,omitempty"`
+	UploadLimitMbps   *float64  `json:"upload_limit_mbps,omitempty"`
+	Reason            string    `json:"reason"`
+	UpdatedAt         time.Time `json:"updated_at"`
 }
 
 // PlatformDefinition describes a blockable website platform.

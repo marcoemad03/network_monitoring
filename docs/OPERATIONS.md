@@ -136,3 +136,29 @@ How a device gets a port: the bridge host table first, then the Wi-Fi registrati
 - in List view, tick several devices and use "Set place".
 
 Places and port names are stored in `client_device_notes.place` and `network_places` (migration `016_network_map.sql`). To get a real room per device automatically, the switch behind `ether5` would have to be read too (its MAC table over SNMP); that is not done yet.
+
+## Reports & Analytics
+
+The page is built from what the NMS already records, so building a report never touches the router: WAN counters (`wan_usage_samples`), per-device daily usage (`client_usage_daily`), `alerts`, `device_events` and the latest security scan.
+
+- `GET /api/v1/reports/usage?from=YYYY-MM-DD&to=YYYY-MM-DD` returns the report (both days included, at most one year, server time zone).
+- `GET /api/v1/reports/usage/export?from=&to=&view=devices|daily|hourly|kinds|places` returns a CSV file (UTF-8 with a byte order mark so Excel reads Arabic names; names that start with `=`, `+`, `-` or `@` get a leading `'` so they never run as formulas).
+- Measuring only happens while the server runs. Days before measuring started are reported as "not measured", not as zero.
+- Device usage is counted from hotspot counters, so it can add up to less than the WAN total; the page shows that share.
+- Web, connection and download logs (`web_logs`, `connection_logs`, `download_logs`) have no writer yet, and alert rules (`alert_rules`) are saved but never evaluated. The Reporting hub says so on each card.
+
+## Groups, blocked websites and device controls
+
+A group is a set of devices (by MAC address) with shared rules: internet on/off, speed limit per device, hours, data limits and blocked websites. A device can be in one group. Devices can also be blocked or limited one by one (`marco_device_overrides`), with or without a group.
+
+**How websites are blocked.** The router only sees addresses, so a block by name is a block of the addresses the name points to. Sites are blocked three ways: platforms (YouTube, Facebook... through address ranges or your own router list from `ROUTER_PLATFORM_DST_LISTS`), ready-made packs (games, social, video, music, chat, AI, torrents, VPN sites) and sites typed by hand. The server looks each domain up (every 20 minutes at most, and again about every 30 minutes while groups block sites) and keeps the addresses in a per-group list `nms-marco-site-<group>`. Phone apps and browsers are both covered, because both connect to the same addresses.
+
+- A site hosted on Cloudflare, Fastly or Google frontends cannot be blocked by address without breaking thousands of other sites. The page says so and skips those addresses.
+- **Always-allowed sites.** YouTube's API (`youtubei.googleapis.com`) shares addresses with Firebase, Translate and other Google APIs, so blocking those addresses broke them. Every group that blocks by address now gets an `accept` rule, placed above its blocks, for the addresses of the sites in the always-allowed list (built in, editable on the Websites tab). The result: videos stop playing, Gmail, Firebase and Translate keep working. The YouTube app may still open.
+- Rule order on the router is kept as: hard blocks (internet off, schedule, blocked device, quota), then the always-allowed accepts, then blocks by destination. The sync moves only its own `nms-marco-` rules to restore this order.
+
+**Removing rules.** `ROUTER_PRUNE_STALE` now defaults to `true`: taking a device out of a group, unblocking a site or deleting a group removes the matching `nms-marco-` entries from the router. Nothing else is touched. A sync that would remove more than `ROUTER_MAX_PRUNE` entries (default 60) is refused, so a reset database cannot clear the router. Set `ROUTER_PRUNE_STALE=false` to go back to add-only.
+
+**Device addresses.** A device added by MAC takes its address from the router's own tables (ARP, DHCP, hotspot). Every 2 minutes the server checks whether a device in a group, or one blocked or limited, got a new address from DHCP and moves the rules to it. This only runs while `ROUTER_POLICY_WRITES=true`.
+
+Limits: `ROUTER_MAX_MANAGED_ENTRIES` defaults to 1000 (blocked-site addresses count). One group blocks at most 150 site addresses and the always-allowed list keeps at most 120.

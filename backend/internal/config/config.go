@@ -76,8 +76,12 @@ type Config struct {
 	RouterProtectedIPs      []string
 	RouterMaxManagedEntries int
 	// RouterPruneStale lets the Marco sync remove managed entries it no longer
-	// wants (old groups, duplicates). Off by default: the sync only adds/updates.
+	// wants (removed devices, unblocked sites, old groups, duplicates). On by default,
+	// so taking a device out of a blocked group lifts the block; see RouterMaxPrune.
 	RouterPruneStale bool
+	// RouterMaxPrune is the most router entries one sync may remove; a plan that
+	// removes more is refused (ROUTER_MAX_PRUNE).
+	RouterMaxPrune int
 	// RouterLegacyPolicyWrites lets the legacy policy engine write to the router
 	// when RouterPolicyWrites is on. Off by default so it stays a dry-run.
 	RouterLegacyPolicyWrites bool
@@ -231,9 +235,10 @@ func Load(cliPort int) (*Config, error) {
 	cfg.RouterPolicyWrites = getEnvBool("ROUTER_POLICY_WRITES", false)
 	cfg.RouterEnableLayer7 = getEnvBool("ROUTER_ENABLE_LAYER7", false)
 	cfg.RouterEnableDNSBlock = getEnvBool("ROUTER_ENABLE_DNS_BLOCK", false)
-	cfg.RouterMaxManagedEntries = getEnvInt("ROUTER_MAX_MANAGED_ENTRIES", 400)
+	cfg.RouterMaxManagedEntries = getEnvInt("ROUTER_MAX_MANAGED_ENTRIES", 1000)
 	cfg.RouterProtectedIPs = splitCSV(getEnv("ROUTER_PROTECTED_IPS", ""))
-	cfg.RouterPruneStale = getEnvBool("ROUTER_PRUNE_STALE", false)
+	cfg.RouterPruneStale = getEnvBool("ROUTER_PRUNE_STALE", true)
+	cfg.RouterMaxPrune = getEnvInt("ROUTER_MAX_PRUNE", 60)
 	cfg.RouterLegacyPolicyWrites = getEnvBool("ROUTER_LEGACY_POLICY_WRITES", false)
 	cfg.RouterPlatformDstLists = parseKeyValueList(getEnv("ROUTER_PLATFORM_DST_LISTS", ""))
 	cfg.RouterWANInterface = strings.TrimSpace(getEnv("ROUTER_WAN_INTERFACE", ""))

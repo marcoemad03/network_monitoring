@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import '../../../../data/models/network_map_models.dart';
 
+// One definition of byte sizes for the whole app (decimal units, as ISPs state them).
+export '../../../../core/utils/data_format.dart' show formatBytes;
+
 /// How a kind of device is drawn and named on the map.
 class KindStyle {
   final IconData icon;
@@ -74,17 +77,6 @@ String formatBps(int bps) {
   if (bps >= 1000000) return '${(bps / 1e6).toStringAsFixed(1)} Mbps';
   if (bps >= 1000) return '${(bps / 1e3).toStringAsFixed(0)} kbps';
   return '$bps bps';
-}
-
-String formatBytes(int bytes) {
-  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-  var v = bytes.toDouble();
-  var i = 0;
-  while (v >= 1024 && i < units.length - 1) {
-    v /= 1024;
-    i++;
-  }
-  return '${v.toStringAsFixed(v >= 10 || i == 0 ? 0 : 1)} ${units[i]}';
 }
 
 String agoLabel(DateTime? t) {

@@ -4,7 +4,14 @@ import 'package:go_router/go_router.dart';
 import '../../../data/models/marco_models.dart';
 import '../../providers/marco/marco_provider.dart';
 import '../../router/route_names.dart';
+import '../dashboard/widgets/dash_card.dart';
+import 'widgets/group_actions.dart';
+import 'widgets/marco_style.dart';
 
+export 'widgets/marco_style.dart' show marcoColor, marcoIcon;
+
+/// All groups at a glance. A group is a set of devices that share rules: internet
+/// on or off, speed, hours, data limits and blocked websites.
 class MarcoGroupsScreen extends ConsumerStatefulWidget {
   const MarcoGroupsScreen({super.key});
 
@@ -15,70 +22,51 @@ class MarcoGroupsScreen extends ConsumerStatefulWidget {
 class _MarcoGroupsScreenState extends ConsumerState<MarcoGroupsScreen> {
   bool _previewing = false;
 
+  Set<String> _names(List<MarcoGroup> groups, [String? except]) => {for (final g in groups) if (g.id != except) g.name.toLowerCase()};
+
   @override
   Widget build(BuildContext context) {
     final groupsAsync = ref.watch(marcoGroupsProvider);
+    final groups = groupsAsync.valueOrNull?.groups ?? const <MarcoGroup>[];
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Marco Groups'),
+        title: const Text('Groups'),
         actions: [
           IconButton(
-            tooltip: 'Preview router changes',
-            icon: _previewing
-                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Icon(Icons.fact_check_outlined),
+            tooltip: 'Preview what would change on the router',
+            icon: _previewing ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.fact_check_outlined),
             onPressed: _previewing ? null : _previewSync,
           ),
-          IconButton(
-            tooltip: 'Policy log',
-            icon: const Icon(Icons.history),
-            onPressed: _showLogs,
-          ),
-          IconButton(
-            tooltip: 'Refresh',
-            icon: const Icon(Icons.refresh),
-            onPressed: () => ref.read(marcoGroupsProvider.notifier).refresh(),
-          ),
-          IconButton(
-            tooltip: 'Create group',
-            icon: const Icon(Icons.add_circle_outline),
-            onPressed: _createGroup,
+          IconButton(tooltip: 'Everything that changed', icon: const Icon(Icons.history), onPressed: _showLogs),
+          IconButton(tooltip: 'Refresh', icon: const Icon(Icons.refresh), onPressed: () => ref.read(marcoGroupsProvider.notifier).refresh()),
+          Padding(
+            padding: const EdgeInsets.only(right: 12, left: 4),
+            child: FilledButton.icon(onPressed: () => createGroupFlow(context, ref, existingNames: _names(groups)), icon: const Icon(Icons.add), label: const Text('New group')),
           ),
         ],
       ),
       body: groupsAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) => _ErrorView(
-          message: error.toString(),
-          onRetry: () => ref.read(marcoGroupsProvider.notifier).refresh(),
+        loading: () => const Padding(padding: EdgeInsets.all(20), child: Column(children: [SkeletonBox(height: 60), SizedBox(height: 16), SkeletonBox(height: 180)])),
+        error: (error, _) => Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              EmptyNotice(icon: Icons.cloud_off, title: 'The groups could not be loaded', detail: '$error'),
+              const SizedBox(height: 8),
+              FilledButton.icon(onPressed: () => ref.read(marcoGroupsProvider.notifier).refresh(), icon: const Icon(Icons.refresh), label: const Text('Try again')),
+            ],
+          ),
         ),
-        data: (result) => Column(
-          children: [
-            if (result.dryRun) const _DryRunBanner(),
-            Expanded(
-              child: result.groups.isEmpty
-                  ? _EmptyView(onCreate: _createGroup)
-                  : ListView.separated(
-                      padding: const EdgeInsets.all(16),
-                      itemCount: result.groups.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 10),
-                      itemBuilder: (context, index) => _GroupCard(
-                        group: result.groups[index],
-                        onOpen: () => context.push(RouteNames.marcoGroupDetail(result.groups[index].id)),
-                        onEdit: () => _editGroup(result.groups[index]),
-                        onDelete: () => _deleteGroup(result.groups[index]),
-                      ),
-                    ),
-            ),
-          ],
-        ),
+        data: (result) => result.groups.isEmpty
+            ? _Empty(dryRun: result.dryRun, onTemplate: (t) => createGroupFlow(context, ref, existingNames: const {}, template: t))
+            : _Overview(
+                result: result,
+                onOpen: (g) => context.push(RouteNames.marcoGroupDetail(g.id)),
+                onEdit: (g) => editGroupFlow(context, ref, g, otherNames: _names(result.groups, g.id)),
+                onDelete: (g) => deleteGroupFlow(context, ref, g),
+              ),
       ),
     );
-  }
-
-  void _toast(String message) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _previewSync() async {
@@ -89,7 +77,7 @@ class _MarcoGroupsScreenState extends ConsumerState<MarcoGroupsScreen> {
       await showDialog<void>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: Text(preview.dryRun ? 'Router plan (dry-run)' : 'Router synchronized'),
+          title: Text(preview.dryRun ? 'What would change on the router' : 'Router updated'),
           content: SizedBox(
             width: 560,
             child: SingleChildScrollView(
@@ -99,18 +87,13 @@ class _MarcoGroupsScreenState extends ConsumerState<MarcoGroupsScreen> {
                 children: [
                   Text(preview.message),
                   const SizedBox(height: 12),
-                  Text('${preview.plannedChanges.length} router change(s) planned',
-                      style: Theme.of(ctx).textTheme.titleSmall),
+                  Text('${preview.plannedChanges.length} change${preview.plannedChanges.length == 1 ? '' : 's'}', style: Theme.of(ctx).textTheme.titleSmall),
                   for (final change in preview.plannedChanges.take(60))
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Text(change, style: const TextStyle(fontFamily: 'JetBrainsMono', fontSize: 11)),
-                    ),
+                    Padding(padding: const EdgeInsets.only(top: 4), child: Text(change, style: const TextStyle(fontFamily: 'JetBrainsMono', fontSize: 11))),
                   if (preview.warnings.isNotEmpty) ...[
                     const SizedBox(height: 12),
-                    Text('Warnings', style: Theme.of(ctx).textTheme.titleSmall),
-                    for (final warning in preview.warnings)
-                      Padding(padding: const EdgeInsets.only(top: 4), child: Text('• $warning')),
+                    Text('Things to know', style: Theme.of(ctx).textTheme.titleSmall),
+                    for (final warning in preview.warnings) Padding(padding: const EdgeInsets.only(top: 4), child: Text('• $warning')),
                   ],
                 ],
               ),
@@ -120,7 +103,7 @@ class _MarcoGroupsScreenState extends ConsumerState<MarcoGroupsScreen> {
         ),
       );
     } catch (e) {
-      _toast('Preview failed: $e');
+      if (mounted) toast(context, 'Could not check the router: $e');
     } finally {
       if (mounted) setState(() => _previewing = false);
     }
@@ -131,324 +114,265 @@ class _MarcoGroupsScreenState extends ConsumerState<MarcoGroupsScreen> {
     await showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Policy log'),
+        title: const Text('Everything that changed'),
         content: SizedBox(
-          width: 560,
-          height: 420,
+          width: 600,
+          height: 440,
           child: Consumer(
             builder: (context, ref, _) => ref.watch(marcoLogsProvider).when(
-                  loading: () => const Center(child: CircularProgressIndicator()),
-                  error: (e, _) => Text('$e'),
-                  data: (logs) => logs.isEmpty
-                      ? const Center(child: Text('No policy activity yet'))
-                      : ListView.separated(
-                          itemCount: logs.length,
-                          separatorBuilder: (_, __) => const Divider(height: 1),
-                          itemBuilder: (_, i) => ListTile(
-                            dense: true,
-                            leading: Icon(_logIcon(logs[i].status), size: 18),
-                            title: Text(logs[i].message),
-                            subtitle: Text('${logs[i].status} • ${logs[i].createdAt.toLocal()}'),
-                          ),
-                        ),
-                ),
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (e, _) => Text('$e'),
+              data: (logs) => logs.isEmpty
+                  ? const Center(child: Text('Nothing has changed yet'))
+                  : ListView.separated(
+                      itemCount: logs.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1),
+                      itemBuilder: (_, i) => ListTile(
+                        dense: true,
+                        leading: Icon(logs[i].status == 'failed' ? Icons.error_outline : (logs[i].status == 'applied' ? Icons.check_circle_outline : Icons.edit_note), size: 18),
+                        title: Text(logs[i].message),
+                        subtitle: Text('${logs[i].status} · ${logs[i].createdAt.toLocal()}'),
+                      ),
+                    ),
+            ),
           ),
         ),
         actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Close'))],
       ),
     );
   }
+}
 
-  IconData _logIcon(String status) {
-    switch (status) {
-      case 'applied':
-        return Icons.check_circle_outline;
-      case 'failed':
-        return Icons.error_outline;
-      default:
-        return Icons.edit_note;
-    }
-  }
+class _Overview extends StatelessWidget {
+  const _Overview({required this.result, required this.onOpen, required this.onEdit, required this.onDelete});
+  final MarcoGroupsResult result;
+  final ValueChanged<MarcoGroup> onOpen;
+  final ValueChanged<MarcoGroup> onEdit;
+  final ValueChanged<MarcoGroup> onDelete;
 
-  Future<void> _createGroup() async {
-    final form = await _showGroupDialog(title: 'Create Marco Group', action: 'Create');
-    if (form == null) return;
-    try {
-      await ref.read(marcoGroupsProvider.notifier).createGroup(
-            name: form.name,
-            description: form.description,
-            color: form.color,
-            icon: form.icon,
-          );
-    } catch (e) {
-      _toast('Could not create group: $e');
-    }
-  }
-
-  Future<void> _editGroup(MarcoGroup group) async {
-    final form = await _showGroupDialog(
-      title: 'Edit Marco Group',
-      action: 'Save',
-      name: group.name,
-      description: group.description,
-      color: group.color,
-      icon: group.icon,
-    );
-    if (form == null) return;
-    try {
-      await ref.read(marcoGroupsProvider.notifier).updateGroup(
-            group.id,
-            name: form.name,
-            description: form.description ?? '',
-            color: form.color,
-            icon: form.icon,
-          );
-    } catch (e) {
-      _toast('Could not save group: $e');
-    }
-  }
-
-  Future<void> _deleteGroup(MarcoGroup group) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete Group'),
-        content: Text('Delete ${group.name}? Its policies are removed from the router and its '
-            '${group.members.length} device(s) return to normal access.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete')),
-        ],
-      ),
-    );
-    if (confirm != true) return;
-    try {
-      final result = await ref.read(marcoGroupsProvider.notifier).deleteGroup(group.id);
-      _toast(result.dryRun ? 'Group deleted (router writes are disabled)' : 'Group deleted');
-    } catch (e) {
-      _toast('Delete failed: $e');
-    }
-  }
-
-  Future<_GroupForm?> _showGroupDialog({
-    required String title,
-    required String action,
-    String name = '',
-    String description = '',
-    String color = 'blue',
-    String icon = 'group',
-  }) {
-    final nameController = TextEditingController(text: name);
-    final descController = TextEditingController(text: description);
-    return showDialog<_GroupForm>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(title),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(controller: nameController, decoration: const InputDecoration(labelText: 'Group Name')),
-              const SizedBox(height: 12),
-              TextField(controller: descController, decoration: const InputDecoration(labelText: 'Description')),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                value: color,
-                decoration: const InputDecoration(labelText: 'Color'),
-                items: const [
-                  DropdownMenuItem(value: 'blue', child: Text('Blue')),
-                  DropdownMenuItem(value: 'green', child: Text('Green')),
-                  DropdownMenuItem(value: 'orange', child: Text('Orange')),
-                  DropdownMenuItem(value: 'red', child: Text('Red')),
-                ],
-                onChanged: (value) => color = value ?? 'blue',
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                value: icon,
-                decoration: const InputDecoration(labelText: 'Icon'),
-                items: const [
-                  DropdownMenuItem(value: 'group', child: Text('Group')),
-                  DropdownMenuItem(value: 'device', child: Text('Device')),
-                  DropdownMenuItem(value: 'school', child: Text('School')),
-                  DropdownMenuItem(value: 'medical', child: Text('Medical')),
-                ],
-                onChanged: (value) => icon = value ?? 'group',
-              ),
-            ],
-          ),
+  @override
+  Widget build(BuildContext context) {
+    final groups = result.groups;
+    final devices = groups.fold<int>(0, (a, g) => a + g.members.length);
+    final online = groups.fold<int>(0, (a, g) => a + g.members.where((m) => m.isOnline).length);
+    return ListView(
+      padding: const EdgeInsets.all(20),
+      children: [
+        if (result.dryRun) const _SafeMode(),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            StatusPill(tone: StatusTone.neutral, label: '${groups.length} group${groups.length == 1 ? '' : 's'}', icon: Icons.folder_outlined),
+            StatusPill(tone: StatusTone.neutral, label: '$devices device${devices == 1 ? '' : 's'} in groups', icon: Icons.devices),
+            StatusPill(tone: online > 0 ? StatusTone.ok : StatusTone.neutral, label: '$online online now', icon: Icons.wifi),
+          ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(
-            onPressed: () {
-              final trimmed = nameController.text.trim();
-              if (trimmed.isEmpty) return;
-              final desc = descController.text.trim();
-              Navigator.pop(ctx, _GroupForm(trimmed, desc.isEmpty ? null : desc, color, icon));
-            },
-            child: Text(action),
-          ),
-        ],
-      ),
+        const SizedBox(height: 16),
+        LayoutBuilder(
+          builder: (context, box) {
+            final cols = box.maxWidth >= 1000 ? 3 : (box.maxWidth >= 640 ? 2 : 1);
+            const gap = 14.0;
+            final w = (box.maxWidth - gap * (cols - 1)) / cols;
+            return Wrap(
+              spacing: gap,
+              runSpacing: gap,
+              children: [for (final g in groups) SizedBox(width: w, child: _GroupCard(group: g, onOpen: () => onOpen(g), onEdit: () => onEdit(g), onDelete: () => onDelete(g)))],
+            );
+          },
+        ),
+      ],
     );
   }
 }
 
-class _GroupForm {
-  final String name;
-  final String? description;
-  final String color;
-  final String icon;
-  const _GroupForm(this.name, this.description, this.color, this.icon);
-}
+class _SafeMode extends StatelessWidget {
+  const _SafeMode();
 
-Color marcoColor(String name) {
-  switch (name) {
-    case 'green':
-      return Colors.green;
-    case 'orange':
-      return Colors.orange;
-    case 'red':
-      return Colors.red;
-    case 'purple':
-      return Colors.purple;
-    case 'teal':
-      return Colors.teal;
-    default:
-      return Colors.blue;
-  }
-}
-
-IconData marcoIcon(String name) {
-  switch (name) {
-    case 'device':
-      return Icons.devices;
-    case 'school':
-      return Icons.school;
-    case 'medical':
-      return Icons.medical_services;
-    default:
-      return Icons.group;
+  @override
+  Widget build(BuildContext context) {
+    final tone = toneStyle(context, StatusTone.warning);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(color: tone.background, borderRadius: BorderRadius.circular(12)),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.shield_outlined, size: 20, color: tone.foreground),
+          const SizedBox(width: 10),
+          Expanded(child: Text('Safe mode is on: groups and rules are saved, but nothing is applied to the router. Use the preview button to see what would change.', style: TextStyle(color: tone.foreground))),
+        ],
+      ),
+    );
   }
 }
 
 class _GroupCard extends StatelessWidget {
   const _GroupCard({required this.group, required this.onOpen, required this.onEdit, required this.onDelete});
-
   final MarcoGroup group;
   final VoidCallback onOpen;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
 
-  String _summary() {
-    final p = group.policy;
-    final parts = <String>[];
-    if (p['internet_enabled'] == false) parts.add('internet off');
-    if (p['unlimited_speed'] == false && (p['download_limit_mbps'] != null || p['upload_limit_mbps'] != null)) {
-      parts.add('speed limited');
-    }
-    if (p['daily_quota_gb'] != null || p['monthly_quota_gb'] != null) parts.add('quota');
-    final blocked = (p['blocked_websites'] as List?)?.length ?? 0;
-    if (blocked > 0) parts.add('$blocked site(s) blocked');
-    return parts.isEmpty ? 'No restrictions' : parts.join(' • ');
-  }
-
   @override
   Widget build(BuildContext context) {
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: marcoColor(group.color),
-          child: Icon(marcoIcon(group.icon), color: Colors.white),
-        ),
-        title: Text(group.name),
-        subtitle: Text(
-          '${group.members.length} device(s) • ${_summary()}'
-          '${group.description.isEmpty ? '' : '\n${group.description}'}',
-        ),
-        isThreeLine: group.description.isNotEmpty,
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            IconButton(icon: const Icon(Icons.edit_outlined), onPressed: onEdit),
-            IconButton(icon: const Icon(Icons.delete_outline), onPressed: onDelete),
-          ],
-        ),
-        onTap: onOpen,
-      ),
-    );
-  }
-}
-
-class _DryRunBanner extends StatelessWidget {
-  const _DryRunBanner();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      color: Colors.orange.withOpacity(0.15),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      child: const Row(
-        children: [
-          Icon(Icons.shield_outlined, color: Colors.orange, size: 20),
-          SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              'Safe mode: router writes are disabled. Policies are saved and previewed, '
-              'but nothing is applied to the MikroTik.',
-            ),
+    final theme = Theme.of(context);
+    final color = marcoColor(group.color);
+    final online = group.members.where((m) => m.isOnline).length;
+    final badges = policyBadges(group.policy);
+    return Semantics(
+      button: true,
+      label: '${group.name}, ${group.members.length} devices, $online online',
+      child: Card(
+        margin: EdgeInsets.zero,
+        elevation: 0,
+        clipBehavior: Clip.antiAlias,
+        color: theme.colorScheme.surfaceContainerLow,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.6))),
+        child: InkWell(
+          onTap: onOpen,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(height: 5, color: color),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 8, 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        CircleAvatar(radius: 22, backgroundColor: color, child: Icon(marcoIcon(group.icon), color: Colors.white)),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(group.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                              Text(group.description.isEmpty ? 'No description' : group.description, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+                            ],
+                          ),
+                        ),
+                        PopupMenuButton<String>(
+                          tooltip: 'More',
+                          onSelected: (v) => v == 'edit' ? onEdit() : onDelete(),
+                          itemBuilder: (_) => const [
+                            PopupMenuItem(value: 'edit', child: ListTile(dense: true, leading: Icon(Icons.edit_outlined), title: Text('Edit name, color, icon'))),
+                            PopupMenuItem(value: 'delete', child: ListTile(dense: true, leading: Icon(Icons.delete_outline), title: Text('Delete group'))),
+                          ],
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text('${group.members.length}', style: theme.textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w700, height: 1)),
+                        const SizedBox(width: 6),
+                        Padding(padding: const EdgeInsets.only(bottom: 3), child: Text(group.members.length == 1 ? 'device' : 'devices', style: theme.textTheme.bodyMedium)),
+                        const Spacer(),
+                        if (group.members.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 8, bottom: 3),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(width: 8, height: 8, decoration: BoxDecoration(shape: BoxShape.circle, color: online > 0 ? const Color(0xFF2E7D32) : theme.colorScheme.outline)),
+                                const SizedBox(width: 6),
+                                Text('$online online', style: theme.textTheme.bodySmall),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    if (badges.isEmpty)
+                      Text('No rules yet', style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant))
+                    else
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: [
+                          for (final b in badges)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(color: theme.colorScheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(20)),
+                              child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(b.icon, size: 14, color: theme.colorScheme.onSurfaceVariant), const SizedBox(width: 5), Text(b.label, style: theme.textTheme.labelMedium)]),
+                            ),
+                        ],
+                      ),
+                  ],
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
 }
 
-class _EmptyView extends StatelessWidget {
-  const _EmptyView({required this.onCreate});
-  final VoidCallback onCreate;
+class _Empty extends StatelessWidget {
+  const _Empty({required this.dryRun, required this.onTemplate});
+  final bool dryRun;
+  final ValueChanged<String> onTemplate;
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.group_work_outlined, size: 72),
-          const SizedBox(height: 12),
-          Text('Create your first Marco Group', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 8),
-          FilledButton.icon(onPressed: onCreate, icon: const Icon(Icons.add), label: const Text('Create Group')),
-        ],
-      ),
-    );
-  }
-}
-
-class _ErrorView extends StatelessWidget {
-  const _ErrorView({required this.message, required this.onRetry});
-  final String message;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 760),
+        child: ListView(
+          shrinkWrap: true,
+          padding: const EdgeInsets.all(24),
           children: [
-            const Icon(Icons.cloud_off, size: 56),
+            if (dryRun) const _SafeMode(),
+            Icon(Icons.folder_special_outlined, size: 56, color: theme.colorScheme.primary),
             const SizedBox(height: 12),
-            Text('Could not load Marco groups', style: Theme.of(context).textTheme.titleMedium),
+            Text('Make your first group', textAlign: TextAlign.center, style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700)),
             const SizedBox(height: 6),
-            Text(message, textAlign: TextAlign.center),
-            const SizedBox(height: 12),
-            FilledButton.icon(onPressed: onRetry, icon: const Icon(Icons.refresh), label: const Text('Retry')),
+            Text(
+              'A group is a set of devices that follow the same rules: slower internet for guests, social media blocked at the reception, internet off at night.',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            ),
+            const SizedBox(height: 20),
+            Wrap(
+              alignment: WrapAlignment.center,
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                for (final t in groupTemplates)
+                  SizedBox(
+                    width: 220,
+                    child: Card(
+                      margin: EdgeInsets.zero,
+                      elevation: 0,
+                      color: theme.colorScheme.surfaceContainerLow,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14), side: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.6))),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(14),
+                        onTap: () => onTemplate(t.key),
+                        child: Padding(
+                          padding: const EdgeInsets.all(14),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              CircleAvatar(backgroundColor: marcoColor(t.color), child: Icon(t.icon, color: Colors.white)),
+                              const SizedBox(height: 10),
+                              Text(t.label, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+                              const SizedBox(height: 4),
+                              Text(t.description, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ],
         ),
       ),

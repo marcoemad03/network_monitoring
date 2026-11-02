@@ -55,11 +55,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Icon(
-                    Icons.network_check,
-                    size: 64,
-                    color: theme.colorScheme.primary,
-                  ),
+                  Image.asset('assets/images/logo.png', height: 120, semanticLabel: 'Harpur Network'),
                   const SizedBox(height: 16),
                   Text(
                     'Hospital NMS',

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/constants/api_constants.dart';
 import '../../../core/di/injection_container.dart';
 import '../../providers/device/device_provider.dart';
 import '../../router/route_names.dart';
@@ -62,6 +63,45 @@ class _MikroTikConnectScreenState extends ConsumerState<MikroTikConnectScreen> {
         _passwordController.text = savedPassword;
       }
     });
+    if (savedRouterIp.isEmpty) await _fillFromServer();
+  }
+
+  /// Nothing saved on this computer yet: use the router the NMS server already
+  /// knows, so only the password is left to type. The server never sends passwords.
+  Future<void> _fillFromServer() async {
+    try {
+      final response = await ref.read(dioRawProvider).get<dynamic>(ApiConstants.vendorIntegrations);
+      final data = response.data is Map ? (response.data as Map)['data'] : null;
+      if (data is! List) return;
+      for (final item in data) {
+        if (item is! Map || item['vendor_type'] != 'mikrotik' || item['is_active'] != true) continue;
+        final endpoint = (item['base_url'] as String? ?? '').replaceFirst(RegExp(r'^\w+://'), '');
+        final parts = endpoint.split(':');
+        if (!mounted) return;
+        setState(() {
+          if (_routerIPController.text.isEmpty) _routerIPController.text = parts.first;
+          final port = parts.length > 1 ? int.tryParse(parts[1]) : null;
+          if (port != null && const [8728, 8729].contains(port)) _apiPort = port;
+          final user = item['username'] as String?;
+          if (user != null && user.isNotEmpty && _usernameController.text == 'admin') _usernameController.text = user;
+        });
+        return;
+      }
+    } catch (_) {
+      // The server may not be reachable yet; the fields stay as they are.
+    }
+  }
+
+  /// Remembers what was typed so the next start only needs a click.
+  Future<void> _remember() async {
+    final prefs = ref.read(sharedPreferencesProvider);
+    final secureStorage = ref.read(secureStorageProvider);
+    await prefs.setString('mikrotik_router_ip', _routerIPController.text.trim());
+    await prefs.setString('mikrotik_username', _usernameController.text.trim());
+    await prefs.setInt('mikrotik_api_port', _apiPort);
+    if (_passwordController.text.isNotEmpty) {
+      await secureStorage.write('mikrotik_password', _passwordController.text);
+    }
   }
 
   @override
@@ -74,6 +114,10 @@ class _MikroTikConnectScreenState extends ConsumerState<MikroTikConnectScreen> {
 
   Future<void> _connect() async {
     if (!_formKey.currentState!.validate()) return;
+    // Saved before trying, so a wrong password or a busy router does not lose what
+    // was typed.
+    await _remember();
+    if (!mounted) return;
     setState(() {
       _connecting = true;
       _statusCode = 'CONNECTING';
@@ -97,18 +141,6 @@ class _MikroTikConnectScreenState extends ConsumerState<MikroTikConnectScreen> {
       });
       if (!connection.reachable) return;
 
-      final prefs = ref.read(sharedPreferencesProvider);
-      final secureStorage = ref.read(secureStorageProvider);
-      await prefs.setString(
-        'mikrotik_router_ip',
-        _routerIPController.text.trim(),
-      );
-      await prefs.setString(
-        'mikrotik_username',
-        _usernameController.text.trim(),
-      );
-      await prefs.setInt('mikrotik_api_port', _apiPort);
-      await secureStorage.write('mikrotik_password', _passwordController.text);
       ref.invalidate(connectedDevicesProvider);
       if (mounted) context.go(RouteNames.connectedDevices);
     } on DioException catch (error) {

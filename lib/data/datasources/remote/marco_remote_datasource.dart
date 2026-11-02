@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import '../../../core/constants/api_constants.dart';
 import '../../../core/network/dio_client.dart';
 import '../../models/marco_models.dart';
+import '../../models/marco_site_models.dart';
 
 /// Error carrying the backend's human readable message.
 class MarcoApiException implements Exception {
@@ -130,4 +131,47 @@ class MarcoRemoteDataSource {
             .map((e) => MarcoPolicyLog.fromJson(Map<String, dynamic>.from(e as Map)))
             .toList();
       });
+
+  // -------------------------------------------------------------------------
+  // Group details, website blocking and per-device controls
+
+  Future<MarcoGroupDetails> details(String groupId) => _guard(() async {
+        final body = _body(await _client.get('$_base/groups/$groupId/details'));
+        return MarcoGroupDetails.fromJson(Map<String, dynamic>.from(body['data'] as Map));
+      });
+
+  Future<MarcoCatalog> catalog() => _guard(() async {
+        final body = _body(await _client.get('$_base/sites/catalog'));
+        return MarcoCatalog.fromJson(Map<String, dynamic>.from(body['data'] as Map));
+      });
+
+  /// Looks the site up and says what blocking it would do, before it is added.
+  Future<MarcoSiteCheck> checkSite(String site) => _guard(() async {
+        final body = _body(await _client.post('$_base/sites/check', data: {'site': site}, options: Options(receiveTimeout: const Duration(seconds: 30))));
+        return MarcoSiteCheck.fromJson(Map<String, dynamic>.from(body['data'] as Map));
+      });
+
+  Future<void> addAllowedSite(String site) =>
+      _guard(() async => _client.post('$_base/sites/allowed', options: _noRetry, data: {'site': site}));
+
+  Future<void> removeAllowedSite(String domain) =>
+      _guard(() async => _client.delete('$_base/sites/allowed/${Uri.encodeComponent(domain)}', options: _noRetry));
+
+  Future<List<MarcoDeviceControl>> overrides() => _guard(() async {
+        final body = _body(await _client.get('$_base/overrides'));
+        return ((body['data'] as List?) ?? const [])
+            .map((e) => MarcoDeviceControl.fromJson(Map<String, dynamic>.from(e as Map)))
+            .toList();
+      });
+
+  /// Blocks a device or limits its speed. No block and no limit removes the control.
+  Future<MarcoActionResult> setDeviceControl(String mac, {required bool blocked, double? downloadMbps, double? uploadMbps, String reason = ''}) =>
+      _guard(() async => _result(await _client.put(
+            '$_base/overrides/${Uri.encodeComponent(mac)}',
+            options: _noRetry,
+            data: {'blocked': blocked, 'download_limit_mbps': downloadMbps, 'upload_limit_mbps': uploadMbps, 'reason': reason},
+          )));
+
+  Future<MarcoActionResult> clearDeviceControl(String mac) =>
+      _guard(() async => _result(await _client.delete('$_base/overrides/${Uri.encodeComponent(mac)}', options: _noRetry)));
 }

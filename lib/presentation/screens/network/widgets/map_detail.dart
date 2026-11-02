@@ -5,12 +5,19 @@ import 'map_kinds.dart';
 /// Everything known about the selected device, with a button to name it and say
 /// where it is.
 class DeviceDetailPanel extends StatelessWidget {
-  const DeviceDetailPanel({super.key, required this.device, required this.port, required this.onClose, required this.onEdit});
+  const DeviceDetailPanel({super.key, required this.device, required this.port, required this.onClose, required this.onEdit, this.onControl, this.groupName, this.controlText});
 
   final MapDevice device;
   final MapPort? port;
   final VoidCallback onClose;
   final VoidCallback? onEdit;
+
+  /// Opens the block / speed limit dialog; null when the device cannot be controlled.
+  final VoidCallback? onControl;
+  final String? groupName;
+
+  /// What is set on the device now, for example 'Internet blocked'.
+  final String? controlText;
 
   @override
   Widget build(BuildContext context) {
@@ -60,9 +67,13 @@ class DeviceDetailPanel extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             if (onEdit != null)
-              Align(
-                alignment: Alignment.centerLeft,
-                child: FilledButton.tonalIcon(onPressed: onEdit, icon: const Icon(Icons.edit_outlined, size: 18), label: const Text('Name it / set place')),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  FilledButton.tonalIcon(onPressed: onEdit, icon: const Icon(Icons.edit_outlined, size: 18), label: const Text('Name it / set place')),
+                  if (onControl != null) OutlinedButton.icon(onPressed: onControl, icon: const Icon(Icons.speed, size: 18), label: const Text('Block or limit speed')),
+                ],
               )
             else
               Text('Registered equipment: change it from the Equipment page.', style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
@@ -76,6 +87,8 @@ class DeviceDetailPanel extends StatelessWidget {
             const Divider(height: 28),
             _Row('Place', device.hasPlace ? '${device.place}${_placeNote(device.placeSource)}' : 'Not set'),
             _Row('Router port', portText),
+            if (groupName != null) _Row('Group', groupName!),
+            if (controlText != null) _Row('Control', controlText!),
             if (device.wifi != null) _Row('Wi-Fi', [device.wifi!.interfaceName, device.wifi!.ssid, device.wifi!.signal].where((s) => s.isNotEmpty).join(' · ')),
             if (device.network.isNotEmpty) _Row('Network', device.network),
             const Divider(height: 28),

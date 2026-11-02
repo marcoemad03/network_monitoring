@@ -241,3 +241,144 @@ func (h *MarcoGroupHandler) DeviceStatuses(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": statuses, "message": "Device statuses retrieved"})
 }
+
+// ---------------------------------------------------------------------------
+// Sites, overrides and group details
+
+func (h *MarcoGroupHandler) fail(c *gin.Context, err error, fallback string) {
+	var site *services.SiteInputError
+	if errors.As(err, &site) {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": site.Message, "error_code": "VALIDATION_ERROR"})
+		return
+	}
+	c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": fallback, "error_code": "SERVER_ERROR"})
+}
+
+// Catalog returns the platforms, the ready-made packs and the always-allowed sites.
+func (h *MarcoGroupHandler) Catalog(c *gin.Context) {
+	orgID, ok := h.orgID(c)
+	if !ok {
+		return
+	}
+	cat, err := h.service.Catalog(c.Request.Context(), orgID)
+	if err != nil {
+		h.fail(c, err, "Failed to load the site catalog")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": cat, "message": "Catalog retrieved"})
+}
+
+// CheckSite says what blocking a typed site would do.
+func (h *MarcoGroupHandler) CheckSite(c *gin.Context) {
+	var req struct {
+		Site string `json:"site"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid request", "error_code": "VALIDATION_ERROR"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": h.service.CheckSite(c.Request.Context(), req.Site), "message": "Site checked"})
+}
+
+// SiteStatus returns what the blocked sites pointed to at the last sync.
+func (h *MarcoGroupHandler) SiteStatus(c *gin.Context) {
+	orgID, ok := h.orgID(c)
+	if !ok {
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": h.service.SiteStatus(orgID), "message": "Site status retrieved"})
+}
+
+func (h *MarcoGroupHandler) AddAllowed(c *gin.Context) {
+	orgID, ok := h.orgID(c)
+	if !ok {
+		return
+	}
+	var req struct {
+		Site string `json:"site"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid request", "error_code": "VALIDATION_ERROR"})
+		return
+	}
+	v, err := h.service.AddAllowedSite(c.Request.Context(), orgID, req.Site)
+	if err != nil {
+		h.fail(c, err, "Failed to save")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"site": v}, "message": "Saved"})
+}
+
+func (h *MarcoGroupHandler) RemoveAllowed(c *gin.Context) {
+	orgID, ok := h.orgID(c)
+	if !ok {
+		return
+	}
+	if err := h.service.RemoveAllowedSite(c.Request.Context(), orgID, c.Param("domain")); err != nil {
+		h.fail(c, err, "Failed to save")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Saved"})
+}
+
+func (h *MarcoGroupHandler) ListOverrides(c *gin.Context) {
+	orgID, ok := h.orgID(c)
+	if !ok {
+		return
+	}
+	list, err := h.service.ListOverrides(c.Request.Context(), orgID)
+	if err != nil {
+		h.fail(c, err, "Failed to load device controls")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": list, "dry_run": h.service.DryRun(), "message": "Device controls retrieved"})
+}
+
+// SetOverride blocks a device or limits its speed.
+func (h *MarcoGroupHandler) SetOverride(c *gin.Context) {
+	orgID, ok := h.orgID(c)
+	if !ok {
+		return
+	}
+	var req services.DeviceControlInput
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid request", "error_code": "VALIDATION_ERROR"})
+		return
+	}
+	if err := h.service.SetDeviceControl(c.Request.Context(), orgID, c.Param("mac"), req); err != nil {
+		h.fail(c, err, "Failed to save")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "dry_run": h.service.DryRun(), "message": "Saved"})
+}
+
+func (h *MarcoGroupHandler) DeleteOverride(c *gin.Context) {
+	orgID, ok := h.orgID(c)
+	if !ok {
+		return
+	}
+	if err := h.service.SetDeviceControl(c.Request.Context(), orgID, c.Param("mac"), services.DeviceControlInput{}); err != nil {
+		h.fail(c, err, "Failed to save")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "dry_run": h.service.DryRun(), "message": "Saved"})
+}
+
+// Details returns one group with its devices, rules in plain words and recent changes.
+func (h *MarcoGroupHandler) Details(c *gin.Context) {
+	orgID, ok := h.orgID(c)
+	if !ok {
+		return
+	}
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid group ID", "error_code": "VALIDATION_ERROR"})
+		return
+	}
+	det, err := h.service.Details(c.Request.Context(), orgID, id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "Group not found", "error_code": "NOT_FOUND"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": det, "message": "Group retrieved"})
+}

@@ -36,9 +36,10 @@ Enable writes only after reviewing the plan:
 /ip dns static remove [find where comment~"^nms-"]
 ```
 
-## Write switches (all default to the safe value)
+## Write switches
 * `ROUTER_POLICY_WRITES` - master switch. `false` records the plan only (dry-run).
-* `ROUTER_PRUNE_STALE` - `false` means the Marco sync only adds and updates. Removing a device from a group, or editing a policy so a rule is no longer wanted, then leaves the old rule on the router: disable it by hand or turn this on.
+* `ROUTER_PRUNE_STALE` - `true` (default): the Marco sync also removes the `nms-marco-` entries it no longer wants (a device taken out of a group, a site unblocked, a deleted group), so a removed block is really lifted. It never touches entries without the `nms-marco-` prefix. `false` makes the sync add and update only; old rules then stay on the router until you remove them by hand.
+* `ROUTER_MAX_PRUNE` - a sync that would remove more than this many entries (default 60) is refused with an error, so a reset database cannot clear the router.
 * `ROUTER_LEGACY_POLICY_WRITES` - the legacy policy engine writes only when this and `ROUTER_POLICY_WRITES` are both `true`.
 * `ROUTER_PLATFORM_DST_LISTS` - `key=router address-list` pairs, separated by `;`. YouTube has no built-in ranges (its addresses are shared with Gmail), so it needs this, e.g. `youtube=collect all youtube ips`. The list must exist on the router and be kept up to date by you.
 

@@ -261,3 +261,85 @@ func (r *MarcoRepository) ListQuotaUsageForGroup(ctx context.Context, groupID uu
 	}
 	return usages, rows.Err()
 }
+
+// ---------------------------------------------------------------------------
+// Per-device overrides and the always-allowed websites
+
+// ListOverrides returns every block and speed limit set on a device.
+func (r *MarcoRepository) ListOverrides(ctx context.Context, orgID uuid.UUID) ([]models.MarcoDeviceOverride, error) {
+	rows, err := r.db.Query(ctx,
+		`SELECT mac, blocked, download_limit_mbps, upload_limit_mbps, reason, updated_at
+		   FROM marco_device_overrides WHERE organization_id = $1 ORDER BY mac`, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []models.MarcoDeviceOverride{}
+	for rows.Next() {
+		var o models.MarcoDeviceOverride
+		if err := rows.Scan(&o.MAC, &o.Blocked, &o.DownloadLimitMbps, &o.UploadLimitMbps, &o.Reason, &o.UpdatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, o)
+	}
+	return out, rows.Err()
+}
+
+// SaveOverride stores the override of one device. An override that blocks nothing
+// and limits nothing is removed.
+func (r *MarcoRepository) SaveOverride(ctx context.Context, orgID uuid.UUID, o models.MarcoDeviceOverride) error {
+	if !o.Blocked && o.DownloadLimitMbps == nil && o.UploadLimitMbps == nil {
+		return r.DeleteOverride(ctx, orgID, o.MAC)
+	}
+	_, err := r.db.Exec(ctx,
+		`INSERT INTO marco_device_overrides (organization_id, mac, blocked, download_limit_mbps, upload_limit_mbps, reason, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, NOW())
+		 ON CONFLICT (organization_id, mac) DO UPDATE SET blocked = EXCLUDED.blocked,
+		   download_limit_mbps = EXCLUDED.download_limit_mbps, upload_limit_mbps = EXCLUDED.upload_limit_mbps,
+		   reason = EXCLUDED.reason, updated_at = NOW()`,
+		orgID, o.MAC, o.Blocked, o.DownloadLimitMbps, o.UploadLimitMbps, o.Reason)
+	return err
+}
+
+func (r *MarcoRepository) DeleteOverride(ctx context.Context, orgID uuid.UUID, mac string) error {
+	_, err := r.db.Exec(ctx, `DELETE FROM marco_device_overrides WHERE organization_id = $1 AND mac = $2`, orgID, mac)
+	return err
+}
+
+// ListAllowDomains returns the websites added by hand to the always-allowed list.
+func (r *MarcoRepository) ListAllowDomains(ctx context.Context, orgID uuid.UUID) ([]string, error) {
+	rows, err := r.db.Query(ctx, `SELECT domain FROM marco_allow_domains WHERE organization_id = $1 ORDER BY domain`, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []string{}
+	for rows.Next() {
+		var d string
+		if err := rows.Scan(&d); err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
+func (r *MarcoRepository) AddAllowDomain(ctx context.Context, orgID uuid.UUID, domain string) error {
+	_, err := r.db.Exec(ctx, `INSERT INTO marco_allow_domains (organization_id, domain) VALUES ($1, $2) ON CONFLICT DO NOTHING`, orgID, domain)
+	return err
+}
+
+func (r *MarcoRepository) RemoveAllowDomain(ctx context.Context, orgID uuid.UUID, domain string) error {
+	_, err := r.db.Exec(ctx, `DELETE FROM marco_allow_domains WHERE organization_id = $1 AND domain = $2`, orgID, domain)
+	return err
+}
+
+// SetDeviceIP records the address a device has now. A device added to a group by
+// MAC starts with no address; this fills it in from what the router sees.
+func (r *MarcoRepository) SetDeviceIP(ctx context.Context, orgID uuid.UUID, mac, ip string) error {
+	_, err := r.db.Exec(ctx,
+		`UPDATE devices SET ip_address = $3::inet, updated_at = NOW()
+		  WHERE organization_id = $1 AND mac_address = $2::macaddr AND ip_address IS DISTINCT FROM $3::inet`,
+		orgID, mac, ip)
+	return err
+}

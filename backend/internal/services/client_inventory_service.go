@@ -606,3 +606,18 @@ func (s *ClientInventoryService) Usage(ctx context.Context, orgID uuid.UUID, mac
 	since := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).AddDate(0, 0, -(days - 1))
 	return s.repo.Daily(ctx, orgID, mac, since)
 }
+
+// LiveIPs returns the address of every device the router sees online now, by MAC.
+func (s *ClientInventoryService) LiveIPs(orgID uuid.UUID) map[string]string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := map[string]string{}
+	if st := s.states[orgID]; st != nil {
+		for _, c := range st.live {
+			if c.Online && c.IP != "" {
+				out[c.MAC] = c.IP
+			}
+		}
+	}
+	return out
+}

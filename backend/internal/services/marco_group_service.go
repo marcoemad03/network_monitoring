@@ -25,6 +25,8 @@ type MarcoGroupService struct {
 	hub         *websocket.Hub
 	telegramSvc *TelegramService
 	async       asyncSyncer
+	inventory   *ClientInventoryService
+	clientRepo  *repository.ClientRepository
 }
 
 func NewMarcoGroupService(marcoRepo *repository.MarcoRepository, deviceRepo *repository.DeviceRepository, internetRepo *repository.InternetRepository, cfg *config.Config, hub *websocket.Hub, telegramSvc *TelegramService) *MarcoGroupService {
@@ -95,6 +97,9 @@ func (s *MarcoGroupService) CreateGroup(ctx context.Context, orgID uuid.UUID, re
 	policy := models.MarcoGroupPolicy{}
 	if req.Policy != nil {
 		policy = *req.Policy
+		if err := ValidatePolicySites(policy); err != nil {
+			return nil, err
+		}
 	}
 	policy = NormalizeMarcoPolicy(policy)
 	g := &models.MarcoGroup{
@@ -171,13 +176,21 @@ func (s *MarcoGroupService) AddMembers(ctx context.Context, orgID, groupID uuid.
 	if err != nil {
 		return nil, err
 	}
+	known := map[string]ClientView{}
+	if s.inventory != nil {
+		if l, err := s.inventory.List(ctx, orgID); err == nil {
+			for _, c := range l.Clients {
+				known[c.MAC] = c
+			}
+		}
+	}
 	var added []models.MarcoGroupMember
 	for _, raw := range macs {
 		mac := strings.ToUpper(strings.TrimSpace(raw))
 		if mac == "" {
 			continue
 		}
-		device, err := s.resolveDeviceByMAC(ctx, orgID, mac)
+		device, err := s.resolveDeviceByMAC(ctx, orgID, mac, known[mac])
 		if err != nil {
 			return added, fmt.Errorf("resolve MAC %s: %w", mac, err)
 		}
@@ -238,6 +251,9 @@ func (s *MarcoGroupService) MoveDevice(ctx context.Context, orgID, deviceID, tar
 func (s *MarcoGroupService) UpdatePolicy(ctx context.Context, orgID, groupID uuid.UUID, policy models.MarcoGroupPolicy) error {
 	g, err := s.marcoRepo.GetGroupByID(ctx, orgID, groupID)
 	if err != nil {
+		return err
+	}
+	if err := ValidatePolicySites(policy); err != nil {
 		return err
 	}
 	policy = NormalizeMarcoPolicy(policy)
@@ -363,15 +379,23 @@ func (s *MarcoGroupService) DeviceStatuses(ctx context.Context, orgID uuid.UUID)
 // ---------------------------------------------------------------------------
 // Helpers
 
-func (s *MarcoGroupService) resolveDeviceByMAC(ctx context.Context, orgID uuid.UUID, mac string) (*models.Device, error) {
+func (s *MarcoGroupService) resolveDeviceByMAC(ctx context.Context, orgID uuid.UUID, mac string, seen ClientView) (*models.Device, error) {
 	device, err := s.deviceRepo.GetByMACForOrganization(ctx, orgID, mac)
 	if err == nil {
 		return device, nil
 	}
-	zero := net.ParseIP("0.0.0.0")
+	// A device the router has seen starts with its real name and address.
+	ip := net.ParseIP(seen.IP)
+	if ip == nil {
+		ip = net.ParseIP("0.0.0.0")
+	}
+	name := mac
+	if seen.DisplayName != "" {
+		name = seen.DisplayName
+	}
 	macCopy := mac
 	placeholder := &models.Device{
-		ID: uuid.New(), OrganizationID: orgID, Name: mac, IPAddress: zero,
+		ID: uuid.New(), OrganizationID: orgID, Name: name, IPAddress: ip,
 		MACAddress: &macCopy, DeviceType: "unknown", Status: "unknown",
 	}
 	id, _, err := s.deviceRepo.UpsertDiscovered(ctx, placeholder)
@@ -514,6 +538,8 @@ func NormalizeMarcoPolicy(p models.MarcoGroupPolicy) models.MarcoGroupPolicy {
 	}
 	p.ScheduleDays = normalizeDays(p.ScheduleDays)
 	p.BlockedWebsites = sortedPlatformKeys(p.BlockedWebsites)
+	p.BlockedPacks = normalizedPacks(p.BlockedPacks)
+	p.BlockedDomains = normalizeSites(p.BlockedDomains)
 	return p
 }
 
