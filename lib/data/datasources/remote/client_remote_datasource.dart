@@ -26,7 +26,7 @@ class ClientRemoteDataSource {
 
   /// Saves what the user typed. Only the given fields change; pass an empty
   /// string to clear one.
-  Future<void> saveNote(String mac, {String? displayName, String? note, String? kind}) async {
+  Future<void> saveNote(String mac, {String? displayName, String? note, String? kind, String? place}) async {
     try {
       await _client.put(
         '$_base/${Uri.encodeComponent(mac)}',
@@ -35,6 +35,7 @@ class ClientRemoteDataSource {
           if (displayName != null) 'display_name': displayName,
           if (note != null) 'note': note,
           if (kind != null) 'kind': kind,
+          if (place != null) 'place': place,
         },
       );
     } on DioException catch (e) {

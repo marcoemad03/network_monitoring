@@ -45,6 +45,8 @@ type LiveClient struct {
 	BytesDown, BytesUp int64
 	UptimeSeconds      int64
 	IdleSeconds        int64
+	// ArpInterface is the router interface the ARP entry was learned on.
+	ArpInterface string
 	DownBps, UpBps     int64
 }
 
@@ -308,6 +310,7 @@ func mergeClientTables(hosts, leases, arps []map[string]string) []LiveClient {
 		}
 		e := get(mac)
 		e.arpPresent = true
+		e.ArpInterface = pickText(e.ArpInterface, r["interface"])
 		e.IP = pickText(e.IP, r["address"])
 		e.Network = pickText(e.Network, r["interface"])
 	}
@@ -349,6 +352,10 @@ func parseCounter(v string) int64 {
 
 // ClientView is one device as the UI shows it.
 type ClientView struct {
+	// ArpInterface is where the router learned the device; used to place it on the map.
+	ArpInterface string `json:"-"`
+	// LastPort is the router port the device was last seen on.
+	LastPort string `json:"-"`
 	MAC         string     `json:"mac"`
 	IP          string     `json:"ip"`
 	Hostname    string     `json:"hostname"`
@@ -448,7 +455,7 @@ func (s *ClientInventoryService) List(ctx context.Context, orgID uuid.UUID) (Cli
 		first, last := k.FirstSeen, k.LastSeen
 		views[k.MAC] = &ClientView{
 			MAC: k.MAC, IP: k.LastIP, Hostname: k.Hostname, Network: k.Network, RouterNote: k.RouterComment,
-			FirstSeen: &first, LastSeen: &last,
+			FirstSeen: &first, LastSeen: &last, LastPort: k.LastPort,
 		}
 	}
 	for _, c := range live {
@@ -465,6 +472,7 @@ func (s *ClientInventoryService) List(ctx context.Context, orgID uuid.UUID) (Cli
 		v.UptimeSecs, v.IdleSecs = c.UptimeSeconds, c.IdleSeconds
 		v.DownloadBps, v.UploadBps = c.DownBps, c.UpBps
 		v.SessionDown, v.SessionUp = c.BytesDown, c.BytesUp
+		v.ArpInterface = c.ArpInterface
 		if c.Online {
 			seen := updated
 			v.LastSeen = &seen
@@ -536,6 +544,7 @@ type NoteInput struct {
 	DisplayName *string
 	Note        *string
 	Kind        *string
+	Place       *string
 }
 
 // ClientNoteError is returned for input that cannot be saved.
@@ -563,6 +572,13 @@ func (s *ClientInventoryService) SaveNote(ctx context.Context, orgID uuid.UUID, 
 			return repository.ClientNote{}, &ClientNoteError{fmt.Sprintf("The comment can be at most %d characters", maxNoteLen)}
 		}
 		patch.Note = &v
+	}
+	if in.Place != nil {
+		v := strings.TrimSpace(*in.Place)
+		if len([]rune(v)) > maxDisplayNameLen {
+			return repository.ClientNote{}, &ClientNoteError{fmt.Sprintf("The place can be at most %d characters", maxDisplayNameLen)}
+		}
+		patch.Place = &v
 	}
 	if in.Kind != nil {
 		v := strings.TrimSpace(*in.Kind)

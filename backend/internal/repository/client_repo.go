@@ -35,6 +35,7 @@ type KnownClient struct {
 	Hostname      string
 	RouterComment string
 	Network       string
+	LastPort      string
 }
 
 // ClientNote is what a person wrote about a device.
@@ -42,6 +43,7 @@ type ClientNote struct {
 	DisplayName  string
 	Note         string
 	KindOverride string
+	Place        string
 	UpdatedAt    time.Time
 }
 
@@ -50,6 +52,7 @@ type NotePatch struct {
 	DisplayName  *string
 	Note         *string
 	KindOverride *string
+	Place        *string
 }
 
 // ClientUsage is the data a device moved in a period. Download is data the
@@ -111,7 +114,7 @@ func (r *ClientRepository) AddUsage(ctx context.Context, orgID uuid.UUID, day ti
 // Known returns every remembered device, newest first.
 func (r *ClientRepository) Known(ctx context.Context, orgID uuid.UUID, limit int) ([]KnownClient, error) {
 	rows, err := r.db.Query(ctx,
-		`SELECT mac, first_seen, last_seen, last_ip, hostname, router_comment, network_name
+		`SELECT mac, first_seen, last_seen, last_ip, hostname, router_comment, network_name, last_port
 		   FROM client_devices WHERE organization_id = $1 ORDER BY last_seen DESC LIMIT $2`, orgID, limit)
 	if err != nil {
 		return nil, err
@@ -120,7 +123,7 @@ func (r *ClientRepository) Known(ctx context.Context, orgID uuid.UUID, limit int
 	var out []KnownClient
 	for rows.Next() {
 		var k KnownClient
-		if err := rows.Scan(&k.MAC, &k.FirstSeen, &k.LastSeen, &k.LastIP, &k.Hostname, &k.RouterComment, &k.Network); err != nil {
+		if err := rows.Scan(&k.MAC, &k.FirstSeen, &k.LastSeen, &k.LastIP, &k.Hostname, &k.RouterComment, &k.Network, &k.LastPort); err != nil {
 			return nil, err
 		}
 		out = append(out, k)
@@ -176,7 +179,7 @@ func (r *ClientRepository) Daily(ctx context.Context, orgID uuid.UUID, mac strin
 // Notes returns the notes of all devices, by MAC.
 func (r *ClientRepository) Notes(ctx context.Context, orgID uuid.UUID) (map[string]ClientNote, error) {
 	rows, err := r.db.Query(ctx,
-		`SELECT mac, display_name, note, kind_override, updated_at FROM client_device_notes WHERE organization_id = $1`, orgID)
+		`SELECT mac, display_name, note, kind_override, place, updated_at FROM client_device_notes WHERE organization_id = $1`, orgID)
 	if err != nil {
 		return nil, err
 	}
@@ -185,7 +188,7 @@ func (r *ClientRepository) Notes(ctx context.Context, orgID uuid.UUID) (map[stri
 	for rows.Next() {
 		var mac string
 		var n ClientNote
-		if err := rows.Scan(&mac, &n.DisplayName, &n.Note, &n.KindOverride, &n.UpdatedAt); err != nil {
+		if err := rows.Scan(&mac, &n.DisplayName, &n.Note, &n.KindOverride, &n.Place, &n.UpdatedAt); err != nil {
 			return nil, err
 		}
 		out[mac] = n
@@ -197,15 +200,75 @@ func (r *ClientRepository) Notes(ctx context.Context, orgID uuid.UUID) (map[stri
 func (r *ClientRepository) SaveNote(ctx context.Context, orgID uuid.UUID, mac string, p NotePatch) (ClientNote, error) {
 	var n ClientNote
 	err := r.db.QueryRow(ctx,
-		`INSERT INTO client_device_notes (organization_id, mac, display_name, note, kind_override, updated_at)
-		 VALUES ($1, $2, COALESCE($3, ''), COALESCE($4, ''), COALESCE($5, ''), NOW())
+		`INSERT INTO client_device_notes (organization_id, mac, display_name, note, kind_override, place, updated_at)
+		 VALUES ($1, $2, COALESCE($3, ''), COALESCE($4, ''), COALESCE($5, ''), COALESCE($6, ''), NOW())
 		 ON CONFLICT (organization_id, mac) DO UPDATE SET
 		   display_name = COALESCE($3, client_device_notes.display_name),
 		   note = COALESCE($4, client_device_notes.note),
 		   kind_override = COALESCE($5, client_device_notes.kind_override),
+		   place = COALESCE($6, client_device_notes.place),
 		   updated_at = NOW()
-		 RETURNING display_name, note, kind_override, updated_at`,
-		orgID, mac, p.DisplayName, p.Note, p.KindOverride).
-		Scan(&n.DisplayName, &n.Note, &n.KindOverride, &n.UpdatedAt)
+		 RETURNING display_name, note, kind_override, place, updated_at`,
+		orgID, mac, p.DisplayName, p.Note, p.KindOverride, p.Place).
+		Scan(&n.DisplayName, &n.Note, &n.KindOverride, &n.Place, &n.UpdatedAt)
 	return n, err
+}
+
+// SetPorts remembers the router port each device is on. The slices are parallel;
+// an empty port leaves what is remembered untouched.
+func (r *ClientRepository) SetPorts(ctx context.Context, orgID uuid.UUID, macs, ports []string) error {
+	if len(macs) == 0 {
+		return nil
+	}
+	_, err := r.db.Exec(ctx,
+		`UPDATE client_devices c SET last_port = t.p
+		   FROM unnest($2::text[], $3::text[]) AS t(m, p)
+		  WHERE c.organization_id = $1 AND c.mac = t.m AND t.p <> '' AND c.last_port <> t.p`,
+		orgID, macs, ports)
+	return err
+}
+
+// Places returns the names given to router ports, by port name.
+func (r *ClientRepository) Places(ctx context.Context, orgID uuid.UUID) (map[string]string, error) {
+	rows, err := r.db.Query(ctx, `SELECT port_name, label FROM network_places WHERE organization_id = $1`, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]string{}
+	for rows.Next() {
+		var port, label string
+		if err := rows.Scan(&port, &label); err != nil {
+			return nil, err
+		}
+		out[port] = label
+	}
+	return out, rows.Err()
+}
+
+// SavePlace names a router port. An empty label removes the name.
+func (r *ClientRepository) SavePlace(ctx context.Context, orgID uuid.UUID, port, label string) error {
+	if label == "" {
+		_, err := r.db.Exec(ctx, `DELETE FROM network_places WHERE organization_id = $1 AND port_name = $2`, orgID, port)
+		return err
+	}
+	_, err := r.db.Exec(ctx,
+		`INSERT INTO network_places (organization_id, port_name, label, updated_at) VALUES ($1, $2, $3, NOW())
+		 ON CONFLICT (organization_id, port_name) DO UPDATE SET label = EXCLUDED.label, updated_at = NOW()`,
+		orgID, port, label)
+	return err
+}
+
+// SaveDevicePlaces sets where several devices are in one statement. An empty
+// place clears it. Other parts of each note are left as they are.
+func (r *ClientRepository) SaveDevicePlaces(ctx context.Context, orgID uuid.UUID, macs []string, place string) error {
+	if len(macs) == 0 {
+		return nil
+	}
+	_, err := r.db.Exec(ctx,
+		`INSERT INTO client_device_notes (organization_id, mac, place, updated_at)
+		 SELECT $1, m, $3, NOW() FROM unnest($2::text[]) AS t(m)
+		 ON CONFLICT (organization_id, mac) DO UPDATE SET place = EXCLUDED.place, updated_at = NOW()`,
+		orgID, macs, place)
+	return err
 }

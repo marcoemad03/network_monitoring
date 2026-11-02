@@ -53,13 +53,14 @@ func (h *ClientHandler) UpdateNote(c *gin.Context) {
 		DisplayName *string `json:"display_name"`
 		Note        *string `json:"note"`
 		Kind        *string `json:"kind"`
+		Place       *string `json:"place"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid request", "error_code": "VALIDATION_ERROR"})
 		return
 	}
 	note, err := h.service.SaveNote(c.Request.Context(), orgID, c.Param("mac"), services.NoteInput{
-		DisplayName: req.DisplayName, Note: req.Note, Kind: req.Kind,
+		DisplayName: req.DisplayName, Note: req.Note, Kind: req.Kind, Place: req.Place,
 	})
 	if err != nil {
 		h.fail(c, err, "Failed to save")
@@ -68,7 +69,7 @@ func (h *ClientHandler) UpdateNote(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"data": gin.H{
-			"display_name": note.DisplayName, "note": note.Note, "kind": note.KindOverride, "updated_at": note.UpdatedAt,
+			"display_name": note.DisplayName, "note": note.Note, "kind": note.KindOverride, "place": note.Place, "updated_at": note.UpdatedAt,
 		},
 		"message": "Saved",
 	})

@@ -120,3 +120,19 @@ up to 256 KB, and the file's bytes are checked, not its name. SVG is refused.
 
 Well known sites (Google, YouTube, Facebook, WhatsApp...) are recognised by name out of
 the box; **Add to the catalog with its logo** gives one a logo with a single tap.
+
+## Network map
+
+The Network Map page lists every device the router sees, with its name, type, IP and MAC address, and draws it behind the router port it is connected to. Everything is read; the NMS never writes to the router for the map.
+
+What the server reads, with `print` commands only, at most once a minute (the refresh button allows one read every 15 seconds): `/interface`, `/interface/bridge/port`, `/interface/bridge/host`, `/interface/wireless/registration-table`, `/caps-man/registration-table`, `/ip/neighbor` and `/system/identity`. Tables a router does not have are skipped and listed in the page's notice. The device list itself comes from the client inventory that is already polled (hotspot hosts, DHCP leases, ARP).
+
+How a device gets a port: the bridge host table first, then the Wi-Fi registration table, then the ARP entry, then the port it was last seen on (kept so offline devices keep their place).
+
+**A port is not a place.** When more than 10 devices are behind one port, the port leads to another switch (on the hospital router today, `ether5` carries the whole LAN). The map then keeps the port but does not use it as the device's place. To say where devices are:
+
+- name a router port (tap it on the map), or
+- open a device and set its place, or
+- in List view, tick several devices and use "Set place".
+
+Places and port names are stored in `client_device_notes.place` and `network_places` (migration `016_network_map.sql`). To get a real room per device automatically, the switch behind `ether5` would have to be read too (its MAC table over SNMP); that is not done yet.

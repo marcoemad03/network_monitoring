@@ -1,14 +1,19 @@
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
-import '../../providers/device/device_provider.dart';
-import '../../router/route_names.dart';
-import '../../../core/enums/device_type.dart';
-import '../../../core/enums/device_status.dart';
-import '../../../domain/entities/device.dart';
-import '../../../domain/entities/device_connection.dart';
+import '../../../data/models/network_map_models.dart';
+import '../../providers/network/network_map_provider.dart';
+import '../dashboard/widgets/dash_card.dart';
+import 'widgets/map_canvas.dart';
+import 'widgets/map_detail.dart';
+import 'widgets/map_dialogs.dart';
+import 'widgets/map_kinds.dart';
+import 'widgets/map_list.dart';
 
+enum _View { map, list }
+
+/// Every device on the network: its name, type, address and place, drawn behind the
+/// router port it is connected to. Data comes from the NMS server, which reads the
+/// router with print commands only.
 class NetworkMapScreen extends ConsumerStatefulWidget {
   const NetworkMapScreen({super.key});
 
@@ -17,602 +22,399 @@ class NetworkMapScreen extends ConsumerStatefulWidget {
 }
 
 class _NetworkMapScreenState extends ConsumerState<NetworkMapScreen> {
-  final TransformationController _transformController = TransformationController();
-  String? _selectedDeviceId;
-  Offset _hoveredPosition = Offset.zero;
-  Map<String, Offset> _nodePositions = {};
-  Map<String, Device> _deviceMap = {};
-  List<_TopologyEdge> _edges = [];
-  double _canvasWidth = 2000;
-  double _canvasHeight = 2000;
+  final GlobalKey<MapCanvasState> _canvas = GlobalKey();
+  final TextEditingController _search = TextEditingController();
+  _View _view = _View.map;
+  String _query = '';
+  final Set<String> _kinds = {};
+  bool _showOffline = false;
+  bool _onlyUnplaced = false;
+  String? _selectedId;
+  final Set<String> _checked = {};
+  MapSort _sort = MapSort.ip;
+  bool _ascending = true;
 
   @override
   void dispose() {
-    _transformController.dispose();
+    _search.dispose();
     super.dispose();
+  }
+
+  List<MapDevice> _filter(NetworkMapData data) {
+    final q = _query.trim().toLowerCase();
+    return data.devices.where((d) {
+      if (!_showOffline && !d.online) return false;
+      if (_kinds.isNotEmpty && !_kinds.contains(d.kind)) return false;
+      if (_onlyUnplaced && d.hasPlace) return false;
+      if (q.isEmpty) return true;
+      final hay = [d.name, d.ip, d.mac, d.place, d.port, d.hostname, d.brand, d.vendor, d.model, kindStyle(d.kind).label].join(' ').toLowerCase();
+      return hay.contains(q);
+    }).toList();
+  }
+
+  List<String> _knownPlaces(NetworkMapData data) =>
+      ({for (final d in data.devices) if (d.placeSource == PlaceSource.custom) d.place}.toList()..sort());
+
+  Future<void> _edit(MapDevice d, NetworkMapData data) async {
+    final edit = await showEditDeviceDialog(context, d, _knownPlaces(data));
+    if (edit == null || !mounted) return;
+    if (edit.name == null && edit.kind == null && edit.place == null) return;
+    await runSave(context, () => ref.read(networkMapProvider.notifier).saveDevice(d.mac, displayName: edit.name, kind: edit.kind, place: edit.place));
+  }
+
+  Future<void> _setPlaceForChecked(NetworkMapData data) async {
+    final place = await showSetPlaceDialog(context, _checked.length, _knownPlaces(data));
+    if (place == null || !mounted) return;
+    final macs = _checked.toList();
+    final ok = await runSave(context, () async {
+      await ref.read(networkMapProvider.notifier).saveDevicePlaces(macs, place);
+    }, done: place.isEmpty ? 'Place removed from ${macs.length} devices' : 'Place saved for ${macs.length} devices');
+    if (ok && mounted) setState(_checked.clear);
+  }
+
+  Future<void> _namePort(MapPort port) async {
+    final label = await showPortLabelDialog(context, port);
+    if (label == null || !mounted) return;
+    await runSave(context, () => ref.read(networkMapProvider.notifier).savePortLabel(port.name, label));
+  }
+
+  void _select(String? id, NetworkMapData data, bool sideBySide) {
+    setState(() => _selectedId = id);
+    if (id == null || sideBySide) return;
+    final d = data.devices.where((x) => x.id == id).firstOrNull;
+    if (d == null) return;
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => Dialog(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 440, maxHeight: 640),
+          child: DeviceDetailPanel(
+            device: d,
+            port: data.port(d.port),
+            onClose: () => Navigator.pop(ctx),
+            onEdit: d.editable
+                ? () {
+                    Navigator.pop(ctx);
+                    _edit(d, data);
+                  }
+                : null,
+          ),
+        ),
+      ),
+    ).then((_) {
+      if (mounted) setState(() => _selectedId = null);
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final devicesAsync = ref.watch(allDevicesProvider);
-    final connectionsAsync = ref.watch(connectionsProvider);
-
-    ref.listen<AsyncValue<Map<String, dynamic>>>(
-      deviceUpdateStreamProvider,
-      (_, next) {
-        if (next.hasValue) {
-          final data = next.requireValue;
-          final deviceId = data['device_id'] as String?;
-          final status = data['status'] as String?;
-          if (deviceId != null && status != null && _deviceMap.containsKey(deviceId)) {
-            setState(() {
-              _deviceMap[deviceId] = _deviceMap[deviceId]!.copyWith(
-                status: DeviceStatus.fromValue(status),
-              );
-            });
-          }
-        }
-      },
-    );
-
+    final state = ref.watch(networkMapProvider);
+    final data = state.data;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Network Map'),
         actions: [
+          if (_view == _View.map) ...[
+            IconButton(tooltip: 'Zoom in', icon: const Icon(Icons.zoom_in), onPressed: () => _canvas.currentState?.zoomBy(1.25)),
+            IconButton(tooltip: 'Zoom out', icon: const Icon(Icons.zoom_out), onPressed: () => _canvas.currentState?.zoomBy(0.8)),
+            IconButton(tooltip: 'Fit to screen', icon: const Icon(Icons.fit_screen), onPressed: () => _canvas.currentState?.fit()),
+          ],
           IconButton(
-            icon: const Icon(Icons.zoom_in),
-            onPressed: () => _zoom(1.2),
-          ),
-          IconButton(
-            icon: const Icon(Icons.zoom_out),
-            onPressed: () => _zoom(0.8),
-          ),
-          IconButton(
-            icon: const Icon(Icons.my_location),
-            onPressed: _centerMap,
-          ),
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () {
-              ref.invalidate(allDevicesProvider);
-              ref.invalidate(connectionsProvider);
-            },
+            tooltip: 'Read the router again',
+            icon: state.loading && data != null
+                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.refresh),
+            onPressed: () => ref.read(networkMapProvider.notifier).refresh(force: true),
           ),
         ],
       ),
-      body: devicesAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Error: $e')),
-        data: (devices) => connectionsAsync.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => Center(child: Text('Error: $e')),
-          data: (connections) {
-            _deviceMap = {for (final d in devices) d.id: d};
-            _computeLayout(devices, connections);
-            return _buildMap(theme, devices, connections);
-          },
-        ),
+      body: data == null ? _empty(state) : _content(state, data),
+    );
+  }
+
+  Widget _empty(NetworkMapState state) {
+    if (state.loading) {
+      return const Padding(padding: EdgeInsets.all(24), child: Column(children: [SkeletonBox(height: 48), SizedBox(height: 12), SkeletonBox(height: 320)]));
+    }
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          EmptyNotice(icon: Icons.cloud_off, title: state.fetchError ?? 'Could not load the network map.', detail: 'Check that the NMS server is running.'),
+          const SizedBox(height: 8),
+          FilledButton.icon(onPressed: () => ref.read(networkMapProvider.notifier).refresh(force: true), icon: const Icon(Icons.refresh), label: const Text('Try again')),
+        ],
       ),
     );
   }
 
-  void _zoom(double factor) {
-    final currentScale = _transformController.value.getMaxScaleOnAxis();
-    final newScale = (currentScale * factor).clamp(0.3, 3.0);
-    _transformController.value = Matrix4.diagonal3Values(newScale, newScale, 1);
-  }
+  Widget _content(NetworkMapState state, NetworkMapData data) {
+    final shown = _filter(data);
+    final sideBySide = MediaQuery.sizeOf(context).width >= 1000;
+    final selected = data.devices.where((d) => d.id == _selectedId).firstOrNull;
+    final sorted = [...shown]..sort((a, b) => _ascending ? compareDevices(a, b, _sort) : compareDevices(b, a, _sort));
 
-  void _centerMap() {
-    _transformController.value = Matrix4.identity();
-  }
-
-  Widget _buildMap(ThemeData theme, List<Device> devices, List<DeviceConnection> connections) {
-    final edgeCount = connections.length;
-    final onlineCount = devices.where((d) => d.status == DeviceStatus.online).length;
-    final offlineCount = devices.where((d) => d.status == DeviceStatus.offline).length;
-    final degradedCount = devices.where((d) => d.status == DeviceStatus.degraded).length;
-
-    return Stack(
+    return Column(
       children: [
-        InteractiveViewer(
-          transformationController: _transformController,
-          boundaryMargin: const EdgeInsets.all(200),
-          minScale: 0.3,
-          maxScale: 3.0,
-          child: SizedBox(
-            width: _canvasWidth,
-            height: _canvasHeight,
-            child: GestureDetector(
-              onTapDown: (details) => _handleTap(details.localPosition),
-              child: CustomPaint(
-                painter: _TopologyPainter(
-                  nodes: _nodePositions,
-                  deviceMap: _deviceMap,
-                  edges: _edges,
-                  selectedDeviceId: _selectedDeviceId,
-                  hoveredPosition: _hoveredPosition,
-                ),
-                child: SizedBox(
-                  width: _canvasWidth,
-                  height: _canvasHeight,
-                  child: Stack(
-                    children: _nodePositions.entries.map((entry) {
-                      final device = _deviceMap[entry.key];
-                      if (device == null) return const SizedBox.shrink();
-                      return Positioned(
-                        left: entry.value.dx - 60,
-                        top: entry.value.dy - 30,
-                        child: _DeviceNode(
-                          device: device,
-                          isSelected: _selectedDeviceId == device.id,
-                          onTap: () => _navigateToDevice(device.id),
-                        ),
-                      );
-                    }).toList(),
+        _Banners(state: state, data: data),
+        _SummaryStrip(summary: data.summary, shown: shown.length),
+        _Toolbar(
+          controller: _search,
+          onQuery: (v) => setState(() => _query = v),
+          kindsPresent: [for (final k in mapKindOrder) if ((data.summary.byKind[k] ?? 0) > 0) k],
+          kindCounts: data.summary.byKind,
+          selectedKinds: _kinds,
+          onKind: (k, on) => setState(() => on ? _kinds.add(k) : _kinds.remove(k)),
+          showOffline: _showOffline,
+          offlineCount: data.summary.offline,
+          onOffline: (v) => setState(() => _showOffline = v),
+          onlyUnplaced: _onlyUnplaced,
+          onUnplaced: (v) => setState(() => _onlyUnplaced = v),
+          view: _view,
+          onView: (v) => setState(() => _view = v),
+        ),
+        _PortsStrip(ports: data.ports.where((p) => p.physical || p.devices > 0).toList(), onTap: _namePort),
+        if (_checked.isNotEmpty)
+          Container(
+            color: Theme.of(context).colorScheme.secondaryContainer,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+            child: Row(
+              children: [
+                Text('${_checked.length} selected'),
+                const SizedBox(width: 12),
+                FilledButton.tonalIcon(onPressed: () => _setPlaceForChecked(data), icon: const Icon(Icons.place_outlined, size: 18), label: const Text('Set place')),
+                const SizedBox(width: 8),
+                TextButton(onPressed: () => setState(_checked.clear), child: const Text('Clear')),
+              ],
+            ),
+          ),
+        Expanded(
+          child: Row(
+            children: [
+              Expanded(
+                child: shown.isEmpty
+                    ? Center(child: EmptyNotice(icon: Icons.search_off, title: 'No device matches', detail: data.devices.isEmpty ? 'The router has not reported any device yet.' : 'Change the search or the filters.'))
+                    : (_view == _View.map
+                        ? MapCanvas(
+                            key: _canvas,
+                            data: data,
+                            devices: shown,
+                            selectedId: _selectedId,
+                            onSelect: (id) => _select(id, data, sideBySide),
+                            onPortTap: (name) {
+                              final p = data.port(name);
+                              if (p != null) _namePort(p);
+                            },
+                          )
+                        : MapDeviceList(
+                            devices: sorted,
+                            sort: _sort,
+                            ascending: _ascending,
+                            onSort: (s) => setState(() {
+                              if (_sort == s) {
+                                _ascending = !_ascending;
+                              } else {
+                                _sort = s;
+                                _ascending = true;
+                              }
+                            }),
+                            checked: _checked,
+                            onCheck: (d, v) => setState(() => v ? _checked.add(d.mac) : _checked.remove(d.mac)),
+                            onCheckAll: (v) => setState(() {
+                              if (v) {
+                                _checked.addAll(sorted.where((d) => d.editable).map((d) => d.mac));
+                              } else {
+                                _checked.clear();
+                              }
+                            }),
+                            openedId: _selectedId,
+                            onOpen: (id) => _select(id, data, sideBySide),
+                          )),
+              ),
+              if (sideBySide && selected != null)
+                SizedBox(
+                  width: 380,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(0, 8, 8, 8),
+                    child: DeviceDetailPanel(
+                      device: selected,
+                      port: data.port(selected.port),
+                      onClose: () => setState(() => _selectedId = null),
+                      onEdit: selected.editable ? () => _edit(selected, data) : null,
+                    ),
                   ),
                 ),
-              ),
-            ),
+            ],
           ),
         ),
-        Positioned(
-          left: 16,
-          bottom: 16,
-          child: Card(
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text('Legend', style: theme.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 8),
-                  _LegendItem(color: DeviceType.router.color, label: 'Router'),
-                  _LegendItem(color: DeviceType.switch_.color, label: 'Switch'),
-                  _LegendItem(color: DeviceType.server.color, label: 'Server'),
-                  _LegendItem(color: DeviceType.firewall.color, label: 'Firewall'),
-                  _LegendItem(color: DeviceType.accessPoint.color, label: 'Access Point'),
-                  _LegendItem(color: DeviceType.workstation.color, label: 'Workstation'),
-                  const SizedBox(height: 4),
-                  const Divider(height: 1),
-                  const SizedBox(height: 4),
-                  _LegendItem(color: Colors.green, label: 'Online'),
-                  _LegendItem(color: Colors.red, label: 'Offline'),
-                  _LegendItem(color: Colors.orange, label: 'Degraded'),
-                ],
-              ),
-            ),
-          ),
-        ),
-        Positioned(
-          right: 16,
-          bottom: 16,
-          child: Card(
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text('Statistics', style: theme.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 8),
-                  Text('Total Nodes: ${devices.length}'),
-                  Text('Links: $edgeCount'),
-                  Text('Online: $onlineCount'),
-                  Text('Offline: $offlineCount'),
-                  Text('Degraded: $degradedCount'),
-                ],
-              ),
-            ),
-          ),
-        ),
-        if (_selectedDeviceId != null && _deviceMap.containsKey(_selectedDeviceId))
-          Positioned(
-            top: 16,
-            right: 16,
-            child: _DeviceInfoCard(
-              device: _deviceMap[_selectedDeviceId]!,
-              onClose: () => setState(() => _selectedDeviceId = null),
-              onNavigate: () => _navigateToDevice(_selectedDeviceId!),
-            ),
-          ),
       ],
     );
   }
-
-  void _handleTap(Offset position) {
-    for (final entry in _nodePositions.entries) {
-      final nodeRect = Rect.fromCenter(center: entry.value, width: 120, height: 60);
-      if (nodeRect.contains(position)) {
-        setState(() => _selectedDeviceId = entry.key);
-        return;
-      }
-    }
-    setState(() => _selectedDeviceId = null);
-  }
-
-  void _navigateToDevice(String id) {
-    context.push(RouteNames.deviceDetail.replaceAll(':id', id));
-  }
-
-  void _computeLayout(List<Device> devices, List<DeviceConnection> connections) {
-    final deviceMap = {for (final d in devices) d.id: d};
-    final childrenOf = <String, Set<String>>{};
-    final parentOf = <String, String?>{};
-
-    for (final conn in connections) {
-      childrenOf.putIfAbsent(conn.parentDeviceId, () => {}).add(conn.childDeviceId);
-      parentOf[conn.childDeviceId] = conn.parentDeviceId;
-    }
-
-    final roots = devices
-        .where((d) => !parentOf.containsKey(d.id) || parentOf[d.id] == null)
-        .map((d) => d.id)
-        .toList();
-
-    final layers = <int, List<String>>{};
-    final visited = <String>{};
-    final queue = <_BfsEntry>[];
-
-    for (final root in roots) {
-      queue.add(_BfsEntry(root, 0));
-    }
-
-    while (queue.isNotEmpty) {
-      final entry = queue.removeAt(0);
-      if (visited.contains(entry.id)) continue;
-      visited.add(entry.id);
-      layers.putIfAbsent(entry.depth, () => []).add(entry.id);
-      for (final child in childrenOf[entry.id] ?? <String>{}) {
-        if (!visited.contains(child)) {
-          queue.add(_BfsEntry(child, entry.depth + 1));
-        }
-      }
-    }
-
-    for (final d in devices) {
-      if (!visited.contains(d.id)) {
-        final depth = layers.length;
-        layers.putIfAbsent(depth, () => []).add(d.id);
-      }
-    }
-
-    final maxDepth = layers.keys.isEmpty ? 0 : layers.keys.reduce(math.max);
-    final layerHeight = 160.0;
-    final margin = 80.0;
-    final nodeWidth = 140.0;
-
-    final positions = <String, Offset>{};
-    _edges = [];
-
-    for (final depth in layers.keys.toList()..sort()) {
-      final nodes = layers[depth]!;
-      final totalWidth = nodes.length * nodeWidth + (nodes.length - 1) * 20;
-      final startX = (_canvasWidth - totalWidth) / 2;
-
-      for (var i = 0; i < nodes.length; i++) {
-        final x = startX + i * (nodeWidth + 20) + nodeWidth / 2;
-        final y = margin + depth * layerHeight;
-        positions[nodes[i]] = Offset(x, y);
-      }
-    }
-
-    for (final conn in connections) {
-      final parentPos = positions[conn.parentDeviceId];
-      final childPos = positions[conn.childDeviceId];
-      if (parentPos != null && childPos != null) {
-        _edges.add(_TopologyEdge(
-          parentDeviceId: conn.parentDeviceId,
-          childDeviceId: conn.childDeviceId,
-          speedMbps: conn.speedMbps,
-          connectionType: conn.connectionType,
-          isActive: conn.isActive,
-        ));
-      }
-    }
-
-    _nodePositions = positions;
-  }
 }
 
-class _BfsEntry {
-  final String id;
-  final int depth;
-  const _BfsEntry(this.id, this.depth);
-}
-
-class _TopologyEdge {
-  final String parentDeviceId;
-  final String childDeviceId;
-  final double? speedMbps;
-  final String connectionType;
-  final bool isActive;
-
-  const _TopologyEdge({
-    required this.parentDeviceId,
-    required this.childDeviceId,
-    this.speedMbps,
-    this.connectionType = 'ethernet',
-    this.isActive = true,
-  });
-}
-
-class _TopologyPainter extends CustomPainter {
-  final Map<String, Offset> nodes;
-  final Map<String, Device> deviceMap;
-  final List<_TopologyEdge> edges;
-  final String? selectedDeviceId;
-  final Offset hoveredPosition;
-
-  _TopologyPainter({
-    required this.nodes,
-    required this.deviceMap,
-    required this.edges,
-    this.selectedDeviceId,
-    required this.hoveredPosition,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    _drawEdges(canvas);
-    _drawGrid(canvas, size);
-  }
-
-  void _drawGrid(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.grey.withValues(alpha: 0.08)
-      ..strokeWidth = 0.5;
-
-    const gridSize = 50.0;
-    for (var x = 0.0; x < size.width; x += gridSize) {
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
-    }
-    for (var y = 0.0; y < size.height; y += gridSize) {
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
-    }
-  }
-
-  void _drawEdges(Canvas canvas) {
-    for (final edge in edges) {
-      final from = nodes[edge.parentDeviceId];
-      final to = nodes[edge.childDeviceId];
-      if (from == null || to == null) continue;
-
-      final color = edge.isActive ? _connectionColor(edge.connectionType) : Colors.grey;
-      final paint = Paint()
-        ..color = color.withValues(alpha: edge.isActive ? 0.7 : 0.3)
-        ..strokeWidth = _edgeWidth(edge.speedMbps)
-        ..style = PaintingStyle.stroke;
-
-      final midY = (from.dy + to.dy) / 2;
-      final path = Path()
-        ..moveTo(from.dx, from.dy)
-        ..cubicTo(from.dx, midY, to.dx, midY, to.dx, to.dy);
-      canvas.drawPath(path, paint);
-
-      if (edge.speedMbps != null) {
-        final midX = (from.dx + to.dx) / 2;
-        final textPainter = TextPainter(
-          text: TextSpan(
-            text: '${edge.speedMbps} Mbps',
-            style: TextStyle(
-              color: color.withValues(alpha: 0.6),
-              fontSize: 9,
-            ),
-          ),
-          textDirection: TextDirection.ltr,
-        )..layout();
-        textPainter.paint(canvas, Offset(midX - textPainter.width / 2, midY - 12));
-      }
-    }
-  }
-
-  Color _connectionColor(String type) {
-    return switch (type) {
-      'fiber' => const Color(0xFF9C27B0),
-      'coaxial' => const Color(0xFFFF5722),
-      'wifi' => const Color(0xFF2196F3),
-      'trunk' => const Color(0xFF795548),
-      _ => const Color(0xFF4CAF50),
-    };
-  }
-
-  double _edgeWidth(double? speedMbps) {
-    if (speedMbps == null) return 1.5;
-    if (speedMbps >= 10000) return 4.0;
-    if (speedMbps >= 1000) return 3.0;
-    if (speedMbps >= 100) return 2.0;
-    return 1.5;
-  }
-
-  @override
-  bool shouldRepaint(_TopologyPainter oldDelegate) =>
-      oldDelegate.nodes != nodes ||
-      oldDelegate.selectedDeviceId != selectedDeviceId;
-}
-
-class _DeviceNode extends StatelessWidget {
-  final Device device;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  const _DeviceNode({
-    required this.device,
-    required this.isSelected,
-    required this.onTap,
-  });
+/// Says when the picture is old or part of it could not be read.
+class _Banners extends StatelessWidget {
+  const _Banners({required this.state, required this.data});
+  final NetworkMapState state;
+  final NetworkMapData data;
 
   @override
   Widget build(BuildContext context) {
+    final messages = <(IconData, String)>[
+      if (state.fetchError != null) (Icons.cloud_off, '${state.fetchError} Showing the last map from ${agoLabel(state.fetchedAt)}.'),
+      if (data.error != null) (Icons.router, 'Router: ${data.error}'),
+      if (data.stale && data.error == null) (Icons.schedule, 'The device list is old (updated ${agoLabel(data.updatedAt)}).'),
+      if (data.topologyError != null)
+        (Icons.settings_ethernet, 'Ports could not be read (${data.topologyError}). Devices are placed from what was last known.')
+      else if (data.topologyNotes.isNotEmpty)
+        (Icons.info_outline, 'Not available on this router: ${data.topologyNotes.join(', ')}.'),
+    ];
+    if (messages.isEmpty) return const SizedBox.shrink();
     final theme = Theme.of(context);
-    final statusColor = Color(device.status.colorValue);
-    final typeColor = device.type.color;
+    return Container(
+      width: double.infinity,
+      color: theme.colorScheme.errorContainer.withValues(alpha: 0.5),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final m in messages)
+            Row(children: [Icon(m.$1, size: 16), const SizedBox(width: 8), Expanded(child: Text(m.$2, style: theme.textTheme.bodySmall))]),
+        ],
+      ),
+    );
+  }
+}
 
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 300),
-        width: 120,
-        height: 56,
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surface,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: isSelected ? statusColor : theme.colorScheme.outlineVariant,
-            width: isSelected ? 2 : 1,
+class _SummaryStrip extends StatelessWidget {
+  const _SummaryStrip({required this.summary, required this.shown});
+  final MapSummary summary;
+  final int shown;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 6,
+        children: [
+          StatusPill(tone: StatusTone.neutral, label: '${summary.total} devices'),
+          StatusPill(tone: StatusTone.ok, label: '${summary.online} online'),
+          if (summary.offline > 0) StatusPill(tone: StatusTone.neutral, label: '${summary.offline} offline'),
+          StatusPill(
+            tone: summary.unplaced == 0 ? StatusTone.ok : StatusTone.warning,
+            label: '${summary.located} with a place · ${summary.unplaced} without',
+            tooltip: 'A place is a name you give a device or port, like "Laboratory". Many devices share one router port, so the port alone does not say where each one is.',
           ),
-          boxShadow: [
-            BoxShadow(
-              color: isSelected ? statusColor.withValues(alpha: 0.3) : Colors.black.withValues(alpha: 0.1),
-              blurRadius: isSelected ? 8 : 4,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Stack(
-          children: [
-            Positioned(
-              left: 8,
-              top: 8,
-              child: Icon(device.type.icon, size: 18, color: typeColor),
-            ),
-            Positioned(
-              right: 8,
-              top: 8,
-              child: Container(
-                width: 8,
-                height: 8,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: statusColor,
-                  boxShadow: [
-                    BoxShadow(
-                      color: statusColor.withValues(alpha: 0.5),
-                      blurRadius: 4,
+          if (summary.unnamed > 0) StatusPill(tone: StatusTone.warning, label: '${summary.unnamed} without a name', tooltip: 'These devices do not report a name. Give them one so they are easy to recognise.'),
+          if (shown != summary.total) StatusPill(tone: StatusTone.neutral, label: 'Showing $shown'),
+        ],
+      ),
+    );
+  }
+}
+
+class _Toolbar extends StatelessWidget {
+  const _Toolbar({
+    required this.controller,
+    required this.onQuery,
+    required this.kindsPresent,
+    required this.kindCounts,
+    required this.selectedKinds,
+    required this.onKind,
+    required this.showOffline,
+    required this.offlineCount,
+    required this.onOffline,
+    required this.onlyUnplaced,
+    required this.onUnplaced,
+    required this.view,
+    required this.onView,
+  });
+
+  final TextEditingController controller;
+  final ValueChanged<String> onQuery;
+  final List<String> kindsPresent;
+  final Map<String, int> kindCounts;
+  final Set<String> selectedKinds;
+  final void Function(String kind, bool on) onKind;
+  final bool showOffline;
+  final int offlineCount;
+  final ValueChanged<bool> onOffline;
+  final bool onlyUnplaced;
+  final ValueChanged<bool> onUnplaced;
+  final _View view;
+  final ValueChanged<_View> onView;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: SizedBox(
+                  height: 40,
+                  child: TextField(
+                    controller: controller,
+                    onChanged: onQuery,
+                    decoration: InputDecoration(
+                      isDense: true,
+                      prefixIcon: const Icon(Icons.search, size: 20),
+                      hintText: 'Search by name, IP, MAC, place or type',
+                      border: const OutlineInputBorder(),
+                      suffixIcon: controller.text.isEmpty
+                          ? null
+                          : IconButton(
+                              tooltip: 'Clear',
+                              icon: const Icon(Icons.close, size: 18),
+                              onPressed: () {
+                                controller.clear();
+                                onQuery('');
+                              },
+                            ),
                     ),
-                  ],
+                  ),
                 ),
               ),
-            ),
-            Positioned(
-              left: 8,
-              right: 8,
-              top: 30,
-              child: Text(
-                device.name,
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w500,
-                  color: theme.colorScheme.onSurface,
-                ),
-                overflow: TextOverflow.ellipsis,
-                maxLines: 1,
+              const SizedBox(width: 12),
+              SegmentedButton<_View>(
+                showSelectedIcon: false,
+                segments: const [
+                  ButtonSegment(value: _View.map, icon: Icon(Icons.account_tree_outlined, size: 18), label: Text('Map')),
+                  ButtonSegment(value: _View.list, icon: Icon(Icons.table_rows_outlined, size: 18), label: Text('List')),
+                ],
+                selected: {view},
+                onSelectionChanged: (s) => onView(s.first),
               ),
-            ),
-            Positioned(
-              left: 8,
-              right: 8,
-              top: 42,
-              child: Text(
-                device.ipAddress,
-                style: TextStyle(
-                  fontSize: 8,
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-                overflow: TextOverflow.ellipsis,
-                maxLines: 1,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _DeviceInfoCard extends StatelessWidget {
-  final Device device;
-  final VoidCallback onClose;
-  final VoidCallback onNavigate;
-
-  const _DeviceInfoCard({
-    required this.device,
-    required this.onClose,
-    required this.onNavigate,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final statusColor = Color(device.status.colorValue);
-    final typeColor = device.type.color;
-
-    return Card(
-      child: Container(
-        width: 240,
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              children: [
-                Icon(device.type.icon, size: 20, color: typeColor),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(device.name, style: theme.textTheme.titleSmall, overflow: TextOverflow.ellipsis),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.open_in_new, size: 16),
-                  onPressed: onNavigate,
-                ),
-                IconButton(
-                  icon: const Icon(Icons.close, size: 16),
-                  onPressed: onClose,
-                ),
-              ],
-            ),
-            const Divider(height: 8),
-            _InfoRow(label: 'IP', value: device.ipAddress),
-            if (device.hostname != null) _InfoRow(label: 'Hostname', value: device.hostname!),
-            _InfoRow(label: 'Type', value: device.type.label),
-            _InfoRow(label: 'Status', value: device.status.label, valueColor: statusColor),
-            if (device.vendor != null) _InfoRow(label: 'Vendor', value: device.vendor!),
-            if (device.model != null) _InfoRow(label: 'Model', value: device.model!),
-            if (device.location != null) _InfoRow(label: 'Location', value: device.location!),
-            if (device.department != null) _InfoRow(label: 'Dept', value: device.department!),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _InfoRow extends StatelessWidget {
-  final String label;
-  final String value;
-  final Color? valueColor;
-
-  const _InfoRow({required this.label, required this.value, this.valueColor});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 1),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 64,
-            child: Text(label, style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurfaceVariant)),
+            ],
           ),
-          Expanded(
-            child: Text(
-              value,
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: valueColor),
-              overflow: TextOverflow.ellipsis,
-            ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 6,
+            runSpacing: 4,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              for (final k in kindsPresent)
+                FilterChip(
+                  avatar: Icon(kindStyle(k).icon, size: 16, color: kindStyle(k).color),
+                  label: Text('${kindStyle(k).label} ${kindCounts[k]}'),
+                  selected: selectedKinds.contains(k),
+                  onSelected: (on) => onKind(k, on),
+                  visualDensity: VisualDensity.compact,
+                ),
+              const SizedBox(width: 8),
+              FilterChip(
+                label: Text('Offline ($offlineCount)'),
+                selected: showOffline,
+                onSelected: onOffline,
+                visualDensity: VisualDensity.compact,
+              ),
+              FilterChip(label: const Text('No place yet'), selected: onlyUnplaced, onSelected: onUnplaced, visualDensity: VisualDensity.compact),
+            ],
           ),
         ],
       ),
@@ -620,60 +422,35 @@ class _InfoRow extends StatelessWidget {
   }
 }
 
-class _LegendItem extends StatelessWidget {
-  final Color color;
-  final String label;
-
-  const _LegendItem({required this.color, required this.label});
+/// The router's ports at a glance. Tapping one lets you name it.
+class _PortsStrip extends StatelessWidget {
+  const _PortsStrip({required this.ports, required this.onTap});
+  final List<MapPort> ports;
+  final ValueChanged<MapPort> onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
+    if (ports.isEmpty) return const SizedBox.shrink();
+    final theme = Theme.of(context);
+    return SizedBox(
+      height: 40,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
         children: [
-          Container(
-            width: 10,
-            height: 10,
-            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-          ),
-          const SizedBox(width: 6),
-          Text(label, style: const TextStyle(fontSize: 11)),
+          for (final p in ports)
+            Padding(
+              padding: const EdgeInsets.only(right: 6, bottom: 6),
+              child: ActionChip(
+                visualDensity: VisualDensity.compact,
+                avatar: Icon(Icons.circle, size: 10, color: p.running ? const Color(0xFF2E7D32) : theme.colorScheme.outline),
+                label: Text(p.devices > 0 ? '${p.title} · ${p.devices}' : p.title),
+                tooltip: p.running ? 'Port is up. Tap to name it.' : 'No cable connected. Tap to name it.',
+                onPressed: () => onTap(p),
+              ),
+            ),
         ],
       ),
     );
   }
-}
-
-extension on DeviceType {
-  IconData get icon => switch (this) {
-    DeviceType.router => Icons.router,
-    DeviceType.switch_ => Icons.lan,
-    DeviceType.server => Icons.dns,
-    DeviceType.firewall => Icons.enhanced_encryption,
-    DeviceType.workstation => Icons.desktop_windows,
-    DeviceType.printer => Icons.print,
-    DeviceType.accessPoint => Icons.wifi,
-    DeviceType.camera => Icons.videocam,
-    DeviceType.phone => Icons.phone,
-    DeviceType.iot => Icons.sensors,
-    DeviceType.medicalDevice => Icons.medical_services,
-    DeviceType.unknown => Icons.devices,
-  };
-
-  Color get color => switch (this) {
-    DeviceType.router => const Color(0xFF1565C0),
-    DeviceType.switch_ => const Color(0xFF00897B),
-    DeviceType.server => const Color(0xFFE65100),
-    DeviceType.firewall => const Color(0xFFC62828),
-    DeviceType.workstation => const Color(0xFF6A1B9A),
-    DeviceType.printer => const Color(0xFF283593),
-    DeviceType.accessPoint => const Color(0xFF4A148C),
-    DeviceType.camera => const Color(0xFF37474F),
-    DeviceType.phone => const Color(0xFF2E7D32),
-    DeviceType.iot => const Color(0xFFF57F17),
-    DeviceType.medicalDevice => const Color(0xFFC51162),
-    DeviceType.unknown => const Color(0xFF78909C),
-  };
 }

@@ -70,6 +70,8 @@ func RegisterRoutes(router *gin.Engine, db *database.DB, hub *websocket.Hub, cfg
 	clientInventory := services.NewClientInventoryService(clientRepo, internetRepo, cfg)
 	clientInventory.Start(context.Background(), cfg.RouterClientPollInterval, wanRepo.OrgsWithRouter)
 	clientHandler := handlers.NewClientHandler(clientInventory)
+	topologyService := services.NewTopologyService(internetRepo, cfg)
+	networkMapHandler := handlers.NewNetworkMapHandler(services.NewNetworkMapService(clientInventory, topologyService, clientRepo, monRepo))
 	securityRepo := repository.NewSecurityRepository(db)
 	securityScan := services.NewSecurityScanService(securityRepo, internetRepo, clientInventory, cfg)
 	securityScan.Start(context.Background(), cfg.RouterSecurityScanInterval, wanRepo.OrgsWithRouter)
@@ -253,6 +255,9 @@ func RegisterRoutes(router *gin.Engine, db *database.DB, hub *websocket.Hub, cfg
 			monitoring.GET("/clients/inventory/:mac/usage", clientHandler.Usage)
 			monitoring.GET("/clients", monitoringHandler.GetAllClients)
 			monitoring.GET("/connections", monitoringHandler.GetConnections)
+			monitoring.GET("/network-map", networkMapHandler.Get)
+			monitoring.PUT("/network-map/places/:port", networkMapHandler.SavePlace)
+			monitoring.PUT("/network-map/device-places", networkMapHandler.SaveDevicePlaces)
 		}
 
 		internetPolicies := protected.Group("/internet-policies")

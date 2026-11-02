@@ -364,3 +364,50 @@ func (r *MonitoringRepository) ListEquipment(ctx context.Context, orgID uuid.UUI
 	}
 	return out, rows.Err()
 }
+
+// MapDeviceRow is a registered device with what the network map needs to place it.
+type MapDeviceRow struct {
+	ID          uuid.UUID
+	Name        string
+	IPAddress   string
+	MAC         string
+	DeviceType  string
+	Status      string
+	Vendor      string
+	Model       string
+	Place       string // building, floor, room and location joined
+	Port        string // router port the device says it is on
+	IsCritical  bool
+	IsMonitored bool
+	LastSeen    time.Time
+	PingAvgMs   *float64
+}
+
+// ListMapDevices returns every registered device for the network map.
+func (r *MonitoringRepository) ListMapDevices(ctx context.Context, orgID uuid.UUID) ([]MapDeviceRow, error) {
+	rows, err := r.db.Query(ctx,
+		`SELECT d.id, d.name, regexp_replace(COALESCE(host(d.ip_address), ''), '^::ffff:', ''),
+		        upper(COALESCE(d.mac_address::text, '')), d.device_type::text, d.status::text,
+		        COALESCE(d.vendor, ''), COALESCE(d.model, ''),
+		        TRIM(BOTH ' ,' FROM CONCAT_WS(', ', NULLIF(d.building, ''), NULLIF(d.floor_name, ''), NULLIF(d.room, ''), NULLIF(d.location, ''))),
+		        COALESCE(d.connected_interface, ''), d.is_critical, d.is_monitored, d.last_seen, p.avg_rtt_ms::float8
+		   FROM devices d
+		   LEFT JOIN LATERAL (
+		        SELECT avg_rtt_ms FROM device_ping WHERE device_id = d.id ORDER BY timestamp DESC LIMIT 1) p ON true
+		  WHERE d.organization_id = $1
+		  ORDER BY d.name`, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []MapDeviceRow{}
+	for rows.Next() {
+		var d MapDeviceRow
+		if err := rows.Scan(&d.ID, &d.Name, &d.IPAddress, &d.MAC, &d.DeviceType, &d.Status, &d.Vendor, &d.Model,
+			&d.Place, &d.Port, &d.IsCritical, &d.IsMonitored, &d.LastSeen, &d.PingAvgMs); err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
