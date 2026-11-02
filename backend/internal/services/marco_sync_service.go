@@ -140,11 +140,21 @@ type marcoSyncResult struct {
 	DryRun   bool
 	Planned  []string
 	Warnings []string
+	// PruneSkipped is how many old entries were left on the router because removing
+	// them all at once is more than ROUTER_MAX_PRUNE.
+	PruneSkipped int
 }
 
 // SyncAll applies the desired Marco state. In dry-run mode (default) the router
 // is only read.
 func (s *MarcoSyncService) SyncAll(ctx context.Context, orgID uuid.UUID) (*marcoSyncResult, error) {
+	return s.SyncWith(ctx, orgID, false)
+}
+
+// SyncWith is SyncAll. A sync that would remove more than ROUTER_MAX_PRUNE old
+// entries still adds and updates but leaves those entries alone and says so;
+// confirmRemovals lets one sync remove them all.
+func (s *MarcoSyncService) SyncWith(ctx context.Context, orgID uuid.UUID, confirmRemovals bool) (*marcoSyncResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, marcoSyncTimeout)
 	defer cancel()
 
@@ -196,18 +206,26 @@ func (s *MarcoSyncService) SyncAll(ctx context.Context, orgID uuid.UUID) (*marco
 		return fmt.Errorf("%s: %w (changes rolled back)", step, err)
 	}
 
-	if err := applyMarcoDesiredState(sess, desired, journal, s.cfg.RouterPruneStale, s.cfg.RouterMaxPrune); err != nil {
+	maxPrune := s.cfg.RouterMaxPrune
+	if confirmRemovals {
+		maxPrune = 0
+	}
+	skipped, err := applyMarcoCore(sess, desired, journal, s.cfg.RouterPruneStale, maxPrune, true)
+	if err != nil {
 		return nil, fail("apply RouterOS configuration", err)
 	}
+	if skipped > 0 {
+		desired.warnings = append(desired.warnings, fmt.Sprintf("%d old router entries (left by groups deleted earlier) were not removed because that is more than %d at once. Review them and confirm to remove them.", skipped, s.cfg.RouterMaxPrune))
+	}
 	if sess.write {
-		if err := verifyMarcoDesiredState(sess, desired, s.cfg.RouterPruneStale); err != nil {
+		if err := verifyMarcoDesiredState(sess, desired, s.cfg.RouterPruneStale && skipped == 0); err != nil {
 			return nil, fail("verify RouterOS configuration", err)
 		}
 	}
 
 	res := &marcoSyncResult{
 		groups: groups, members: membersByGroup, firewall: desired.firewall, queues: desired.queues,
-		DryRun: sess.DryRun(), Planned: sess.Planned(), Warnings: desired.warnings,
+		DryRun: sess.DryRun(), Planned: sess.Planned(), Warnings: desired.warnings, PruneSkipped: skipped,
 	}
 	s.logOutcome(orgID, res)
 	if !res.DryRun {
@@ -623,14 +641,24 @@ func sortedKeys(m map[string]desiredRouterEntry) []string {
 	return keys
 }
 
+// applyMarcoDesiredState applies the plan and refuses it when it would remove more
+// than maxPrune entries.
 func applyMarcoDesiredState(conn routerCommander, d marcoDesiredState, journal *changeJournal, prune bool, maxPrune int) error {
+	_, err := applyMarcoCore(conn, d, journal, prune, maxPrune, false)
+	return err
+}
+
+// applyMarcoCore is applyMarcoDesiredState. With soft set, a plan that would remove
+// more than maxPrune entries still adds and updates, but removes nothing, and the
+// number of removals left undone is returned.
+func applyMarcoCore(conn routerCommander, d marcoDesiredState, journal *changeJournal, prune bool, maxPrune int, soft bool) (int, error) {
 	tables := marcoTables(d)
 	existing := make(map[string]map[string]map[string]string)
 	dups := make(map[string][]map[string]string)
 	for path := range tables {
 		byComment, dup, err := listManaged(conn, path, marcoManagedPrefix, isMarcoExcluded)
 		if err != nil {
-			return err
+			return 0, err
 		}
 		existing[path] = byComment
 		dups[path] = dup
@@ -663,12 +691,16 @@ func applyMarcoDesiredState(conn routerCommander, d marcoDesiredState, journal *
 			}
 		}
 	}
+	skipped := 0
 	if maxPrune > 0 && len(removals) > maxPrune {
-		return fmt.Errorf("refusing to remove %d router entries in one sync (limit %d, ROUTER_MAX_PRUNE); check that the groups are what you expect", len(removals), maxPrune)
+		if !soft {
+			return 0, fmt.Errorf("refusing to remove %d router entries in one sync (limit %d, ROUTER_MAX_PRUNE); check that the groups are what you expect", len(removals), maxPrune)
+		}
+		skipped, removals = len(removals), nil
 	}
 	for _, r := range removals {
 		if _, err := conn.Command(r.path+"/remove", "=.id="+r.entry[".id"]); err != nil {
-			return err
+			return 0, err
 		}
 		if !r.dup {
 			journal.removed = append(journal.removed, journalRemoved{path: r.path, attrs: whitelistAttrs(r.path, r.entry), top: tables[r.path].top})
@@ -683,7 +715,7 @@ func applyMarcoDesiredState(conn routerCommander, d marcoDesiredState, journal *
 			current, ok := existing[path][comment]
 			if !ok {
 				if err := addRouterEntry(conn, path, want.attrs, want.top); err != nil {
-					return fmt.Errorf("add %s %q: %w", path, comment, err)
+					return 0, fmt.Errorf("add %s %q: %w", path, comment, err)
 				}
 				journal.added = append(journal.added, journalAdded{path: path, comment: comment})
 				continue
@@ -699,12 +731,12 @@ func applyMarcoDesiredState(conn routerCommander, d marcoDesiredState, journal *
 			}
 			args := append([]string{"=.id=" + current[".id"]}, attributeWords(want.attrs)...)
 			if _, err := conn.Command(path+"/set", args...); err != nil {
-				return fmt.Errorf("update %s %q: %w", path, comment, err)
+				return 0, fmt.Errorf("update %s %q: %w", path, comment, err)
 			}
 			journal.modified = append(journal.modified, journalModified{path: path, id: current[".id"], old: old})
 		}
 	}
-	return orderMarcoRules(conn)
+	return skipped, orderMarcoRules(conn)
 }
 
 // ruleClass orders the managed firewall rules: hard blocks (internet off, schedule,

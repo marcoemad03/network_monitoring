@@ -33,7 +33,7 @@ class _MarcoGroupsScreenState extends ConsumerState<MarcoGroupsScreen> {
         title: const Text('Groups'),
         actions: [
           IconButton(
-            tooltip: 'Preview what would change on the router',
+            tooltip: (groupsAsync.valueOrNull?.dryRun ?? true) ? 'Preview what would change on the router' : 'Update the router now',
             icon: _previewing ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.fact_check_outlined),
             onPressed: _previewing ? null : _previewSync,
           ),
@@ -69,10 +69,10 @@ class _MarcoGroupsScreenState extends ConsumerState<MarcoGroupsScreen> {
     );
   }
 
-  Future<void> _previewSync() async {
+  Future<void> _previewSync({bool confirmRemovals = false}) async {
     setState(() => _previewing = true);
     try {
-      final preview = await ref.read(marcoRemoteProvider).sync();
+      final preview = await ref.read(marcoRemoteProvider).sync(confirmRemovals: confirmRemovals);
       if (!mounted) return;
       await showDialog<void>(
         context: context,
@@ -99,11 +99,35 @@ class _MarcoGroupsScreenState extends ConsumerState<MarcoGroupsScreen> {
               ),
             ),
           ),
-          actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Close'))],
+          actions: [
+            if (preview.prunePending > 0 && !preview.dryRun)
+              TextButton(
+                onPressed: () async {
+                  final nav = Navigator.of(ctx);
+                  final ok = await showDialog<bool>(
+                    context: ctx,
+                    builder: (c) => AlertDialog(
+                      title: Text('Remove ${preview.prunePending} old rules?'),
+                      content: const Text('These are rules and address lists this NMS created earlier for groups that no longer exist. Nothing else on the router is touched.'),
+                      actions: [
+                        TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')),
+                        FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Remove them')),
+                      ],
+                    ),
+                  );
+                  if (ok == true) {
+                    nav.pop();
+                    if (mounted) await _previewSync(confirmRemovals: true);
+                  }
+                },
+                child: Text('Remove ${preview.prunePending} old rules'),
+              ),
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Close')),
+          ],
         ),
       );
     } catch (e) {
-      if (mounted) toast(context, 'Could not check the router: $e');
+      if (mounted) toast(context, 'Could not update the router: $e');
     } finally {
       if (mounted) setState(() => _previewing = false);
     }

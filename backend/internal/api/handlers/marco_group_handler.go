@@ -204,7 +204,11 @@ func (h *MarcoGroupHandler) Sync(c *gin.Context) {
 	if !ok {
 		return
 	}
-	summary, err := h.service.Sync(c.Request.Context(), orgID)
+	var req struct {
+		ConfirmRemovals bool `json:"confirm_removals"`
+	}
+	_ = c.ShouldBindJSON(&req) // the body is optional
+	summary, err := h.service.Sync(c.Request.Context(), orgID, req.ConfirmRemovals)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": err.Error(), "error_code": "SYNC_ERROR"})
 		return

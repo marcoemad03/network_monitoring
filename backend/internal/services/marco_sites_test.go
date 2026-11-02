@@ -452,3 +452,46 @@ func TestApplyRemovesStaleEntriesAndLeavesFlagOffAlone(t *testing.T) {
 		}
 	}
 }
+
+func TestSoftApplyAddsNewRulesButLeavesManyOldOnesAlone(t *testing.T) {
+	var rows []map[string]string
+	for i := 0; i < 70; i++ {
+		rows = append(rows, map[string]string{".id": "*" + strings.Repeat("A", i+1), "comment": "nms-marco-old-" + strings.Repeat("x", i), "list": "l", "address": "1.1.1.1"})
+	}
+	f := &rowRouter{rows: map[string][]map[string]string{"/ip/firewall/address-list": rows}}
+	d := marcoDesiredState{firewall: map[string]desiredRouterEntry{}, queues: map[string]desiredRouterEntry{}, layer7: map[string]desiredRouterEntry{},
+		addrLists: map[string]desiredRouterEntry{"nms-marco-src-new": {path: "/ip/firewall/address-list", attrs: map[string]string{"list": "nms-marco-src-x", "address": "172.16.0.9/32", "comment": "nms-marco-src-new", "disabled": "no"}}}}
+
+	skipped, err := applyMarcoCore(f, d, &changeJournal{}, true, 60, true)
+	if err != nil || skipped != 70 {
+		t.Fatalf("skipped = %d, err = %v", skipped, err)
+	}
+	added, removed := 0, 0
+	for _, c := range f.commands {
+		switch c.path {
+		case "/ip/firewall/address-list/add":
+			added++
+		case "/ip/firewall/address-list/remove":
+			removed++
+		}
+	}
+	if added != 1 || removed != 0 {
+		t.Errorf("a new group must still work while old leftovers wait: added=%d removed=%d", added, removed)
+	}
+
+	// Once confirmed, the leftovers go.
+	g := &rowRouter{rows: map[string][]map[string]string{"/ip/firewall/address-list": rows}}
+	skipped, err = applyMarcoCore(g, d, &changeJournal{}, true, 0, true)
+	if err != nil || skipped != 0 {
+		t.Fatalf("confirmed: skipped = %d, err = %v", skipped, err)
+	}
+	removed = 0
+	for _, c := range g.commands {
+		if c.path == "/ip/firewall/address-list/remove" {
+			removed++
+		}
+	}
+	if removed != 70 {
+		t.Errorf("confirmed removal took out %d entries, want 70", removed)
+	}
+}

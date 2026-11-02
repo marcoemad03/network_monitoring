@@ -115,11 +115,15 @@ class MarcoSyncPreview {
   final List<String> warnings;
   final String message;
 
+  /// Old rules still on the router that were not removed because there are many.
+  final int prunePending;
+
   const MarcoSyncPreview({
     required this.dryRun,
     required this.plannedChanges,
     required this.warnings,
     required this.message,
+    this.prunePending = 0,
   });
 }
 

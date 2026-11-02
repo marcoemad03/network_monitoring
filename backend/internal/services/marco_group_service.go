@@ -277,14 +277,16 @@ type MarcoSyncSummary struct {
 	DryRun   bool     `json:"dry_run"`
 	Planned  []string `json:"planned_changes"`
 	Warnings []string `json:"warnings"`
+	// PruneSkipped is how many old entries are still on the router waiting for a confirmed removal.
+	PruneSkipped int `json:"prune_pending"`
 }
 
-func (s *MarcoGroupService) Sync(ctx context.Context, orgID uuid.UUID) (*MarcoSyncSummary, error) {
-	res, err := s.sync.SyncAll(ctx, orgID)
+func (s *MarcoGroupService) Sync(ctx context.Context, orgID uuid.UUID, confirmRemovals bool) (*MarcoSyncSummary, error) {
+	res, err := s.sync.SyncWith(ctx, orgID, confirmRemovals)
 	if err != nil {
 		return nil, err
 	}
-	return &MarcoSyncSummary{DryRun: res.DryRun, Planned: res.Planned, Warnings: res.Warnings}, nil
+	return &MarcoSyncSummary{DryRun: res.DryRun, Planned: res.Planned, Warnings: res.Warnings, PruneSkipped: res.PruneSkipped}, nil
 }
 
 func (s *MarcoGroupService) ListLogs(ctx context.Context, orgID uuid.UUID, limit int) ([]models.MarcoPolicyLog, error) {

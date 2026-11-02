@@ -114,14 +114,17 @@ class MarcoRemoteDataSource {
 
   /// Recomputes the router plan. While the backend is in dry-run this never
   /// changes the router.
-  Future<MarcoSyncPreview> sync() => _guard(() async {
-        final body = _body(await _client.post('$_base/sync', options: _slow));
+  /// Updates the router now. [confirmRemovals] also removes old rules left by groups
+  /// that were deleted earlier, when there are many of them.
+  Future<MarcoSyncPreview> sync({bool confirmRemovals = false}) => _guard(() async {
+        final body = _body(await _client.post('$_base/sync', options: _slow, data: {'confirm_removals': confirmRemovals}));
         final data = Map<String, dynamic>.from(body['data'] as Map? ?? const {});
         return MarcoSyncPreview(
           dryRun: data['dry_run'] as bool? ?? true,
           plannedChanges: List<String>.from(data['planned_changes'] as List? ?? const []),
           warnings: List<String>.from(data['warnings'] as List? ?? const []),
           message: body['message'] as String? ?? '',
+          prunePending: (data['prune_pending'] as num?)?.toInt() ?? 0,
         );
       });
 
