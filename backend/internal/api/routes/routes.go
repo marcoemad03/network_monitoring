@@ -72,6 +72,7 @@ func RegisterRoutes(router *gin.Engine, db *database.DB, hub *websocket.Hub, cfg
 	clientHandler := handlers.NewClientHandler(clientInventory)
 	marcoGroupService.SetInventory(clientInventory, clientRepo)
 	marcoGroupService.StartFollower(context.Background(), wanRepo.OrgsWithRouter)
+	services.StartLogCleanup(context.Background(), cfg.LogCleanupFiles, cfg.LogKeepDays)
 	topologyService := services.NewTopologyService(internetRepo, cfg)
 	networkMapHandler := handlers.NewNetworkMapHandler(services.NewNetworkMapService(clientInventory, topologyService, clientRepo, monRepo))
 	securityRepo := repository.NewSecurityRepository(db)

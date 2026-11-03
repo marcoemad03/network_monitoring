@@ -66,6 +66,11 @@ func (s *routerSession) Command(path string, attrs ...string) ([]map[string]stri
 	if err := s.ctx.Err(); err != nil {
 		return nil, fmt.Errorf("router session cancelled: %w", err)
 	}
+	if !strings.HasSuffix(path, "/print") {
+		if what := refusedRouterWrite(path, attrs); what != "" {
+			return nil, fmt.Errorf("refusing %s on the router: it overloaded the router and cut the hospital's internet", what)
+		}
+	}
 	if !strings.HasSuffix(path, "/print") && !s.write {
 		s.mu.Lock()
 		s.planned = append(s.planned, path+" "+strings.Join(attrs, " "))

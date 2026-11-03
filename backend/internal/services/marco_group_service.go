@@ -282,6 +282,7 @@ type MarcoSyncSummary struct {
 }
 
 func (s *MarcoGroupService) Sync(ctx context.Context, orgID uuid.UUID, confirmRemovals bool) (*MarcoSyncSummary, error) {
+	s.sync.ResumeWrites(orgID)
 	res, err := s.sync.SyncWith(ctx, orgID, confirmRemovals)
 	if err != nil {
 		return nil, err

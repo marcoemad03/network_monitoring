@@ -70,7 +70,12 @@ type Config struct {
 	// Router safety switches. Policy engines never modify the production router
 	// unless RouterPolicyWrites is explicitly enabled; otherwise they only compute
 	// and log the plan (dry-run).
-	RouterPolicyWrites      bool
+	RouterPolicyWrites bool
+	// LogCleanupFiles lists log files (patterns allowed) that lose entries older
+	// than LogKeepDays.
+	LogCleanupFiles []string
+	LogKeepDays     int
+
 	RouterEnableLayer7      bool
 	RouterEnableDNSBlock    bool
 	RouterProtectedIPs      []string
@@ -236,6 +241,8 @@ func Load(cliPort int) (*Config, error) {
 	cfg.RouterEnableLayer7 = getEnvBool("ROUTER_ENABLE_LAYER7", false)
 	cfg.RouterEnableDNSBlock = getEnvBool("ROUTER_ENABLE_DNS_BLOCK", false)
 	cfg.RouterMaxManagedEntries = getEnvInt("ROUTER_MAX_MANAGED_ENTRIES", 1000)
+	cfg.LogKeepDays = getEnvInt("LOG_KEEP_DAYS", 10)
+	cfg.LogCleanupFiles = splitCSV(getEnv("LOG_CLEANUP_FILES", ""))
 	cfg.RouterProtectedIPs = splitCSV(getEnv("ROUTER_PROTECTED_IPS", ""))
 	cfg.RouterPruneStale = getEnvBool("ROUTER_PRUNE_STALE", true)
 	cfg.RouterMaxPrune = getEnvInt("ROUTER_MAX_PRUNE", 60)

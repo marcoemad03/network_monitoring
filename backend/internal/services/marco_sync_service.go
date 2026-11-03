@@ -36,7 +36,8 @@ const (
 	maxAllowAddrs        = 120
 )
 
-const marcoSyncTimeout = 90 * time.Second
+// Long enough to work out the changes, apply them and watch the router afterwards.
+const marcoSyncTimeout = 150 * time.Second
 
 // MarcoSyncService reconciles the desired state of all Marco groups onto the
 // MikroTik router. It only touches entries whose comment starts with
@@ -57,6 +58,9 @@ type MarcoSyncService struct {
 
 	sitesMu   sync.Mutex
 	lastSites map[uuid.UUID]map[string]ResolvedSite
+	// paused says why router changes stopped after a change hurt the router.
+	paused map[uuid.UUID]string
+	wait   func(time.Duration)
 }
 
 // liveIPSource knows the address each device has right now (by MAC address).
@@ -71,6 +75,7 @@ func NewMarcoSyncService(marcoRepo *repository.MarcoRepository, deviceRepo *repo
 		resolver: NewSiteResolver(), lastSites: map[uuid.UUID]map[string]ResolvedSite{},
 	}
 	s.dialRouter = dialRouterConnection
+	s.wait = time.Sleep
 	return s
 }
 
@@ -195,32 +200,16 @@ func (s *MarcoSyncService) SyncWith(ctx context.Context, orgID uuid.UUID, confir
 	}
 	defer sess.Close()
 
-	journal := &changeJournal{}
-	fail := func(step string, err error) error {
-		if !sess.write {
-			return fmt.Errorf("%s: %w", step, err)
-		}
-		if rbErr := journal.rollback(sess.inner); rbErr != nil {
-			return fmt.Errorf("%s: %w (rollback also failed: %v)", step, err, rbErr)
-		}
-		return fmt.Errorf("%s: %w (changes rolled back)", step, err)
-	}
-
 	maxPrune := s.cfg.RouterMaxPrune
 	if confirmRemovals {
 		maxPrune = 0
 	}
-	skipped, err := applyMarcoCore(sess, desired, journal, s.cfg.RouterPruneStale, maxPrune, true)
+	skipped, err := s.applyGuarded(ctx, orgID, vendor, sess, desired, maxPrune)
 	if err != nil {
-		return nil, fail("apply RouterOS configuration", err)
+		return nil, err
 	}
 	if skipped > 0 {
 		desired.warnings = append(desired.warnings, fmt.Sprintf("%d old router entries (left by groups deleted earlier) were not removed because that is more than %d at once. Review them and confirm to remove them.", skipped, s.cfg.RouterMaxPrune))
-	}
-	if sess.write {
-		if err := verifyMarcoDesiredState(sess, desired, s.cfg.RouterPruneStale && skipped == 0); err != nil {
-			return nil, fail("verify RouterOS configuration", err)
-		}
 	}
 
 	res := &marcoSyncResult{

@@ -22,12 +22,33 @@ Enable writes only after reviewing the plan:
   RouterOS `?comment=x` is an exact match, so the tables are printed and filtered by prefix.
 * Duplicates left by older syncs are removed; failures undo exactly what the run changed.
 * New drop rules are placed at the top of the forward chain, scoped to their group.
+* Rules that read packet contents (`layer7-protocol`, `tls-host`, `content`) and layer7 protocols can never be written (`refusedRouterWrite`). See the incident below. `ROUTER_ENABLE_LAYER7=true` only makes syncs fail with that error.
+* Any change runs under a safety timer on the router itself (`marco_watchdog.go`): the job `nms-marco-deadman` removes all `nms-marco-` rules and queues after 5 minutes. The sync cancels it after watching the router for 30 seconds. If the router stops answering or its CPU stays full, the sync rolls back and pauses router changes until someone presses Update the router now; if the router cannot be reached, the timer cleans up on its own. A sync that changes nothing sets no timer.
+
+## Incident: 2026-11-03, the whole hospital lost internet
+A layer7 rule (with a drop of udp 443) for two devices was synced at 10:51:39. The last normal reading of the line was at 10:51:42; the router then stopped answering, sat at 100% CPU and stayed that way after a reboot at about 11:07. Internet came back after all `nms-marco-` entries were removed at 11:11:25, and the CPU fell to 40%. The same group's address-list rule had run for 10 minutes without trouble. Layer7 runs a regular expression on the packets it sees, which this RB2011 cannot afford even for two devices.
 
 ## Opt-in, off by default
-* `ROUTER_ENABLE_LAYER7` - layer7 matching (required to enforce AI sites, which have no fixed IP ranges).
 * `ROUTER_ENABLE_DNS_BLOCK` - legacy router-wide static DNS entries; affects every device.
 
+## Emergency: internet is down after an NMS change
+Fastest: run `backend/marco-remove.exe` (keep it next to `.env`) on a PC on the hospital network and type YES. It stops the NMS server, sets `ROUTER_POLICY_WRITES=false` and deletes every `nms-marco-` entry, retrying for 5 minutes while the router struggles. `marco-remove.exe --check` only reports what is there. Rebuild it with `go build -o marco-remove.exe ./cmd/marco-remove` from `backend`.
+
+By hand, if that cannot reach the router:
+1. Stop the NMS server, so it cannot put the rules back.
+2. Open WinBox. If the router's address does not answer, connect by its MAC address from the Neighbors tab (`B8:69:F4:B3:A8:FC`).
+3. In New Terminal, run the commands below. They only remove entries named `nms-marco-`.
+```
+/ip firewall filter remove [find where comment~"^nms-marco-"]
+/queue simple remove [find where comment~"^nms-marco-"]
+/ip firewall address-list remove [find where comment~"^nms-marco-"]
+/ip firewall layer7-protocol remove [find where name~"^nms-marco-"]
+/system scheduler remove [find where name="nms-marco-deadman"]
+```
+4. Set `ROUTER_POLICY_WRITES=false` in `backend/.env` before starting the server again.
+
 ## Manual rollback on the router
+Everything the NMS ever created, including the legacy engine:
 ```
 /ip firewall filter remove [find where comment~"^nms-"]
 /ip firewall layer7-protocol remove [find where name~"^nms-"]
