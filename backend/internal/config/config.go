@@ -71,6 +71,9 @@ type Config struct {
 	// unless RouterPolicyWrites is explicitly enabled; otherwise they only compute
 	// and log the plan (dry-run).
 	RouterPolicyWrites bool
+	// AccessKey lets other PCs use this server; without it only this PC can.
+	AccessKey string
+
 	// LogCleanupFiles lists log files (patterns allowed) that lose entries older
 	// than LogKeepDays.
 	LogCleanupFiles []string
@@ -241,6 +244,7 @@ func Load(cliPort int) (*Config, error) {
 	cfg.RouterEnableLayer7 = getEnvBool("ROUTER_ENABLE_LAYER7", false)
 	cfg.RouterEnableDNSBlock = getEnvBool("ROUTER_ENABLE_DNS_BLOCK", false)
 	cfg.RouterMaxManagedEntries = getEnvInt("ROUTER_MAX_MANAGED_ENTRIES", 1000)
+	cfg.AccessKey = getEnv("NMS_ACCESS_KEY", "")
 	cfg.LogKeepDays = getEnvInt("LOG_KEEP_DAYS", 10)
 	cfg.LogCleanupFiles = splitCSV(getEnv("LOG_CLEANUP_FILES", ""))
 	cfg.RouterProtectedIPs = splitCSV(getEnv("ROUTER_PROTECTED_IPS", ""))

@@ -41,6 +41,8 @@ class WebSocketClient {
       final wsBase = BackendConfig.instance?.wsBaseUrl ?? BuildConfig.wsBaseUrl;
       final uri = Uri.parse('$wsBase$path');
       final wsHeaders = <String, dynamic>{};
+      final accessKey = BackendConfig.instance?.accessKey ?? '';
+      if (accessKey.isNotEmpty) wsHeaders['X-NMS-Key'] = accessKey;
       if (BuildConfig.environment != Environment.development) {
         final token = await _jwtManager.getAccessToken();
         if (token != null) {

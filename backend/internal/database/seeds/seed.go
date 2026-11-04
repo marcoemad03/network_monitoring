@@ -3,6 +3,7 @@ package seeds
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"time"
 
 	"github.com/google/uuid"
@@ -42,6 +43,11 @@ func Run(db *database.DB) error {
 	)
 	if err != nil {
 		return err
+	}
+
+	// A new install starts with real devices only, not the demo ones.
+	if os.Getenv("SEED_DEMO_DATA") == "false" {
+		return nil
 	}
 
 	devices := []struct {
@@ -124,6 +130,10 @@ func Run(db *database.DB) error {
 
 func SeedAssetData(db *database.DB, orgID uuid.UUID) {
 	ctx := context.Background()
+
+	if os.Getenv("SEED_DEMO_DATA") == "false" {
+		return
+	}
 
 	var policyCount int
 	db.QueryRow(ctx, `SELECT COUNT(*) FROM policies`).Scan(&policyCount)

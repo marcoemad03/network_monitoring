@@ -19,6 +19,9 @@ class BackendConfig {
   final int connectionTimeoutMs;
   final int receiveTimeoutMs;
 
+  /// Lets another PC use the server on the main PC. Empty on the main PC itself.
+  final String accessKey;
+
   const BackendConfig({
     required this.host,
     required this.port,
@@ -30,6 +33,7 @@ class BackendConfig {
     required this.healthCheckTimeoutMs,
     required this.connectionTimeoutMs,
     required this.receiveTimeoutMs,
+    this.accessKey = '',
   });
 
   String get baseUrl => '${useTls ? "https" : "http"}://$host:$port';
@@ -60,11 +64,19 @@ class BackendConfig {
   static Future<BackendConfig> load() async {
     final jsonString = await rootBundle.loadString('assets/config/backend_config.json');
     final json = jsonDecode(jsonString) as Map<String, dynamic>;
+    return BackendConfig.fromJson(json, Platform.environment);
+  }
+
+  /// The program for other PCs sets NMS_SERVER_HOST and NMS_SERVER_KEY: the server is
+  /// then on the main PC, so this PC must not try to start one.
+  factory BackendConfig.fromJson(Map<String, dynamic> json, Map<String, String> env) {
+    final remoteHost = env['NMS_SERVER_HOST'] ?? '';
     return BackendConfig(
-      host: json['host'] as String? ?? 'localhost',
+      host: remoteHost.isNotEmpty ? remoteHost : json['host'] as String? ?? 'localhost',
+      accessKey: env['NMS_SERVER_KEY'] ?? '',
       port: json['port'] as int? ?? 8080,
       useTls: json['useTls'] as bool? ?? false,
-      autoStartBackend: json['autoStartBackend'] as bool? ?? true,
+      autoStartBackend: remoteHost.isEmpty && (json['autoStartBackend'] as bool? ?? true),
       backendExecutablePath: json['backendExecutablePath'] as String? ?? 'backend/server.exe',
       backendWorkingDirectory: json['backendWorkingDirectory'] as String? ?? 'backend',
       healthCheckIntervalSeconds: json['healthCheckIntervalSeconds'] as int? ?? 30,

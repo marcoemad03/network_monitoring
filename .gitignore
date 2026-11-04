@@ -60,3 +60,8 @@ backend/tmp/
 .vscode/
 *.exe~
 /null
+
+# Portable build
+dist/
+backend/cmd/nms-portable/payload.zip
+backend/cmd/nms-client/payload.zip

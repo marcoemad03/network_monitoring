@@ -29,6 +29,7 @@ class DioClient {
         headers: {
           ApiConstants.acceptHeader: ApiConstants.applicationJson,
           ApiConstants.contentTypeHeader: ApiConstants.applicationJson,
+          if (BackendConfig.instance?.accessKey.isNotEmpty ?? false) 'X-NMS-Key': BackendConfig.instance!.accessKey,
         },
       ),
     );

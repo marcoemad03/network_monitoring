@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/hospital/nms-backend/internal/api/middleware"
 	"github.com/hospital/nms-backend/internal/api/routes"
 	"github.com/hospital/nms-backend/internal/config"
 	"github.com/hospital/nms-backend/internal/database"
@@ -70,6 +71,7 @@ func main() {
 	router := gin.New()
 	router.Use(gin.Recovery())
 	router.Use(corsMiddleware(cfg))
+	router.Use(middleware.LANAccess(cfg.AccessKey))
 
 	routes.RegisterRoutes(router, db, hub, cfg)
 
