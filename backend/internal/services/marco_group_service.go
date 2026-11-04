@@ -290,6 +290,11 @@ func (s *MarcoGroupService) Sync(ctx context.Context, orgID uuid.UUID, confirmRe
 	return &MarcoSyncSummary{DryRun: res.DryRun, Planned: res.Planned, Warnings: res.Warnings, PruneSkipped: res.PruneSkipped}, nil
 }
 
+// RunTerminal runs what was typed in the app's router terminal.
+func (s *MarcoGroupService) RunTerminal(ctx context.Context, orgID uuid.UUID, text string, confirm bool) (*TerminalResult, error) {
+	return s.sync.RunTerminal(ctx, orgID, text, confirm)
+}
+
 func (s *MarcoGroupService) ListLogs(ctx context.Context, orgID uuid.UUID, limit int) ([]models.MarcoPolicyLog, error) {
 	return s.marcoRepo.ListPolicyLogs(ctx, orgID, limit)
 }

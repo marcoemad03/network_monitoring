@@ -47,6 +47,7 @@ import '../screens/policies/policy_list_screen.dart';
 import '../screens/policies/policy_detail_screen.dart';
 import '../screens/marco/marco_groups_screen.dart';
 import '../screens/marco/marco_group_detail_screen.dart';
+import '../screens/marco/router_terminal_screen.dart';
 import '../screens/assets/asset_list_screen.dart';
 import '../screens/assets/asset_detail_screen.dart';
 import '../screens/infrastructure/infrastructure_status_screen.dart';
@@ -303,6 +304,10 @@ class AppRouter {
                 path: RouteNames.marcoGroups,
                 builder: (context, state) => const MarcoGroupsScreen(),
                 routes: [
+                  GoRoute(
+                    path: 'terminal',
+                    builder: (context, state) => const RouterTerminalScreen(),
+                  ),
                   GoRoute(
                     path: ':id',
                     builder:

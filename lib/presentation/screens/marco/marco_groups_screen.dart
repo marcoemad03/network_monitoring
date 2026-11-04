@@ -37,6 +37,7 @@ class _MarcoGroupsScreenState extends ConsumerState<MarcoGroupsScreen> {
             icon: _previewing ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.fact_check_outlined),
             onPressed: _previewing ? null : _previewSync,
           ),
+          IconButton(tooltip: 'Router terminal', icon: const Icon(Icons.terminal), onPressed: () => context.push(RouteNames.routerTerminal)),
           IconButton(tooltip: 'Everything that changed', icon: const Icon(Icons.history), onPressed: _showLogs),
           IconButton(tooltip: 'Refresh', icon: const Icon(Icons.refresh), onPressed: () => ref.read(marcoGroupsProvider.notifier).refresh()),
           Padding(

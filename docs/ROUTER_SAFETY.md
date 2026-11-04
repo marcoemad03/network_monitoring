@@ -28,6 +28,12 @@ Enable writes only after reviewing the plan:
 ## Incident: 2026-11-03, the whole hospital lost internet
 A layer7 rule (with a drop of udp 443) for two devices was synced at 10:51:39. The last normal reading of the line was at 10:51:42; the router then stopped answering, sat at 100% CPU and stayed that way after a reboot at about 11:07. Internet came back after all `nms-marco-` entries were removed at 11:11:25, and the CPU fell to 40%. The same group's address-list rule had run for 10 minutes without trouble. Layer7 runs a regular expression on the packets it sees, which this RB2011 cannot afford even for two devices.
 
+## How YouTube is blocked
+YouTube shares Google's addresses with Gmail and Translate, so it is never blocked by address. For the group's devices the raw table drops DNS questions (udp 53) containing `youtu`, `googlevideo` or `ytimg`, and closes DNS over TLS (tcp 853) and the HTTPS ports of public DNS servers so the devices ask in the open. This is the one payload match allowed: a word search on small DNS packets from those devices only. It does not stop a phone with its own Private DNS hostname set or a VPN, and a device keeps what it already looked up for a few minutes.
+
+## Router terminal in the app
+Marco groups > the terminal icon. It reads RouterOS lines and carries them out over the API: `print`, `remove`, `enable` and `disable` only, and it cannot add rules, reboot or reset. Changes must use `[find where ...]`, are limited to firewall, queue and DNS-static tables (scheduler: remove only), show what matched and wait for a yes. Each is written to the Marco log. It needs the NMS server running; when the server cannot reach the router, use `marco-remove.exe` or WinBox.
+
 ## Opt-in, off by default
 * `ROUTER_ENABLE_DNS_BLOCK` - legacy router-wide static DNS entries; affects every device.
 
@@ -39,6 +45,7 @@ By hand, if that cannot reach the router:
 2. Open WinBox. If the router's address does not answer, connect by its MAC address from the Neighbors tab (`B8:69:F4:B3:A8:FC`).
 3. In New Terminal, run the commands below. They only remove entries named `nms-marco-`.
 ```
+/ip firewall raw remove [find where comment~"^nms-marco-"]
 /ip firewall filter remove [find where comment~"^nms-marco-"]
 /queue simple remove [find where comment~"^nms-marco-"]
 /ip firewall address-list remove [find where comment~"^nms-marco-"]

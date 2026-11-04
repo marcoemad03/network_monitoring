@@ -27,6 +27,7 @@ const (
 )
 
 const deadmanScript = `:log warning "NMS: change not confirmed, removing nms-marco rules"; ` +
+	`/ip firewall raw remove [find where comment~"^nms-marco-"]; ` +
 	`/ip firewall filter remove [find where comment~"^nms-marco-"]; ` +
 	`/queue simple remove [find where comment~"^nms-marco-"]; ` +
 	`/system scheduler remove [find where name="` + deadmanName + `"]`
@@ -198,6 +199,15 @@ func (s *MarcoSyncService) undoBadChange(vendor *models.VendorIntegration, conn 
 	return fmt.Errorf("%w; the router could not be reached, so its safety timer removes the nms-marco rules within %s; router changes paused", cause, deadmanAfter)
 }
 
+func hasWord(words []string, want string) bool {
+	for _, w := range words {
+		if w == want {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *MarcoSyncService) writesPaused(orgID uuid.UUID) string {
 	s.sitesMu.Lock()
 	defer s.sitesMu.Unlock()
@@ -224,7 +234,9 @@ func (s *MarcoSyncService) ResumeWrites(orgID uuid.UUID) {
 // refusedRouterWrite names a write that must never reach the router. Matching on
 // packet contents (layer7, tls-host, content) runs on every packet it sees, and a
 // layer7 rule for just two devices took this router and the whole hospital's
-// internet down on 2026-11-03. Removing such entries stays allowed.
+// internet down on 2026-11-03. Removing such entries stays allowed. The one exception
+// is a plain word match on DNS questions (udp 53) in the raw table: those packets are
+// tiny and few.
 func refusedRouterWrite(path string, attrs []string) string {
 	if strings.HasSuffix(path, "/remove") {
 		return ""
@@ -232,8 +244,12 @@ func refusedRouterWrite(path string, attrs []string) string {
 	if strings.HasPrefix(path, "/ip/firewall/layer7-protocol/") {
 		return "layer7 protocols"
 	}
+	dnsOnly := strings.HasPrefix(path, "/ip/firewall/raw/") && hasWord(attrs, "=protocol=udp") && hasWord(attrs, "=dst-port=53")
 	for _, a := range attrs {
 		for _, name := range []string{"layer7-protocol", "tls-host", "content"} {
+			if name == "content" && dnsOnly {
+				continue
+			}
 			if strings.HasPrefix(a, "="+name+"=") && a != "="+name+"=" {
 				return name + " matching"
 			}

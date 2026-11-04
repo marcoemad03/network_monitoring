@@ -29,6 +29,7 @@ const marcoAllowList = "nms-marco-allow"
 const marcoBlockedPrefix = "nms-marco-blocked-"
 const marcoBlockedList = "nms-marco-blocked"
 const marcoDeviceQueuePrefix = "nms-marco-q-dev-"
+const marcoEncryptedDNSList = "nms-marco-encrypted-dns"
 
 // Most addresses one group or the always-allowed list may put on the router.
 const (
@@ -108,6 +109,7 @@ type marcoDesiredState struct {
 	queues    map[string]desiredRouterEntry
 	addrLists map[string]desiredRouterEntry
 	layer7    map[string]desiredRouterEntry
+	raw       map[string]desiredRouterEntry
 	warnings  []string
 }
 
@@ -190,7 +192,10 @@ func (s *MarcoSyncService) SyncWith(ctx context.Context, orgID uuid.UUID, confir
 	if err := validateFirewallScope(desired.firewall); err != nil {
 		return nil, err
 	}
-	if err := validateEntryCount(s.cfg, len(desired.firewall), len(desired.queues), len(desired.addrLists), len(desired.layer7)); err != nil {
+	if err := validateFirewallScope(desired.raw); err != nil {
+		return nil, err
+	}
+	if err := validateEntryCount(s.cfg, len(desired.firewall), len(desired.queues), len(desired.addrLists), len(desired.layer7), len(desired.raw)); err != nil {
 		return nil, err
 	}
 
@@ -265,6 +270,12 @@ func (d *marcoDesiredState) addFirewall(comment string, attrs map[string]string,
 	d.firewall[comment] = desiredRouterEntry{path: "/ip/firewall/filter", attrs: attrs, top: top}
 }
 
+func (d *marcoDesiredState) addRaw(comment string, attrs map[string]string) {
+	attrs["comment"] = comment
+	attrs["disabled"] = "no"
+	d.raw[comment] = desiredRouterEntry{path: "/ip/firewall/raw", attrs: attrs, top: true}
+}
+
 func (d *marcoDesiredState) addAddress(comment, list, address string) {
 	d.addrLists[comment] = desiredRouterEntry{path: "/ip/firewall/address-list", attrs: map[string]string{
 		"list": list, "address": address, "comment": comment, "disabled": "no",
@@ -296,10 +307,12 @@ func buildMarcoDesiredState(groups []models.MarcoGroup, membersByGroup map[uuid.
 		queues:    make(map[string]desiredRouterEntry),
 		addrLists: make(map[string]desiredRouterEntry),
 		layer7:    make(map[string]desiredRouterEntry),
+		raw:       make(map[string]desiredRouterEntry),
 	}
 
 	blockedPlatforms := make(map[string]bool)
 	usesAllow := false
+	usesEncryptedDNSList := false
 
 	allowSet := map[string]bool{}
 	for _, ip := range opts.allowIPs {
@@ -385,8 +398,19 @@ func buildMarcoDesiredState(groups []models.MarcoGroup, membersByGroup map[uuid.
 		}
 
 		if needsSrcList {
+			blocksInDNS := false
 			for _, key := range platforms {
 				def := marcoPlatformByKey[key]
+				if words := dnsBlockedPlatforms[key]; len(words) > 0 {
+					blocksInDNS = true
+					for _, word := range words {
+						d.addRaw(fmt.Sprintf("%s%s-dns-%s", marcoManagedPrefix, g8, word), map[string]string{
+							"chain": "prerouting", "action": "drop", "src-address-list": srcList,
+							"protocol": "udp", "dst-port": "53", "content": word,
+						})
+					}
+					continue
+				}
 				if list := opts.platformLists[key]; list != "" {
 					// The hospital already maintains an address-list of this service's real
 					// addresses (collected from live traffic); block that instead of ranges.
@@ -418,6 +442,18 @@ func buildMarcoDesiredState(groups []models.MarcoGroup, membersByGroup map[uuid.
 				}
 				if !enforced {
 					d.warnings = append(d.warnings, fmt.Sprintf("%s: %q cannot be enforced (no IP ranges and layer7 matching is disabled)", g.Name, def.Label))
+				}
+			}
+			if blocksInDNS {
+				usesEncryptedDNSList = true
+				d.addRaw(fmt.Sprintf("%s%s-dns-tls", marcoManagedPrefix, g8), map[string]string{
+					"chain": "prerouting", "action": "drop", "src-address-list": srcList, "protocol": "tcp", "dst-port": "853",
+				})
+				for _, proto := range []string{"tcp", "udp"} {
+					d.addRaw(fmt.Sprintf("%s%s-dns-https-%s", marcoManagedPrefix, g8, proto), map[string]string{
+						"chain": "prerouting", "action": "drop", "src-address-list": srcList, "protocol": proto, "dst-port": "443",
+						"dst-address-list": marcoEncryptedDNSList,
+					})
 				}
 			}
 		}
@@ -496,6 +532,11 @@ func buildMarcoDesiredState(groups []models.MarcoGroup, membersByGroup map[uuid.
 		}
 		for _, ip := range allow {
 			d.addAddress(marcoAllowPrefix+strings.ReplaceAll(ip, ".", "_"), marcoAllowList, ip)
+		}
+	}
+	if usesEncryptedDNSList {
+		for _, ip := range encryptedDNSServers {
+			d.addAddress(marcoEncryptedDNSList+"-"+strings.ReplaceAll(ip, ".", "_"), marcoEncryptedDNSList, ip)
 		}
 	}
 	d.addDeviceOverrides(opts)
@@ -608,6 +649,7 @@ type marcoTable struct {
 func marcoTables(d marcoDesiredState) map[string]marcoTable {
 	return map[string]marcoTable{
 		"/ip/firewall/filter":          {path: "/ip/firewall/filter", desired: d.firewall, top: true},
+		"/ip/firewall/raw":             {path: "/ip/firewall/raw", desired: d.raw, top: true},
 		"/queue/simple":                {path: "/queue/simple", desired: d.queues},
 		"/ip/firewall/address-list":    {path: "/ip/firewall/address-list", desired: d.addrLists},
 		"/ip/firewall/layer7-protocol": {path: "/ip/firewall/layer7-protocol", desired: d.layer7},
@@ -617,8 +659,8 @@ func marcoTables(d marcoDesiredState) map[string]marcoTable {
 // Stale entries are removed users-first (rules before the lists/protocols they
 // reference); new entries are added dependencies-first.
 var (
-	marcoRemoveOrder = []string{"/ip/firewall/filter", "/queue/simple", "/ip/firewall/address-list", "/ip/firewall/layer7-protocol"}
-	marcoApplyOrder  = []string{"/ip/firewall/layer7-protocol", "/ip/firewall/address-list", "/ip/firewall/filter", "/queue/simple"}
+	marcoRemoveOrder = []string{"/ip/firewall/raw", "/ip/firewall/filter", "/queue/simple", "/ip/firewall/address-list", "/ip/firewall/layer7-protocol"}
+	marcoApplyOrder  = []string{"/ip/firewall/layer7-protocol", "/ip/firewall/address-list", "/ip/firewall/raw", "/ip/firewall/filter", "/queue/simple"}
 )
 
 func sortedKeys(m map[string]desiredRouterEntry) []string {
@@ -832,7 +874,7 @@ func isMarcoExcluded(comment string) bool {
 }
 
 var (
-	managedFirewallAttrs = []string{"chain", "action", "src-address-list", "dst-address-list", "layer7-protocol", "src-mac-address", "src-address", "time", "days", "comment", "disabled"}
+	managedFirewallAttrs = []string{"chain", "action", "src-address-list", "dst-address-list", "layer7-protocol", "protocol", "dst-port", "content", "src-mac-address", "src-address", "time", "days", "comment", "disabled"}
 	managedQueueAttrs    = []string{"name", "target", "max-limit", "burst-limit", "burst-threshold", "burst-time", "priority", "comment", "disabled"}
 	managedAddrListAttrs = []string{"list", "address", "comment"}
 	managedLayer7Attrs   = []string{"name", "regexp", "comment"}
@@ -841,7 +883,7 @@ var (
 func whitelistAttrs(path string, e map[string]string) map[string]string {
 	var allowed []string
 	switch path {
-	case "/ip/firewall/filter":
+	case "/ip/firewall/filter", "/ip/firewall/raw":
 		allowed = managedFirewallAttrs
 	case "/queue/simple":
 		allowed = managedQueueAttrs

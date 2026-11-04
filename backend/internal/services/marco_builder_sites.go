@@ -57,6 +57,9 @@ func groupSiteAddresses(groupName string, domains, literals []string, opts marco
 // address list, which is what the always-allowed addresses have to be let past.
 func groupBlocksByAddress(platforms []string, opts marcoBuildOptions) bool {
 	for _, key := range platforms {
+		if len(dnsBlockedPlatforms[key]) > 0 {
+			continue
+		}
 		if opts.platformLists[key] != "" || len(marcoPlatformByKey[key].IPRanges) > 0 {
 			return true
 		}

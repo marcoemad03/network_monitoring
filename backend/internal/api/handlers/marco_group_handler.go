@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/hospital/nms-backend/internal/api/middleware"
 	"github.com/hospital/nms-backend/internal/models"
 	"github.com/hospital/nms-backend/internal/services"
 )
@@ -25,6 +26,35 @@ func (h *MarcoGroupHandler) orgID(c *gin.Context) (uuid.UUID, bool) {
 		return uuid.Nil, false
 	}
 	return orgID, true
+}
+
+// RunTerminal runs RouterOS console lines typed in the app. A change only reports
+// what it would touch until the request says confirm.
+func (h *MarcoGroupHandler) RunTerminal(c *gin.Context) {
+	orgID, ok := h.orgID(c)
+	if !ok {
+		return
+	}
+	var req struct {
+		Text    string `json:"text"`
+		Confirm bool   `json:"confirm"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.Text == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Type a command", "error_code": "VALIDATION_ERROR"})
+		return
+	}
+	// Only a confirmed run changes anything, and the audit log says what it was.
+	if req.Confirm {
+		c.Set(middleware.AuditDetailKey, req.Text)
+	} else {
+		c.Set(middleware.AuditSkipKey, true)
+	}
+	res, err := h.service.RunTerminal(c.Request.Context(), orgID, req.Text, req.Confirm)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"success": false, "message": err.Error(), "error_code": "ROUTER_ERROR"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": res, "message": "Done"})
 }
 
 func (h *MarcoGroupHandler) ListPlatforms(c *gin.Context) {

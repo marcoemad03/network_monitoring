@@ -45,7 +45,7 @@ type login struct {
 }
 
 // Rules go first, then what they point to.
-var paths = []string{"/ip/firewall/filter", "/queue/simple", "/ip/firewall/address-list", "/ip/firewall/layer7-protocol", "/system/scheduler"}
+var paths = []string{"/ip/firewall/raw", "/ip/firewall/filter", "/queue/simple", "/ip/firewall/address-list", "/ip/firewall/layer7-protocol", "/system/scheduler"}
 
 var input = bufio.NewReader(os.Stdin)
 

@@ -535,6 +535,7 @@ func describeClient(v *ClientView, note repository.ClientNote) {
 var kinds = map[string]bool{
 	KindPhone: true, KindTablet: true, KindComputer: true, KindPrinter: true, KindCamera: true,
 	KindTV: true, KindNetwork: true, KindServer: true, KindIoT: true, KindMedical: true, KindUnknown: true,
+	KindRouter: true, KindSwitch: true, KindFirewall: true, KindAccessPoint: true,
 }
 
 func validKind(k string) bool { return kinds[k] }

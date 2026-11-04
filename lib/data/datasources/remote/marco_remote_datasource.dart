@@ -3,6 +3,7 @@ import '../../../core/constants/api_constants.dart';
 import '../../../core/network/dio_client.dart';
 import '../../models/marco_models.dart';
 import '../../models/marco_site_models.dart';
+import '../../models/router_terminal_models.dart';
 
 /// Error carrying the backend's human readable message.
 class MarcoApiException implements Exception {
@@ -126,6 +127,13 @@ class MarcoRemoteDataSource {
           message: body['message'] as String? ?? '',
           prunePending: (data['prune_pending'] as num?)?.toInt() ?? 0,
         );
+      });
+
+  /// Runs RouterOS console lines. A change only reports what it would touch until
+  /// [confirm] is set.
+  Future<TerminalResult> runTerminal(String text, {bool confirm = false}) => _guard(() async {
+        final body = _body(await _client.post('$_base/terminal', options: _slow, data: {'text': text, 'confirm': confirm}));
+        return TerminalResult.fromJson(Map<String, dynamic>.from(body['data'] as Map? ?? const {}));
       });
 
   Future<List<MarcoPolicyLog>> logs() => _guard(() async {

@@ -1,7 +1,10 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/api_constants.dart';
 import '../../../core/di/injection_container.dart';
+import '../../../data/models/usage_report_models.dart';
+import '../../providers/reporting/usage_report_provider.dart';
 
 class _AuditEntry {
   final String id;
@@ -36,7 +39,14 @@ class _AuditEntry {
       );
 }
 
-final _auditLogsProvider = FutureProvider.family<List<_AuditEntry>, _AuditLogFilter>((ref, filter) async {
+class _AuditPage {
+  final List<_AuditEntry> entries;
+  final int total;
+  final int totalPages;
+  const _AuditPage(this.entries, this.total, this.totalPages);
+}
+
+final _auditLogsProvider = FutureProvider.autoDispose.family<_AuditPage, _AuditLogFilter>((ref, filter) async {
   final dio = ref.watch(dioProvider);
   final response = await dio.get(
     ApiConstants.auditLogs,
@@ -47,8 +57,13 @@ final _auditLogsProvider = FutureProvider.family<List<_AuditEntry>, _AuditLogFil
       if (filter.entityType != null) 'entity_type': filter.entityType,
     },
   );
-  final data = response.data['data'] as List;
-  return data.map((e) => _AuditEntry.fromJson(e as Map<String, dynamic>)).toList();
+  final data = response.data['data'] as List? ?? const [];
+  final meta = response.data['meta'] as Map? ?? const {};
+  return _AuditPage(
+    data.map((e) => _AuditEntry.fromJson(e as Map<String, dynamic>)).toList(),
+    (meta['total'] as num?)?.toInt() ?? data.length,
+    (meta['total_pages'] as num?)?.toInt() ?? 1,
+  );
 });
 
 class _AuditLogFilter {
@@ -63,6 +78,15 @@ class _AuditLogFilter {
     this.action,
     this.entityType,
   });
+
+  // The provider is keyed by this filter. Without equality every rebuild made a new
+  // key, which fetched again and rebuilt again, without end.
+  @override
+  bool operator ==(Object other) =>
+      other is _AuditLogFilter && other.page == page && other.limit == limit && other.action == action && other.entityType == entityType;
+
+  @override
+  int get hashCode => Object.hash(page, limit, action, entityType);
 }
 
 class AuditLogScreen extends ConsumerStatefulWidget {
@@ -76,6 +100,30 @@ class _AuditLogScreenState extends ConsumerState<AuditLogScreen> {
   String? _actionFilter;
   String? _entityFilter;
   int _page = 1;
+  bool _exporting = false;
+
+  Future<void> _export() async {
+    if (_exporting) return;
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _exporting = true);
+    try {
+      final r = await ref.read(dioProvider).get<List<int>>(
+        '${ApiConstants.auditLogs}/export',
+        queryParameters: {
+          if (_actionFilter != null) 'action': _actionFilter,
+          if (_entityFilter != null) 'entity_type': _entityFilter,
+        },
+        options: Options(responseType: ResponseType.bytes),
+      );
+      final match = RegExp('filename="([^"]+)"').firstMatch(r.headers.value('content-disposition') ?? '');
+      final path = await ref.read(reportFileSaverProvider)(ReportFile(match?.group(1) ?? 'audit-log.csv', r.data ?? const []));
+      messenger.showSnackBar(SnackBar(content: Text('Saved to $path')));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('Could not save the file: $e')));
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -87,8 +135,9 @@ class _AuditLogScreenState extends ConsumerState<AuditLogScreen> {
       appBar: AppBar(
         title: const Text('Audit Log'),
         actions: [
-          IconButton(icon: const Icon(Icons.file_download), onPressed: () {}),
+          IconButton(tooltip: 'Save as a file', icon: const Icon(Icons.file_download), onPressed: _exporting ? null : _export),
           IconButton(
+            tooltip: 'Refresh',
             icon: const Icon(Icons.refresh),
             onPressed: () => ref.invalidate(_auditLogsProvider),
           ),
@@ -112,12 +161,9 @@ class _AuditLogScreenState extends ConsumerState<AuditLogScreen> {
                     value: _actionFilter,
                     items: const [
                       DropdownMenuItem(value: null, child: Text('All Actions')),
-                      DropdownMenuItem(value: 'login', child: Text('Login')),
-                      DropdownMenuItem(value: 'logout', child: Text('Logout')),
                       DropdownMenuItem(value: 'create', child: Text('Create')),
                       DropdownMenuItem(value: 'update', child: Text('Update')),
                       DropdownMenuItem(value: 'delete', child: Text('Delete')),
-                      DropdownMenuItem(value: 'permission_change', child: Text('Permission')),
                     ],
                     onChanged: (v) => setState(() {
                       _actionFilter = v;
@@ -137,10 +183,11 @@ class _AuditLogScreenState extends ConsumerState<AuditLogScreen> {
                     value: _entityFilter,
                     items: const [
                       DropdownMenuItem(value: null, child: Text('All Entities')),
-                      DropdownMenuItem(value: 'user', child: Text('User')),
-                      DropdownMenuItem(value: 'device', child: Text('Device')),
-                      DropdownMenuItem(value: 'alert', child: Text('Alert')),
-                      DropdownMenuItem(value: 'configuration', child: Text('Configuration')),
+                      DropdownMenuItem(value: 'marco', child: Text('Groups and router')),
+                      DropdownMenuItem(value: 'monitoring', child: Text('Devices and map')),
+                      DropdownMenuItem(value: 'inventory', child: Text('Inventory')),
+                      DropdownMenuItem(value: 'security', child: Text('Security')),
+                      DropdownMenuItem(value: 'vendor-integrations', child: Text('Router connection')),
                     ],
                     onChanged: (v) => setState(() {
                       _entityFilter = v;
@@ -153,7 +200,8 @@ class _AuditLogScreenState extends ConsumerState<AuditLogScreen> {
           ),
           Expanded(
             child: logsAsync.when(
-              data: (logs) {
+              data: (page) {
+                final logs = page.entries;
                 if (logs.isEmpty) {
                   return Center(
                     child: Column(
@@ -162,14 +210,34 @@ class _AuditLogScreenState extends ConsumerState<AuditLogScreen> {
                         Icon(Icons.history, size: 64, color: theme.colorScheme.outline),
                         const SizedBox(height: 16),
                         Text('No audit logs found', style: theme.textTheme.titleMedium),
+                        const SizedBox(height: 4),
+                        Text('Changes made in the app appear here from now on.', style: theme.textTheme.bodySmall),
                       ],
                     ),
                   );
                 }
-                return ListView.builder(
-                  padding: const EdgeInsets.all(12),
-                  itemCount: logs.length,
-                  itemBuilder: (context, index) => _AuditLogTile(log: logs[index]),
+                return Column(
+                  children: [
+                    Expanded(
+                      child: ListView.builder(
+                        padding: const EdgeInsets.all(12),
+                        itemCount: logs.length,
+                        itemBuilder: (context, index) => _AuditLogTile(log: logs[index]),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      child: Row(
+                        children: [
+                          Text('${page.total} entries', style: theme.textTheme.bodySmall),
+                          const Spacer(),
+                          IconButton(tooltip: 'Newer', icon: const Icon(Icons.chevron_left), onPressed: _page > 1 ? () => setState(() => _page--) : null),
+                          Text('Page $_page of ${page.totalPages < 1 ? 1 : page.totalPages}', style: theme.textTheme.bodySmall),
+                          IconButton(tooltip: 'Older', icon: const Icon(Icons.chevron_right), onPressed: _page < page.totalPages ? () => setState(() => _page++) : null),
+                        ],
+                      ),
+                    ),
+                  ],
                 );
               },
               loading: () => const Center(child: CircularProgressIndicator()),
@@ -238,11 +306,11 @@ class _AuditLogTile extends StatelessWidget {
           child: Icon(_actionIcon(log.action), size: 18, color: _actionColor(log.action, theme)),
         ),
         title: Text(
-          '${log.action.toUpperCase()}  ${log.entityType}${log.entityName != null ? ' — ${log.entityName}' : ''}',
+          log.description ?? '${log.action} ${log.entityName ?? log.entityType}',
           style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w500),
         ),
         subtitle: Text(
-          '${log.performedBy ?? 'System'}  •  ${_formatTimestamp(log.timestamp)}',
+          '${log.action}  •  ${log.entityType}  •  ${_formatTimestamp(log.timestamp)}',
           style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
         ),
         trailing: Icon(

@@ -382,26 +382,88 @@ func TestMarcoWithoutPruneOnlyAddsAndLeavesOldEntries(t *testing.T) {
 	}
 }
 
-func TestMarcoYouTubeNeverUsesGoogleAddressRanges(t *testing.T) {
+// YouTube answers from the same Google addresses as Gmail and Translate, so it is
+// blocked by name in DNS and never by address, even with the hospital's own list set.
+func TestMarcoYouTubeIsBlockedInDNSNeverByAddress(t *testing.T) {
 	groups, members := testMarcoGroup(models.MarcoGroupPolicy{BlockedWebsites: []string{"youtube"}})
-	desired := buildMarcoDesiredState(groups, members, marcoOpts())
+	opts := marcoBuildOptions{platformLists: map[string]string{"youtube": "collect all youtube ips"}}
+	desired := buildMarcoDesiredState(groups, members, opts)
 
-	if len(desired.firewall) != 0 {
-		t.Fatalf("no rule may be generated without a configured list; YouTube shares Google frontends with Gmail: %v", desired.firewall)
+	if len(desired.firewall) != 0 || len(desired.layer7) != 0 {
+		t.Fatalf("no firewall rule and no layer7: %v %v", desired.firewall, desired.layer7)
 	}
-	for comment := range desired.addrLists {
-		if strings.HasPrefix(comment, marcoPlatListPrefix+"youtube") {
-			t.Fatalf("YouTube must not publish an address list: %q", comment)
+	if err := validateFirewallScope(desired.raw); err != nil {
+		t.Fatal(err)
+	}
+	var words []string
+	for comment, rule := range desired.raw {
+		if rule.attrs["action"] != "drop" || rule.attrs["chain"] != "prerouting" || rule.attrs["src-address-list"] == "" {
+			t.Fatalf("%q is not a scoped drop: %v", comment, rule.attrs)
+		}
+		if rule.attrs["dst-address-list"] == "collect all youtube ips" {
+			t.Fatalf("%q uses the list of shared Google addresses", comment)
+		}
+		if w := rule.attrs["content"]; w != "" {
+			if rule.attrs["protocol"] != "udp" || rule.attrs["dst-port"] != "53" {
+				t.Fatalf("%q reads more than DNS: %v", comment, rule.attrs)
+			}
+			words = append(words, w)
+		}
+		// Every rule must pass the router session's own check.
+		if why := refusedRouterWrite("/ip/firewall/raw/add", attributeWords(rule.attrs)); why != "" {
+			t.Fatalf("%q would be refused: %s", comment, why)
 		}
 	}
-	if len(desired.warnings) == 0 {
-		t.Fatal("an unenforceable platform must be reported as a warning")
+	for _, name := range []string{"www.youtube.com", "m.youtube.com", "youtu.be", "youtubei.googleapis.com", "youtube.googleapis.com", "r4---sn-abc.googlevideo.com", "i.ytimg.com", "www.youtube-nocookie.com"} {
+		hit := false
+		for _, w := range words {
+			hit = hit || strings.Contains(name, w)
+		}
+		if !hit {
+			t.Errorf("%s is not blocked by %v", name, words)
+		}
+	}
+	for _, name := range []string{"mail.google.com", "gmail.com", "translate.google.com", "translate.googleapis.com", "firebaseinstallations.googleapis.com", "www.googleapis.com", "www.google.com", "drive.google.com", "accounts.google.com"} {
+		for _, w := range words {
+			if strings.Contains(name, w) {
+				t.Errorf("%s must keep working but contains %q", name, w)
+			}
+		}
+	}
+	if desired.raw["nms-marco-aaaaaaaa-dns-tls"].attrs["dst-port"] != "853" || desired.raw["nms-marco-aaaaaaaa-dns-https-tcp"].attrs["dst-address-list"] != marcoEncryptedDNSList {
+		t.Errorf("encrypted DNS must be closed for the group: %v", desired.raw)
+	}
+	if len(desired.warnings) != 0 {
+		t.Fatalf("unexpected warnings: %v", desired.warnings)
+	}
+}
+
+func TestMarcoRawRulesApplyVerifyAndGoAway(t *testing.T) {
+	groups, members := testMarcoGroup(models.MarcoGroupPolicy{BlockedWebsites: []string{"youtube"}})
+	desired := buildMarcoDesiredState(groups, members, marcoOpts())
+	router := newMemRouter()
+	if err := applyMarcoDesiredState(router, desired, &changeJournal{}, true, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := verifyMarcoDesiredState(router, desired, true); err != nil {
+		t.Fatal(err)
+	}
+	if router.count("/ip/firewall/raw", "nms-marco-aaaaaaaa-dns-youtu") != 1 {
+		t.Fatal("the DNS rule is not on the router")
+	}
+	// Taking the block off removes all of it.
+	groups, members = testMarcoGroup(models.MarcoGroupPolicy{InternetEnabled: boolPtr(true)})
+	if err := applyMarcoDesiredState(router, buildMarcoDesiredState(groups, members, marcoOpts()), &changeJournal{}, true, 0); err != nil {
+		t.Fatal(err)
+	}
+	if router.count("/ip/firewall/raw", "nms-marco-aaaaaaaa-dns-youtu") != 0 {
+		t.Fatal("the DNS rule stayed after the block was removed")
 	}
 }
 
 func TestMarcoPlatformBlocksThroughConfiguredRouterList(t *testing.T) {
-	groups, members := testMarcoGroup(models.MarcoGroupPolicy{BlockedWebsites: []string{"youtube"}})
-	opts := marcoBuildOptions{platformLists: map[string]string{"youtube": "collect all youtube ips"}}
+	groups, members := testMarcoGroup(models.MarcoGroupPolicy{BlockedWebsites: []string{"facebook"}})
+	opts := marcoBuildOptions{platformLists: map[string]string{"facebook": "collect all facebook ips"}}
 	desired := buildMarcoDesiredState(groups, members, opts)
 	if err := validateFirewallScope(desired.firewall); err != nil {
 		t.Fatal(err)
@@ -409,7 +471,7 @@ func TestMarcoPlatformBlocksThroughConfiguredRouterList(t *testing.T) {
 
 	var found bool
 	for comment, rule := range desired.firewall {
-		if rule.attrs["dst-address-list"] != "collect all youtube ips" {
+		if rule.attrs["dst-address-list"] != "collect all facebook ips" {
 			continue
 		}
 		found = true

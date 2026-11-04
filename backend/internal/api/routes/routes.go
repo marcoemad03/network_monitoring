@@ -74,7 +74,9 @@ func RegisterRoutes(router *gin.Engine, db *database.DB, hub *websocket.Hub, cfg
 	marcoGroupService.StartFollower(context.Background(), wanRepo.OrgsWithRouter)
 	services.StartLogCleanup(context.Background(), cfg.LogCleanupFiles, cfg.LogKeepDays)
 	topologyService := services.NewTopologyService(internetRepo, cfg)
-	networkMapHandler := handlers.NewNetworkMapHandler(services.NewNetworkMapService(clientInventory, topologyService, clientRepo, monRepo))
+	networkMapService := services.NewNetworkMapService(clientInventory, topologyService, clientRepo, monRepo)
+	networkMapHandler := handlers.NewNetworkMapHandler(networkMapService)
+	assetInventoryHandler := handlers.NewAssetInventoryHandler(services.NewAssetInventoryService(networkMapService, repository.NewAssetInventoryRepository(db)))
 	securityRepo := repository.NewSecurityRepository(db)
 	securityScan := services.NewSecurityScanService(securityRepo, internetRepo, clientInventory, cfg)
 	securityScan.Start(context.Background(), cfg.RouterSecurityScanInterval, wanRepo.OrgsWithRouter)
@@ -155,6 +157,7 @@ func RegisterRoutes(router *gin.Engine, db *database.DB, hub *websocket.Hub, cfg
 	} else {
 		protected.Use(middleware.JWTAuth(cfg))
 	}
+	protected.Use(middleware.AuditTrail(auditRepo))
 	{
 		protected.GET("/auth/me", authHandler.GetCurrentUser)
 
@@ -429,6 +432,13 @@ func RegisterRoutes(router *gin.Engine, db *database.DB, hub *websocket.Hub, cfg
 			floorMaps.DELETE("/:id/devices/:deviceId", assetHandler.RemoveDeviceFromMap)
 		}
 
+		inventory := protected.Group("/inventory")
+		{
+			inventory.GET("", assetInventoryHandler.Get)
+			inventory.POST("/scan", assetInventoryHandler.Scan)
+			inventory.GET("/export", assetInventoryHandler.Export)
+		}
+
 		assetDetails := protected.Group("/assets")
 		{
 			assetDetails.GET("", assetHandler.ListAssetDetails)
@@ -495,6 +505,7 @@ func RegisterRoutes(router *gin.Engine, db *database.DB, hub *websocket.Hub, cfg
 			marco.DELETE("/groups/:id/members/:deviceId", marcoGroupHandler.RemoveMember)
 			marco.PUT("/groups/:id/policy", marcoGroupHandler.UpdatePolicy)
 			marco.POST("/sync", marcoGroupHandler.Sync)
+			marco.POST("/terminal", marcoGroupHandler.RunTerminal)
 			marco.GET("/logs", marcoGroupHandler.ListLogs)
 			marco.GET("/groups/:id/details", marcoGroupHandler.Details)
 			marco.GET("/sites/catalog", marcoGroupHandler.Catalog)

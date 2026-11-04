@@ -73,6 +73,7 @@ func TestSessionRefusesEverythingThatReadsPacketContents(t *testing.T) {
 			{"/ip/firewall/filter/add", "=layer7-protocol=x"},
 			{"/ip/firewall/filter/set", "=tls-host=*youtube*"},
 			{"/ip/firewall/mangle/add", "=content=youtube"},
+			{"/ip/firewall/raw/add", "=content=youtube"},
 			{"/ip/firewall/layer7-protocol/add", "=name=x"},
 			{"/ip/firewall/layer7-protocol/set", "=regexp=.*"},
 		} {
@@ -91,6 +92,12 @@ func TestSessionRefusesEverythingThatReadsPacketContents(t *testing.T) {
 		}
 		if _, err := sess.Command("/ip/firewall/filter/add", "=action=drop", "=src-address-list=s"); err != nil {
 			t.Errorf("an ordinary rule was refused: %v", err)
+		}
+		if _, err := sess.Command("/ip/firewall/raw/add", "=protocol=udp", "=dst-port=53", "=content=youtu"); err != nil {
+			t.Errorf("a word match on DNS questions was refused: %v", err)
+		}
+		if _, err := sess.Command("/ip/firewall/raw/add", "=protocol=tcp", "=dst-port=443", "=content=youtu"); err == nil {
+			t.Error("a word match on web traffic must be refused")
 		}
 		if _, err := sess.Command("/ip/firewall/layer7-protocol/print"); err != nil {
 			t.Errorf("reading was refused: %v", err)
@@ -119,7 +126,7 @@ func TestDeadmanRunsFiveMinutesLaterOnTheRoutersClockAndOnlyTouchesItsOwn(t *tes
 	if !strings.Contains(words, "=start-date=nov/04/2026") || !strings.Contains(words, "=start-time=00:03:30") {
 		t.Errorf("start = %s", words)
 	}
-	if strings.Count(deadmanScript, " remove ") != 3 || strings.Count(deadmanScript, `comment~"^nms-marco-"`) != 2 || !strings.Contains(deadmanScript, `name="`+deadmanName+`"`) {
+	if strings.Count(deadmanScript, " remove ") != 4 || strings.Count(deadmanScript, `comment~"^nms-marco-"`) != 3 || !strings.Contains(deadmanScript, `name="`+deadmanName+`"`) {
 		t.Errorf("the job must remove only nms-marco rules, queues and itself: %s", deadmanScript)
 	}
 }

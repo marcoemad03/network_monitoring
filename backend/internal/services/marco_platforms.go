@@ -31,7 +31,7 @@ var MarcoPlatforms = []models.PlatformDefinition{
 		// No IPRanges on purpose: YouTube shares Google frontends with Gmail and
 		// Search, so an address list of Google ranges blocks them too. tls-host
 		// matching was tried and does not match modern browsers on RouterOS 6.
-		// Enforce it through ROUTER_PLATFORM_DST_LISTS (an existing address-list).
+		// It is blocked by name in DNS instead, see dnsBlockedPlatforms.
 	},
 	{
 		Key:      "facebook",
@@ -123,6 +123,23 @@ var MarcoPlatforms = []models.PlatformDefinition{
 		Domains:  []string{"copilot.microsoft.com", "githubcopilot.com", "microsoftcopilot.com", "copilot.com"},
 		IPRanges: []string{},
 	},
+}
+
+// dnsBlockedPlatforms are blocked by dropping the group's DNS questions that contain
+// these words, in the raw table so it happens before the hotspot redirects DNS. A
+// phone that cannot look up a name cannot open the site or the app, whatever it uses
+// to connect, and names like mail.google.com are not asked about. It reads only small
+// DNS packets from the group's devices, unlike layer7, which reads web traffic.
+var dnsBlockedPlatforms = map[string][]string{
+	"youtube": {"youtu", "googlevideo", "ytimg"},
+}
+
+// Public resolvers that answer over HTTPS or TLS, where DNS questions cannot be read.
+// The group's devices are kept off these ports so they ask in the open. Phones and
+// browsers fall back on their own, unless a phone is set to one private DNS server.
+var encryptedDNSServers = []string{
+	"8.8.8.8", "8.8.4.4", "1.1.1.1", "1.0.0.1", "9.9.9.9", "149.112.112.112",
+	"208.67.222.222", "208.67.220.220", "94.140.14.14", "94.140.15.15",
 }
 
 var marcoPlatformByKey = func() map[string]models.PlatformDefinition {

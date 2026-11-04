@@ -44,6 +44,7 @@ class RouteNames {
   static const String assetGroups = '/asset/groups';
   static String assetGroupDetail(String id) => '/asset/groups/$id';
   static const String marcoGroups = '/marco-groups';
+  static const String routerTerminal = '/marco-groups/terminal';
   static String marcoGroupDetail(String id) => '/marco-groups/$id';
   static const String floorMaps = '/asset/floor-maps';
   static String floorMapDetail(String id) => '/asset/floor-maps/$id';

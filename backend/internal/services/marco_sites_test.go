@@ -260,14 +260,14 @@ func TestSiteBlockingBuildsListRuleAndAllowRule(t *testing.T) {
 }
 
 func TestPlatformBlockedByRouterListGetsAllowRuleToo(t *testing.T) {
-	groups := groupWith(models.MarcoGroupPolicy{BlockedWebsites: []string{"youtube"}})
-	opts := marcoBuildOptions{platformLists: map[string]string{"youtube": "collect all youtube ips"}, allowIPs: []string{"172.217.115.4"}}
+	groups := groupWith(models.MarcoGroupPolicy{BlockedWebsites: []string{"facebook"}})
+	opts := marcoBuildOptions{platformLists: map[string]string{"facebook": "collect all facebook ips"}, allowIPs: []string{"172.217.115.4"}}
 	d := buildMarcoDesiredState(groups, membersOf(member(d1, "AA:AA:AA:00:00:01", "172.16.0.10")), opts)
-	if d.firewall["nms-marco-aaaaaaaa-plat-youtube"].attrs["dst-address-list"] != "collect all youtube ips" {
-		t.Errorf("youtube rule missing: %+v", d.firewall)
+	if d.firewall["nms-marco-aaaaaaaa-plat-facebook"].attrs["dst-address-list"] != "collect all facebook ips" {
+		t.Errorf("facebook rule missing: %+v", d.firewall)
 	}
 	if d.firewall["nms-marco-aaaaaaaa-allow"].attrs["action"] != "accept" {
-		t.Errorf("Firebase and Translate need an allow rule: %+v", d.firewall)
+		t.Errorf("services on shared addresses need an allow rule: %+v", d.firewall)
 	}
 }
 
