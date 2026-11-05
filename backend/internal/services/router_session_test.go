@@ -462,8 +462,8 @@ func TestMarcoRawRulesApplyVerifyAndGoAway(t *testing.T) {
 }
 
 func TestMarcoPlatformBlocksThroughConfiguredRouterList(t *testing.T) {
-	groups, members := testMarcoGroup(models.MarcoGroupPolicy{BlockedWebsites: []string{"facebook"}})
-	opts := marcoBuildOptions{platformLists: map[string]string{"facebook": "collect all facebook ips"}}
+	groups, members := testMarcoGroup(models.MarcoGroupPolicy{BlockedWebsites: []string{"telegram"}})
+	opts := marcoBuildOptions{platformLists: map[string]string{"telegram": "collect all telegram ips"}}
 	desired := buildMarcoDesiredState(groups, members, opts)
 	if err := validateFirewallScope(desired.firewall); err != nil {
 		t.Fatal(err)
@@ -471,7 +471,7 @@ func TestMarcoPlatformBlocksThroughConfiguredRouterList(t *testing.T) {
 
 	var found bool
 	for comment, rule := range desired.firewall {
-		if rule.attrs["dst-address-list"] != "collect all facebook ips" {
+		if rule.attrs["dst-address-list"] != "collect all telegram ips" {
 			continue
 		}
 		found = true

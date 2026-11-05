@@ -354,7 +354,7 @@ func (s *MarcoGroupService) siteLines(orgID uuid.UUID, p models.MarcoGroupPolicy
 		def := marcoPlatformByKey[key]
 		line := SiteLine{Target: key, Kind: "platform", Label: def.Label, Status: "blocked"}
 		if len(dnsBlockedPlatforms[key]) > 0 {
-			line.Detail = "Blocked by name, in the app and the website. Gmail, Translate and other Google services keep working."
+			line.Detail = "Blocked by name, in the app and the website. Other services on the same addresses keep working, such as Gmail or WhatsApp."
 		} else if len(def.IPRanges) == 0 && s.cfg.RouterPlatformDstLists[key] == "" && !s.cfg.RouterEnableLayer7 {
 			line.Status, line.Detail = "cannot", "This service cannot be blocked with this router setup."
 		} else if s.cfg.RouterPlatformDstLists[key] != "" {

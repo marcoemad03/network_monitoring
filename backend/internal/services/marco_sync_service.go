@@ -376,9 +376,23 @@ func buildMarcoDesiredState(groups []models.MarcoGroup, membersByGroup map[uuid.
 		// member, so every drop rule references a non-empty address list.
 		needsSrcList := (!internetEnabled || hasSchedule || len(platforms) > 0 || len(siteAddrs) > 0) && len(members) > 0
 		if needsSrcList {
+			// An old device row can still hold the address another device now uses. The
+			// router refuses a second entry for one address, which would fail the whole
+			// sync, so the lowest device ID keeps it and the choice stays the same.
+			owners := map[string]string{}
 			for _, m := range members {
+				address, id := hostCIDR(m.IPAddress), m.DeviceID.String()
+				if cur, ok := owners[address]; !ok || id < cur {
+					owners[address] = id
+				}
+			}
+			for _, m := range members {
+				address := hostCIDR(m.IPAddress)
+				if owners[address] != m.DeviceID.String() {
+					continue
+				}
 				comment := fmt.Sprintf("%s%s-%s", marcoSrcListPrefix, g8, marcoShortID(m.DeviceID))
-				d.addAddress(comment, srcList, hostCIDR(m.IPAddress))
+				d.addAddress(comment, srcList, address)
 			}
 		}
 

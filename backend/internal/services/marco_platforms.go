@@ -132,6 +132,10 @@ var MarcoPlatforms = []models.PlatformDefinition{
 // DNS packets from the group's devices, unlike layer7, which reads web traffic.
 var dnsBlockedPlatforms = map[string][]string{
 	"youtube": {"youtu", "googlevideo", "ytimg"},
+	// Meta's address ranges also carry WhatsApp, so these two must not be blocked by address.
+	"facebook":  {"facebook", "fbcdn", "fbsbx"},
+	"instagram": {"instagram"},
+	"tiktok":    {"tiktok", "byteoversea", "ibytedtos", "ibyteimg"},
 }
 
 // Public resolvers that answer over HTTPS or TLS, where DNS questions cannot be read.

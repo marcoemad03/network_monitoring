@@ -31,6 +31,8 @@ A layer7 rule (with a drop of udp 443) for two devices was synced at 10:51:39. T
 ## How YouTube is blocked
 YouTube shares Google's addresses with Gmail and Translate, so it is never blocked by address. For the group's devices the raw table drops DNS questions (udp 53) containing `youtu`, `googlevideo` or `ytimg`, and closes DNS over TLS (tcp 853) and the HTTPS ports of public DNS servers so the devices ask in the open. This is the one payload match allowed: a word search on small DNS packets from those devices only. It does not stop a phone with its own Private DNS hostname set or a VPN, and a device keeps what it already looked up for a few minutes.
 
+Facebook, Instagram and TikTok use the same DNS block, because Meta's address ranges also carry WhatsApp. This closes their websites but not their apps: on one iPhone the apps kept working even with the router's collected address lists blocked as well. Blocking the apps needs a firewall that reads site names; layer7 on this router is not an option.
+
 ## Router terminal in the app
 Marco groups > the terminal icon. It reads RouterOS lines and carries them out over the API: `print`, `remove`, `enable` and `disable` only, and it cannot add rules, reboot or reset. Changes must use `[find where ...]`, are limited to firewall, queue and DNS-static tables (scheduler: remove only), show what matched and wait for a yes. Each is written to the Marco log. It needs the NMS server running; when the server cannot reach the router, use `marco-remove.exe` or WinBox.
 
@@ -73,3 +75,21 @@ Everything the NMS ever created, including the legacy engine:
 
 ## Write account
 Use a dedicated RouterOS user (policy `read,write,api`, restricted with `address=<server ip>/32`) for writes and a read-only one (`read,api`) while previewing.
+
+## Wi-Fi page: going back
+The hotspot page and its login settings are not named `nms-marco-`, so `marco-remove.exe` and the commands above do not touch them. In WinBox New Terminal:
+```
+/ip hotspot profile set hsprof1 html-directory=hotspot login-by=mac,cookie,http-chap http-cookie-lifetime=3d
+/ip hotspot user set [find name="p-98:60:CA:A3:CD:B8"] name="98:60:CA:A3:CD:B8"
+```
+The first line brings the old page and settings back for everyone. The second gives one phone its old login by MAC; repeat it for each phone moved to the page. `backend/cmd/hotspot-page` does the same with `disable` and `unphone <MAC>`.
+
+To give every moved phone its login by MAC back at once:
+```
+:foreach u in=[/ip hotspot user find where name~"^p-"] do={ :local n [/ip hotspot user get $u name]; /ip hotspot user set $u name=[:pick $n 2 [:len $n]] }
+```
+
+To stop the page coming back each morning at 6:
+```
+/system scheduler remove [find where name="hospital-page-daily"]
+```

@@ -260,11 +260,11 @@ func TestSiteBlockingBuildsListRuleAndAllowRule(t *testing.T) {
 }
 
 func TestPlatformBlockedByRouterListGetsAllowRuleToo(t *testing.T) {
-	groups := groupWith(models.MarcoGroupPolicy{BlockedWebsites: []string{"facebook"}})
-	opts := marcoBuildOptions{platformLists: map[string]string{"facebook": "collect all facebook ips"}, allowIPs: []string{"172.217.115.4"}}
+	groups := groupWith(models.MarcoGroupPolicy{BlockedWebsites: []string{"telegram"}})
+	opts := marcoBuildOptions{platformLists: map[string]string{"telegram": "collect all telegram ips"}, allowIPs: []string{"172.217.115.4"}}
 	d := buildMarcoDesiredState(groups, membersOf(member(d1, "AA:AA:AA:00:00:01", "172.16.0.10")), opts)
-	if d.firewall["nms-marco-aaaaaaaa-plat-facebook"].attrs["dst-address-list"] != "collect all facebook ips" {
-		t.Errorf("facebook rule missing: %+v", d.firewall)
+	if d.firewall["nms-marco-aaaaaaaa-plat-telegram"].attrs["dst-address-list"] != "collect all telegram ips" {
+		t.Errorf("telegram rule missing: %+v", d.firewall)
 	}
 	if d.firewall["nms-marco-aaaaaaaa-allow"].attrs["action"] != "accept" {
 		t.Errorf("services on shared addresses need an allow rule: %+v", d.firewall)
@@ -493,5 +493,43 @@ func TestSoftApplyAddsNewRulesButLeavesManyOldOnesAlone(t *testing.T) {
 	}
 	if removed != 70 {
 		t.Errorf("confirmed removal took out %d entries, want 70", removed)
+	}
+}
+
+func TestTwoMembersWithOneAddressGetOneEntry(t *testing.T) {
+	groups := groupWith(models.MarcoGroupPolicy{BlockedWebsites: []string{"youtube"}})
+	low, high := uuid.MustParse("1a67804b-0000-0000-0000-000000000000"), uuid.MustParse("87cb2701-0000-0000-0000-000000000000")
+	members := membersOf(member(high, "AA:AA:AA:00:00:01", "172.16.0.220"), member(low, "AA:AA:AA:00:00:02", "172.16.0.220"))
+	d := buildMarcoDesiredState(groups, members, marcoBuildOptions{})
+
+	var comments []string
+	for comment, e := range d.addrLists {
+		if e.attrs["address"] == "172.16.0.220/32" {
+			comments = append(comments, comment)
+		}
+	}
+	if len(comments) != 1 || comments[0] != "nms-marco-src-aaaaaaaa-1a67804b" {
+		t.Errorf("entries for the address = %v, want only the lowest device ID", comments)
+	}
+}
+
+func TestMetaAndTikTokAreBlockedByNameNotAddress(t *testing.T) {
+	groups := groupWith(models.MarcoGroupPolicy{BlockedWebsites: []string{"facebook", "instagram", "tiktok"}})
+	d := buildMarcoDesiredState(groups, membersOf(member(d1, "AA:AA:AA:00:00:01", "172.16.0.10")), marcoBuildOptions{})
+
+	for _, word := range []string{"facebook", "fbcdn", "fbsbx", "instagram", "tiktok", "byteoversea", "ibytedtos", "ibyteimg"} {
+		if rule, ok := d.raw["nms-marco-aaaaaaaa-dns-"+word]; !ok || rule.attrs["content"] != word || rule.attrs["dst-port"] != "53" {
+			t.Errorf("no DNS rule for %q", word)
+		}
+	}
+	for comment := range d.firewall {
+		if strings.Contains(comment, "-plat-") {
+			t.Errorf("address rule %s would also cut WhatsApp", comment)
+		}
+	}
+	for comment, e := range d.addrLists {
+		if e.attrs["address"] == "157.240.0.0/16" {
+			t.Errorf("Meta range listed by %s", comment)
+		}
 	}
 }

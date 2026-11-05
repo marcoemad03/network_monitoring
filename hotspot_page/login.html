@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="pragma" content="no-cache">
+<meta http-equiv="expires" content="-1">
+<title>مستشفى هرمل التذكاري</title>
+<style>
+*{box-sizing:border-box;margin:0}
+html,body{height:100%}
+body{display:flex;align-items:center;justify-content:center;padding:20px;background:#f3f6fb;color:#16243d;font-family:"Segoe UI",Tahoma,"Noto Naskh Arabic",Arial,sans-serif}
+.card{width:100%;max-width:420px;padding:32px 26px 26px;background:#fff;border-radius:22px;box-shadow:0 10px 34px rgba(13,79,156,.12);text-align:center}
+.logo{display:block;width:124px;height:124px;margin:0 auto 14px}
+h1{font-size:22px;line-height:1.45;font-weight:700;color:#0d4f9c}
+.city{display:block;font-size:16px;font-weight:600;color:#47597a;margin-top:2px}
+.verse{margin:22px 0;padding:16px 14px;background:#fdf3f3;border-radius:14px;font-size:21px;line-height:1.7;font-weight:600;color:#a81c22}
+.verse small{display:block;margin-top:2px;font-size:13px;font-weight:500;color:#7a5b5d}
+.greet{font-size:16px;line-height:1.8;color:#2c3c58}
+.greet b{display:block;font-size:20px;color:#16243d}
+.go{display:block;min-height:50px;margin-top:24px;padding:14px;background:#0d4f9c;border-radius:14px;color:#fff;font-size:17px;font-weight:700;text-decoration:none}
+.go:active{background:#0a3f7d}
+.go:focus-visible{outline:3px solid #e2232a;outline-offset:2px}
+.err{margin-top:14px;padding:10px;background:#fdecec;border-radius:10px;color:#a81c22;font-size:14px}
+.dev{margin-top:18px;font-size:6px;color:#6b7a94}
+</style>
+</head>
+<body>
+<main class="card">
+<img class="logo" src="logo.png" alt="شعار مستشفى هرمل التذكاري">
+<h1>مستشفى هرمل التذكاري<span class="city">مدينة السادات</span></h1>
+<p class="verse">«الَّذِي بِجَلْدَتِهِ شُفِيتُمْ»<small>(1 بطرس 2: 24)</small></p>
+<p class="greet"><b>صباح الخير</b>فريق تكنولوجيا المعلومات بمستشفى هرمل يتمنى لك يوم عمل جميل</p>
+<a class="go" href="$(link-login-only)?dst=$(link-orig-esc)&amp;username=p-$(mac-esc)&amp;password=">الدخول إلى الإنترنت</a>
+$(if error)<p class="err">$(error)</p>$(endif)
+<p class="dev" dir="ltr">development by marco emad</p>
+</main>
+</body>
+</html>
