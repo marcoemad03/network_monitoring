@@ -99,7 +99,9 @@ type Config struct {
 	// RouterWANInterface overrides the internet interface otherwise detected from
 	// the default route. RouterTelemetryInterval is how often the router is read
 	// for speed and usage (0 disables it).
-	RouterWANInterface      string
+	RouterWANInterface string
+	// RouterLANInterface carries the Meta speed limit; the hotspot's interface when empty.
+	RouterLANInterface      string
 	RouterTelemetryInterval time.Duration
 	// RouterClientPollInterval is how often the router is read for the device
 	// inventory and per-device usage (0 disables it).
@@ -253,6 +255,7 @@ func Load(cliPort int) (*Config, error) {
 	cfg.RouterLegacyPolicyWrites = getEnvBool("ROUTER_LEGACY_POLICY_WRITES", false)
 	cfg.RouterPlatformDstLists = parseKeyValueList(getEnv("ROUTER_PLATFORM_DST_LISTS", ""))
 	cfg.RouterWANInterface = strings.TrimSpace(getEnv("ROUTER_WAN_INTERFACE", ""))
+	cfg.RouterLANInterface = strings.TrimSpace(getEnv("ROUTER_LAN_INTERFACE", ""))
 	telemetryInterval, err := time.ParseDuration(getEnv("ROUTER_TELEMETRY_INTERVAL", "15s"))
 	if err != nil {
 		return nil, fmt.Errorf("invalid ROUTER_TELEMETRY_INTERVAL: %w", err)

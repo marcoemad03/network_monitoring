@@ -6,6 +6,9 @@ import '../../providers/marco/marco_provider.dart';
 const _removeAll = '''/ip firewall raw remove [find where comment~"^nms-marco-"]
 /ip firewall filter remove [find where comment~"^nms-marco-"]
 /queue simple remove [find where comment~"^nms-marco-"]
+/ip firewall mangle remove [find where comment~"^nms-marco-"]
+/queue tree remove [find where comment~"^nms-marco-"]
+/queue type remove [find where name~"^nms-marco-"]
 /ip firewall address-list remove [find where comment~"^nms-marco-"]
 /ip firewall layer7-protocol remove [find where name~"^nms-marco-"]
 /system scheduler remove [find where name="nms-marco-deadman"]''';

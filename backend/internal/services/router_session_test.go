@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"strings"
 	"testing"
@@ -489,5 +490,61 @@ func TestMarcoPlatformBlocksThroughConfiguredRouterList(t *testing.T) {
 	}
 	if len(desired.warnings) != 0 {
 		t.Fatalf("unexpected warnings: %v", desired.warnings)
+	}
+}
+
+// uniqueAddrRouter refuses a second entry for one address in a list, as RouterOS does.
+type uniqueAddrRouter struct{ *memRouter }
+
+func (u uniqueAddrRouter) Command(path string, words ...string) ([]map[string]string, error) {
+	const table = "/ip/firewall/address-list"
+	if path == table+"/add" || path == table+"/set" {
+		a := parseAttrs(words)
+		for _, e := range u.tables[table] {
+			if e[".id"] != a[".id"] && e["list"] == a["list"] && trimHostMask(e["address"]) == trimHostMask(a["address"]) {
+				return nil, fmt.Errorf("failure: already have such entry")
+			}
+		}
+	}
+	return u.memRouter.Command(path, words...)
+}
+
+func TestAddressesThatChangeHandsDoNotFailTheSync(t *testing.T) {
+	const table = "/ip/firewall/address-list"
+	entry := func(comment, address string) desiredRouterEntry {
+		return desiredRouterEntry{path: table, attrs: map[string]string{"list": "nms-marco-src-g", "address": address, "comment": comment, "disabled": "no"}}
+	}
+	router := uniqueAddrRouter{newMemRouter()}
+	router.tables[table] = []map[string]string{
+		{".id": "*A", "list": "nms-marco-src-g", "address": "172.16.0.1", "comment": "nms-marco-src-g-a"},
+		{".id": "*B", "list": "nms-marco-src-g", "address": "172.16.0.2", "comment": "nms-marco-src-g-b"},
+		{".id": "*C", "list": "nms-marco-src-g", "address": "172.16.0.3", "comment": "nms-marco-src-g-old1"},
+		{".id": "*D", "list": "nms-marco-src-g", "address": "172.16.0.4", "comment": "nms-marco-src-g-old2"},
+	}
+	desired := marcoDesiredState{
+		firewall: map[string]desiredRouterEntry{}, queues: map[string]desiredRouterEntry{}, layer7: map[string]desiredRouterEntry{}, raw: map[string]desiredRouterEntry{},
+		addrLists: map[string]desiredRouterEntry{
+			// a and b swap addresses; new takes the address of an entry left for later.
+			"nms-marco-src-g-a":   entry("nms-marco-src-g-a", "172.16.0.2/32"),
+			"nms-marco-src-g-b":   entry("nms-marco-src-g-b", "172.16.0.1/32"),
+			"nms-marco-src-g-new": entry("nms-marco-src-g-new", "172.16.0.3/32"),
+		},
+	}
+	// A limit of 1 removal leaves old1 and old2 in place, as a big deleted group does.
+	if _, err := applyMarcoCore(router, desired, &changeJournal{}, true, 1, true); err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, e := range router.tables[table] {
+		got[e["comment"]] = trimHostMask(e["address"])
+	}
+	want := map[string]string{"nms-marco-src-g-a": "172.16.0.2", "nms-marco-src-g-b": "172.16.0.1", "nms-marco-src-g-new": "172.16.0.3", "nms-marco-src-g-old2": "172.16.0.4"}
+	if len(got) != len(want) {
+		t.Fatalf("list = %v, want %v", got, want)
+	}
+	for c, a := range want {
+		if got[c] != a {
+			t.Errorf("%s = %q, want %q (list %v)", c, got[c], a, got)
+		}
 	}
 }

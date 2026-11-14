@@ -33,3 +33,16 @@ final marcoGroupByMacMapProvider = Provider<Map<String, MarcoGroup>>((ref) {
         if ((m.macAddress ?? '').isNotEmpty) m.macAddress!.toUpperCase(): g,
   };
 });
+
+/// Every group each device is in; a device can be in several.
+final marcoGroupsByMacProvider = Provider<Map<String, List<MarcoGroup>>>((ref) {
+  final groups = ref.watch(marcoGroupsProvider).valueOrNull?.groups ?? const <MarcoGroup>[];
+  final out = <String, List<MarcoGroup>>{};
+  for (final g in groups) {
+    for (final m in g.members) {
+      final mac = (m.macAddress ?? '').toUpperCase();
+      if (mac.isNotEmpty) out.putIfAbsent(mac, () => []).add(g);
+    }
+  }
+  return out;
+});

@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"github.com/hospital/nms-backend/pkg/logger"
 	"strconv"
 	"strings"
 	"time"
@@ -20,6 +21,10 @@ import (
 const (
 	deadmanName  = "nms-marco-deadman"
 	deadmanAfter = 5 * time.Minute
+	// A big change on a busy router can take minutes to apply; the timer gets this much
+	// more per change, so it does not undo a change that is still being made.
+	deadmanPerChange = 2 * time.Second
+	deadmanMax       = 30 * time.Minute
 
 	watchRounds  = 6
 	watchEvery   = 5 * time.Second
@@ -30,10 +35,15 @@ const deadmanScript = `:log warning "NMS: change not confirmed, removing nms-mar
 	`/ip firewall raw remove [find where comment~"^nms-marco-"]; ` +
 	`/ip firewall filter remove [find where comment~"^nms-marco-"]; ` +
 	`/queue simple remove [find where comment~"^nms-marco-"]; ` +
+	`/ip firewall mangle remove [find where comment~"^nms-marco-"]; ` +
+	`/queue tree remove [find where comment~"^nms-marco-"]; ` +
 	`/system scheduler remove [find where name="` + deadmanName + `"]`
 
 // armDeadman sets the job to run deadmanAfter from now on the router's own clock.
-func armDeadman(conn routerCommander) error {
+func armDeadman(conn routerCommander) error { return armDeadmanIn(conn, deadmanAfter) }
+
+// armDeadmanIn sets the job to run after the given time on the router's own clock.
+func armDeadmanIn(conn routerCommander, after time.Duration) error {
 	rows, err := conn.Command("/system/clock/print")
 	if err != nil {
 		return fmt.Errorf("read router clock: %w", err)
@@ -48,7 +58,7 @@ func armDeadman(conn routerCommander) error {
 	if err := disarmDeadman(conn); err != nil {
 		return err
 	}
-	at := now.Add(deadmanAfter)
+	at := now.Add(after)
 	_, err = conn.Command("/system/scheduler/add", "=name="+deadmanName,
 		"=start-date="+strings.ToLower(at.Format("Jan/02/2006")), "=start-time="+at.Format("15:04:05"),
 		"=interval=5m", "=policy=read,write", "=on-event="+deadmanScript)
@@ -130,7 +140,11 @@ func (s *MarcoSyncService) applyGuarded(ctx context.Context, orgID uuid.UUID, ve
 				return 0, fmt.Errorf("read router load, nothing was changed: %w", err)
 			}
 			cpuBefore = cpu
-			if err := armDeadman(sess.inner); err != nil {
+			budget := deadmanAfter + time.Duration(len(plan.Planned()))*deadmanPerChange
+			if budget > deadmanMax {
+				budget = deadmanMax
+			}
+			if err := armDeadmanIn(sess.inner, budget); err != nil {
 				return 0, fmt.Errorf("set the safety timer, nothing was changed: %w", err)
 			}
 			armed = true
@@ -169,6 +183,12 @@ func (s *MarcoSyncService) applyGuarded(ctx context.Context, orgID uuid.UUID, ve
 	if err := disarmDeadman(sess.inner); err != nil {
 		if err = disarmDeadman(sess.inner); err != nil {
 			return 0, fmt.Errorf("the safety timer could not be cancelled, so the router removes the nms-marco rules within %s: %w", deadmanAfter, err)
+		}
+	}
+	// Old queue types go only now: a change that is undone puts its trees back on them.
+	if s.cfg.RouterPruneStale && skipped == 0 {
+		if err := removeUnusedQueueTypes(sess.inner, desired.queueTypes); err != nil {
+			logger.Warn("Marco sync: old queue types not removed", "error", err)
 		}
 	}
 	return skipped, nil

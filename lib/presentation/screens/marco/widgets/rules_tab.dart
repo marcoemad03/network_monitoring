@@ -20,10 +20,12 @@ class _RulesTabState extends State<RulesTab> {
   late bool _internet;
   late bool _limit;
   late bool _schedule;
+  late bool _meta;
   late final TextEditingController _down = TextEditingController();
   late final TextEditingController _up = TextEditingController();
   late final TextEditingController _daily = TextEditingController();
   late final TextEditingController _monthly = TextEditingController();
+  late final TextEditingController _metaKbps = TextEditingController();
   TimeOfDay? _start;
   TimeOfDay? _end;
   final Set<String> _days = {};
@@ -64,6 +66,8 @@ class _RulesTabState extends State<RulesTab> {
     _up.text = _num(p['upload_limit_mbps']);
     _daily.text = _num(p['daily_quota_gb']);
     _monthly.text = _num(p['monthly_quota_gb']);
+    _meta = p['meta_speed_kbps'] != null;
+    _metaKbps.text = _num(p['meta_speed_kbps'] ?? 256);
     _start = _parse(p['schedule_start_time']);
     _end = _parse(p['schedule_end_time']);
     _schedule = _start != null && _end != null;
@@ -78,7 +82,7 @@ class _RulesTabState extends State<RulesTab> {
 
   @override
   void dispose() {
-    for (final c in [_down, _up, _daily, _monthly]) {
+    for (final c in [_down, _up, _daily, _monthly, _metaKbps]) {
       c.dispose();
     }
     super.dispose();
@@ -93,6 +97,11 @@ class _RulesTabState extends State<RulesTab> {
     }
     if (_schedule && (_start == null || _end == null)) {
       _error = 'Choose both times for the schedule.';
+      return null;
+    }
+    final metaKbps = int.tryParse(_metaKbps.text.trim());
+    if (_meta && (metaKbps == null || metaKbps < 16 || metaKbps > 100000)) {
+      _error = 'Type the Meta speed as a whole number of kbps, from 16 to 100000.';
       return null;
     }
     for (final c in [_down, _up, _daily, _monthly]) {
@@ -117,6 +126,7 @@ class _RulesTabState extends State<RulesTab> {
     put('daily_quota_gb', _d(_daily));
     put('monthly_quota_gb', _d(_monthly));
     put('qos_priority', _qos);
+    put('meta_speed_kbps', _meta ? metaKbps : null);
     put('schedule_start_time', _schedule ? _fmt(_start!) : null);
     put('schedule_end_time', _schedule ? _fmt(_end!) : null);
     put('schedule_days', _schedule ? (_days.toList()..sort((a, b) => _dayKeys.indexOf(a).compareTo(_dayKeys.indexOf(b)))) : null);
@@ -124,7 +134,7 @@ class _RulesTabState extends State<RulesTab> {
   }
 
   /// Everything the draft holds, so a change is noticed even before it is valid.
-  String _signature() => [_internet, _limit, _down.text.trim(), _up.text.trim(), _daily.text.trim(), _monthly.text.trim(), _schedule, _start, _end, (_days.toList()..sort()).join(','), _qos].join('|');
+  String _signature() => [_internet, _limit, _down.text.trim(), _up.text.trim(), _daily.text.trim(), _monthly.text.trim(), _meta, _metaKbps.text.trim(), _schedule, _start, _end, (_days.toList()..sort()).join(','), _qos].join('|');
 
   bool get _dirty => _signature() != _loadedSig;
 
@@ -214,6 +224,25 @@ class _RulesTabState extends State<RulesTab> {
                       ],
                       onChanged: (v) => setState(() => _qos = v),
                     ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+            card(
+              icon: Icons.slow_motion_video,
+              title: 'تحديد سرعة ميتا',
+              subtitle: "Facebook, Instagram and WhatsApp share Meta's servers, so the apps cannot be blocked without WhatsApp. This slows the download from Meta for each device: WhatsApp messages and voice notes still work, video does not play well.",
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SwitchListTile(contentPadding: EdgeInsets.zero, title: const Text('Limit the speed from Meta for each device'), value: _meta, onChanged: (v) => setState(() => _meta = v)),
+                  if (_meta) ...[
+                    Wrap(spacing: 8, children: [for (final k in const [128, 256, 512, 1024]) ActionChip(label: Text('$k kbps'), onPressed: () => setState(() => _metaKbps.text = '$k'))]),
+                    const SizedBox(height: 10),
+                    _field(_metaKbps, 'Download from Meta (kbps)'),
+                    const SizedBox(height: 6),
+                    Text("256 kbps keeps WhatsApp messages and calls usable. Some Facebook video comes from the internet provider's own servers and is not slowed.", style: theme.textTheme.bodySmall),
                   ],
                 ],
               ),

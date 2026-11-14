@@ -157,19 +157,19 @@ func (s *MarcoQuotaService) enforceOrg(ctx context.Context, orgID uuid.UUID) {
 			}
 
 			ruleComment := marcoQuotaPrefix + d8
-			if blocked {
+			// A device in several groups is blocked when any of them says so; the rule of
+			// a device no group blocks is removed after the loop.
+			if blocked && !overQuota[ruleComment] {
 				if _, exists := quotaRules[ruleComment]; !exists {
 					s.ensureQuotaRule(conn, ruleComment, mac)
 				}
 				overQuota[ruleComment] = true
-			} else if e, exists := quotaRules[ruleComment]; exists {
-				_, _ = conn.Command("/ip/firewall/filter/remove", "=.id="+e[".id"])
 			}
 			s.logTransition(orgID, g.ID, m.DeviceID, ruleComment, mac, m.DeviceName, blocked, conn.DryRun())
 		}
 	}
 
-	// Remove block rules of devices that left quota-managed groups.
+	// Remove block rules of devices no group blocks any more.
 	for comment, e := range quotaRules {
 		if !overQuota[comment] {
 			_, _ = conn.Command("/ip/firewall/filter/remove", "=.id="+e[".id"])

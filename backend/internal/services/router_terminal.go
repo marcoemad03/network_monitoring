@@ -46,7 +46,7 @@ const terminalMaxRows = 300
 var terminalWritable = map[string]bool{
 	"/ip/firewall/filter": true, "/ip/firewall/nat": true, "/ip/firewall/mangle": true, "/ip/firewall/raw": true,
 	"/ip/firewall/address-list": true, "/ip/firewall/layer7-protocol": true,
-	"/queue/simple": true, "/queue/tree": true, "/ip/dns/static": true,
+	"/queue/simple": true, "/queue/tree": true, "/queue/type": true, "/ip/dns/static": true,
 	"/system/scheduler": true,
 }
 

@@ -154,13 +154,13 @@ class _MemberDetailDialogState extends ConsumerState<MemberDetailDialog> {
                   if (others.isNotEmpty)
                     PopupMenuButton<MarcoGroup>(
                       enabled: !_busy,
-                      tooltip: 'Move to another group',
-                      onSelected: (g) => _run(() => ref.read(marcoGroupsProvider.notifier).assignDevice(g.id, m.mac), 'Moved to ${g.name}'),
+                      tooltip: 'Add to another group too; it stays in this one',
+                      onSelected: (g) => _run(() => ref.read(marcoGroupsProvider.notifier).assignDevice(g.id, m.mac), 'Added to ${g.name}'),
                       itemBuilder: (_) => [
                         for (final g in others)
                           PopupMenuItem(value: g, child: Row(children: [CircleAvatar(radius: 6, backgroundColor: marcoColor(g.color)), const SizedBox(width: 10), Text(g.name)])),
                       ],
-                      child: Chip(avatar: const Icon(Icons.swap_horiz, size: 18), label: const Text('Move to group')),
+                      child: Chip(avatar: const Icon(Icons.library_add_outlined, size: 18), label: const Text('Add to group')),
                     ),
                   OutlinedButton.icon(
                     onPressed: _busy ? null : () => _run(() => ref.read(marcoGroupsProvider.notifier).removeMember(widget.group.id, m.deviceId), 'Removed from ${widget.group.name}'),

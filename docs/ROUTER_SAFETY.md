@@ -33,6 +33,9 @@ YouTube shares Google's addresses with Gmail and Translate, so it is never block
 
 Facebook, Instagram and TikTok use the same DNS block, because Meta's address ranges also carry WhatsApp. This closes their websites but not their apps: on one iPhone the apps kept working even with the router's collected address lists blocked as well. Blocking the apps needs a firewall that reads site names; layer7 on this router is not an option.
 
+## Meta speed limit
+Facebook and Instagram apps cannot be blocked on this router without WhatsApp (same Meta servers, and the apps do not need DNS to find them). A group can instead cap each device's download from Meta's own address ranges (list `nms-marco-meta`): a mangle rule marks those packets and a queue tree on the LAN interface (the hotspot's, or `ROUTER_LAN_INTERFACE`) with a PCQ type `nms-marco-meta-<kbps>k` limits them per device. It is a tree, not a simple queue, because the hotspot's dynamic simple queues catch each device's traffic first. Upload is not capped. WhatsApp messages and voice still work at a low cap, its photos and video calls slow down. Video Meta serves from caches inside the internet provider is not in the list, so some video may still play.
+
 ## Router terminal in the app
 Marco groups > the terminal icon. It reads RouterOS lines and carries them out over the API: `print`, `remove`, `enable` and `disable` only, and it cannot add rules, reboot or reset. Changes must use `[find where ...]`, are limited to firewall, queue and DNS-static tables (scheduler: remove only), show what matched and wait for a yes. Each is written to the Marco log. It needs the NMS server running; when the server cannot reach the router, use `marco-remove.exe` or WinBox.
 
@@ -50,6 +53,9 @@ By hand, if that cannot reach the router:
 /ip firewall raw remove [find where comment~"^nms-marco-"]
 /ip firewall filter remove [find where comment~"^nms-marco-"]
 /queue simple remove [find where comment~"^nms-marco-"]
+/ip firewall mangle remove [find where comment~"^nms-marco-"]
+/queue tree remove [find where comment~"^nms-marco-"]
+/queue type remove [find where name~"^nms-marco-"]
 /ip firewall address-list remove [find where comment~"^nms-marco-"]
 /ip firewall layer7-protocol remove [find where name~"^nms-marco-"]
 /system scheduler remove [find where name="nms-marco-deadman"]

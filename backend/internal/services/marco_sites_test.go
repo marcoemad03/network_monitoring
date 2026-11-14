@@ -41,12 +41,15 @@ func TestNormalizeSite(t *testing.T) {
 }
 
 func TestGroupBlockTargetsExpandsPacks(t *testing.T) {
-	domains, ips, platforms := groupBlockTargets([]string{"games", "nope", "GAMES"}, []string{"Roblox.com", "https://my-site.example/x", "203.0.113.9", "bad site"})
+	domains, ips, platforms, words := groupBlockTargets([]string{"games", "nope", "GAMES"}, []string{"Roblox.com", "https://my-site.example/x", "203.0.113.9", "bad site"})
 	if !contains(platforms, "steam") || !contains(platforms, "epicgames") {
 		t.Errorf("platforms = %v", platforms)
 	}
-	if !contains(domains, "roblox.com") || !contains(domains, "my-site.example") || !contains(domains, "garena.com") {
-		t.Errorf("domains = %v", domains)
+	if !contains(domains, "roblox.com") || !contains(domains, "my-site.example") || !contains(domains, "battle.net") || contains(domains, "garena.com") {
+		t.Errorf("domains = %v (pack sites with a word are blocked by name, typed ones by address)", domains)
+	}
+	if !contains(words, "roblox") || !contains(words, "garena") || contains(words, "ea") {
+		t.Errorf("words = %v", words)
 	}
 	count := 0
 	for _, d := range domains {
@@ -70,6 +73,17 @@ func TestGroupBlockTargetsExpandsPacks(t *testing.T) {
 			if _, ok := marcoPlatformByKey[p]; !ok {
 				t.Errorf("pack %s: unknown platform %q", pack.Key, p)
 			}
+		}
+	}
+	inPack := map[string]bool{}
+	for _, pack := range MarcoSitePacks {
+		for _, d := range pack.Domains {
+			inPack[d] = true
+		}
+	}
+	for d, w := range siteDNSWords {
+		if !inPack[d] || len(w) < 4 || !strings.Contains(d, w) {
+			t.Errorf("word %q for %q", w, d)
 		}
 	}
 	for _, d := range DefaultAllowedDomains {
@@ -531,5 +545,22 @@ func TestMetaAndTikTokAreBlockedByNameNotAddress(t *testing.T) {
 		if e.attrs["address"] == "157.240.0.0/16" {
 			t.Errorf("Meta range listed by %s", comment)
 		}
+	}
+}
+
+func TestPacksBlockTheirSitesByName(t *testing.T) {
+	groups := groupWith(models.MarcoGroupPolicy{BlockedPacks: []string{"music", "messaging"}})
+	d := buildMarcoDesiredState(groups, membersOf(member(d1, "AA:AA:AA:00:00:01", "172.16.0.10")), marcoBuildOptions{})
+
+	for _, word := range []string{"spotify", "anghami", "telegram", "discord", "viber"} {
+		if rule, ok := d.raw["nms-marco-aaaaaaaa-dns-"+word]; !ok || rule.attrs["content"] != word {
+			t.Errorf("no DNS rule for %q", word)
+		}
+	}
+	if _, ok := d.firewall["nms-marco-aaaaaaaa-plat-telegram"]; !ok {
+		t.Error("Telegram owns its ranges, so they are blocked as well")
+	}
+	if _, ok := d.raw["nms-marco-aaaaaaaa-dns-tls"]; !ok {
+		t.Error("blocking by name needs the encrypted DNS ports closed")
 	}
 }

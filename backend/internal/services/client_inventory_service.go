@@ -69,6 +69,7 @@ type inventoryState struct {
 	prev      map[string]counterReading // rx = download counter, tx = upload counter
 	pendDown  map[string]int64
 	pendUp    map[string]int64
+	pendDay   time.Time // the day the pending bytes were read on
 	lastFlush time.Time
 	updatedAt time.Time
 	err       string
@@ -153,6 +154,17 @@ func (s *ClientInventoryService) Poll(ctx context.Context, orgID uuid.UUID) {
 
 	s.mu.Lock()
 	st := s.state(orgID)
+	// Bytes read before midnight belong to that day, so they are stored before the
+	// first reading of the new day is added.
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	var lastDay time.Time
+	var lastMacs []string
+	var lastDown, lastUp []int64
+	if !st.pendDay.IsZero() && !st.pendDay.Equal(today) {
+		lastDay = st.pendDay
+		lastMacs, lastDown, lastUp = st.drainPending()
+	}
+	st.pendDay = today
 	st.apply(clients, now)
 	st.live, st.updatedAt, st.err, st.ready = clients, now, "", true
 	flush := st.lastFlush.IsZero() || now.Sub(st.lastFlush) >= clientFlushEvery
@@ -182,14 +194,18 @@ func (s *ClientInventoryService) Poll(ctx context.Context, orgID uuid.UUID) {
 	}
 	s.mu.Unlock()
 
+	if len(lastMacs) > 0 {
+		if err := s.repo.AddUsage(ctx, orgID, lastDay, lastMacs, lastDown, lastUp); err != nil {
+			logger.Warn("Client inventory: usage before midnight not stored", "error", err)
+		}
+	}
 	if !flush {
 		return
 	}
 	if err := s.repo.MarkSeen(ctx, orgID, now, seen); err != nil {
 		logger.Warn("Client inventory: devices not stored", "error", err)
 	}
-	day := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	if err := s.repo.AddUsage(ctx, orgID, day, macs, down, up); err != nil {
+	if err := s.repo.AddUsage(ctx, orgID, today, macs, down, up); err != nil {
 		logger.Warn("Client inventory: usage not stored", "error", err)
 		return
 	}
@@ -199,6 +215,25 @@ func (s *ClientInventoryService) Poll(ctx context.Context, orgID uuid.UUID) {
 		delete(st.pendUp, mac)
 	}
 	s.mu.Unlock()
+}
+
+// drainPending takes the bytes not stored yet, leaving none pending.
+func (st *inventoryState) drainPending() (macs []string, down, up []int64) {
+	for mac := range st.pendDown {
+		macs = append(macs, mac)
+	}
+	for mac := range st.pendUp {
+		if _, ok := st.pendDown[mac]; !ok {
+			macs = append(macs, mac)
+		}
+	}
+	sort.Strings(macs)
+	for _, mac := range macs {
+		down = append(down, st.pendDown[mac])
+		up = append(up, st.pendUp[mac])
+	}
+	st.pendDown, st.pendUp = map[string]int64{}, map[string]int64{}
+	return macs, down, up
 }
 
 // apply turns the new byte counters into speeds and pending daily usage.

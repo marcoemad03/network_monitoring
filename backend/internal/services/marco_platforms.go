@@ -136,6 +136,31 @@ var dnsBlockedPlatforms = map[string][]string{
 	"facebook":  {"facebook", "fbcdn", "fbsbx"},
 	"instagram": {"instagram"},
 	"tiktok":    {"tiktok", "byteoversea", "ibytedtos", "ibyteimg"},
+	// These have no address ranges of their own, so the name is the only way.
+	"reddit":  {"reddit"},
+	"discord": {"discord"},
+	"chatgpt": {"chatgpt", "openai", "oaistatic", "oaiusercontent"},
+	"gemini":  {"gemini"},
+	"claude":  {"claude", "anthropic"},
+	"copilot": {"copilot"},
+	// These own their ranges too; the name catches what is served from elsewhere.
+	"twitter":   {"twitter", "twimg"},
+	"netflix":   {"netflix", "nflx"},
+	"steam":     {"steampowered", "steamcommunity", "steamstatic", "steamcontent", "steamusercontent"},
+	"epicgames": {"epicgames", "unrealengine", "fortnite"},
+	"telegram":  {"telegram"},
+}
+
+// dnsOnlyPlatforms must never be blocked by address: their ranges are shared with
+// services that have to keep working (WhatsApp on Meta's, other sites on cloud ones).
+var dnsOnlyPlatforms = map[string]bool{"youtube": true, "facebook": true, "instagram": true, "tiktok": true}
+
+// platformBlockedByAddress reports whether a platform also gets an address block.
+func platformBlockedByAddress(key string, opts marcoBuildOptions) bool {
+	if dnsOnlyPlatforms[key] {
+		return false
+	}
+	return opts.platformLists[key] != "" || len(marcoPlatformByKey[key].IPRanges) > 0
 }
 
 // Public resolvers that answer over HTTPS or TLS, where DNS questions cannot be read.

@@ -126,8 +126,8 @@ func TestDeadmanRunsFiveMinutesLaterOnTheRoutersClockAndOnlyTouchesItsOwn(t *tes
 	if !strings.Contains(words, "=start-date=nov/04/2026") || !strings.Contains(words, "=start-time=00:03:30") {
 		t.Errorf("start = %s", words)
 	}
-	if strings.Count(deadmanScript, " remove ") != 4 || strings.Count(deadmanScript, `comment~"^nms-marco-"`) != 3 || !strings.Contains(deadmanScript, `name="`+deadmanName+`"`) {
-		t.Errorf("the job must remove only nms-marco rules, queues and itself: %s", deadmanScript)
+	if strings.Count(deadmanScript, " remove ") != 6 || strings.Count(deadmanScript, `comment~"^nms-marco-"`) != 5 || !strings.Contains(deadmanScript, `name="`+deadmanName+`"`) {
+		t.Errorf("the job must remove only nms-marco rules, marks, queues and itself: %s", deadmanScript)
 	}
 }
 

@@ -335,6 +335,9 @@ func policyLines(p models.MarcoGroupPolicy) []string {
 	if p.MonthlyQuotaGb != nil {
 		out = append(out, fmt.Sprintf("Monthly limit of %.4g GB per device", *p.MonthlyQuotaGb))
 	}
+	if p.MetaSpeedKbps != nil {
+		out = append(out, fmt.Sprintf("Facebook and Instagram (Meta) limited to %d kbps per device", *p.MetaSpeedKbps))
+	}
 	n := len(p.BlockedWebsites) + len(p.BlockedPacks) + len(p.BlockedDomains)
 	if n > 0 {
 		out = append(out, fmt.Sprintf("%d website group%s or site%s blocked", n, plural(n), plural(n)))
@@ -365,7 +368,14 @@ func (s *MarcoGroupService) siteLines(orgID uuid.UUID, p models.MarcoGroupPolicy
 	}
 	for _, k := range normalizedPacks(p.BlockedPacks) {
 		pack := sitePackByKey[k]
-		out = append(out, SiteLine{Target: k, Kind: "pack", Label: pack.Label, Status: "blocked", Detail: fmt.Sprintf("%d sites", len(pack.Domains)+len(pack.Platforms))})
+		byName := len(pack.Platforms)
+		for _, d := range pack.Domains {
+			if siteDNSWords[d] != "" {
+				byName++
+			}
+		}
+		total := len(pack.Domains) + len(pack.Platforms)
+		out = append(out, SiteLine{Target: k, Kind: "pack", Label: pack.Label, Status: "blocked", Detail: fmt.Sprintf("%d sites: %d blocked by name, the rest by address", total, byName)})
 	}
 	for _, d := range normalizeSites(p.BlockedDomains) {
 		line := SiteLine{Target: d, Kind: "domain", Label: d, Status: "pending", Detail: "Will be looked up at the next sync."}

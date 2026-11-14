@@ -234,10 +234,37 @@ func normalizedPacks(raw []string) []string {
 	return out
 }
 
-// groupBlockTargets lists everything a group's policy blocks by address: the
-// domains of its packs plus the sites typed by hand. Platforms are handled on
-// their own.
-func groupBlockTargets(blockedPacks, blockedDomains []string) (domains, ips []string, platforms []string) {
+// siteDNSWords are the words the packs' sites are blocked by in DNS, like YouTube: a
+// word blocks the site, its subdomains and its app on whatever address they use, also
+// behind Cloudflare. A site whose name is too short or too common to search DNS for
+// safely (ea.com, line.me, max.com) has no word and is blocked by address.
+var siteDNSWords = map[string]string{
+	"roblox.com": "roblox", "rbxcdn.com": "rbxcdn", "minecraft.net": "minecraft", "mojang.com": "mojang",
+	"riotgames.com": "riotgames", "leagueoflegends.com": "leagueoflegends", "playvalorant.com": "playvalorant",
+	"blizzard.com": "blizzard", "ubisoft.com": "ubisoft", "pubg.com": "pubg", "pubgmobile.com": "pubg",
+	"krafton.com": "krafton", "garena.com": "garena", "supercell.com": "supercell", "callofduty.com": "callofduty",
+	"activision.com": "activision", "moonton.com": "moonton", "mobilelegends.com": "mobilelegends",
+	"miniclip.com": "miniclip", "crazygames.com": "crazygames", "kongregate.com": "kongregate",
+	"snapchat.com": "snapchat", "pinterest.com": "pinterest", "pinimg.com": "pinimg", "tumblr.com": "tumblr",
+	"twitch.tv": "twitch", "ttvnw.net": "ttvnw", "vimeo.com": "vimeo", "dailymotion.com": "dailymotion",
+	"primevideo.com": "primevideo", "disneyplus.com": "disneyplus", "hbomax.com": "hbomax", "shahid.net": "shahid",
+	"hulu.com": "hulu", "crunchyroll.com": "crunchyroll",
+	"spotify.com": "spotify", "anghami.com": "anghami", "soundcloud.com": "soundcloud", "deezer.com": "deezer",
+	"viber.com": "viber", "wechat.com": "wechat",
+	"perplexity.ai": "perplexity", "deepseek.com": "deepseek", "midjourney.com": "midjourney", "huggingface.co": "huggingface",
+	"thepiratebay.org": "thepiratebay", "1337x.to": "1337x", "nyaa.si": "nyaa", "limetorrents.info": "limetorrents",
+	"utorrent.com": "utorrent", "bittorrent.com": "bittorrent", "qbittorrent.org": "qbittorrent",
+	"nordvpn.com": "nordvpn", "expressvpn.com": "expressvpn", "protonvpn.com": "protonvpn", "surfshark.com": "surfshark",
+	"windscribe.com": "windscribe", "tunnelbear.com": "tunnelbear", "hotspotshield.com": "hotspotshield",
+	"privateinternetaccess.com": "privateinternetaccess", "cyberghostvpn.com": "cyberghostvpn", "ipvanish.com": "ipvanish",
+	"psiphon.ca": "psiphon", "torproject.org": "torproject", "browsec.com": "browsec", "urban-vpn.com": "urban-vpn",
+	"betternet.co": "betternet",
+}
+
+// groupBlockTargets lists everything a group's policy blocks: the domains of its
+// packs and the sites typed by hand by address, and the packs' sites that have a
+// word by name. Platforms are handled on their own.
+func groupBlockTargets(blockedPacks, blockedDomains []string) (domains, ips []string, platforms []string, words []string) {
 	seen := map[string]bool{}
 	add := func(v string) {
 		if seen[v] {
@@ -260,6 +287,13 @@ func groupBlockTargets(blockedPacks, blockedDomains []string) (domains, ips []st
 			}
 		}
 		for _, d := range p.Domains {
+			if w := siteDNSWords[d]; w != "" {
+				if !seen["word:"+w] {
+					seen["word:"+w] = true
+					words = append(words, w)
+				}
+				continue
+			}
 			add(d)
 		}
 	}
@@ -269,6 +303,7 @@ func groupBlockTargets(blockedPacks, blockedDomains []string) (domains, ips []st
 	sort.Strings(domains)
 	sort.Strings(ips)
 	sort.Strings(platforms)
+	sort.Strings(words)
 	return
 }
 

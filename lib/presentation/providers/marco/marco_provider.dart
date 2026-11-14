@@ -106,8 +106,7 @@ class MarcoGroupsController extends AsyncNotifier<MarcoGroupsResult> {
     }
   }
 
-  /// Moves a device (by MAC) into [groupId]; the backend removes it from its
-  /// previous group in the same step.
+  /// Adds a device (by MAC) to [groupId]; it stays in the groups it is already in.
   Future<MarcoActionResult> assignDevice(String groupId, String mac) =>
       addMembers(groupId, [mac]);
 

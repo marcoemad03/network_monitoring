@@ -167,7 +167,7 @@ func scanMembers(rows interface {
 
 func (r *MarcoRepository) AddMember(ctx context.Context, groupID, deviceID uuid.UUID) error {
 	_, err := r.db.Exec(ctx,
-		`INSERT INTO marco_group_members (group_id, device_id) VALUES ($1,$2) ON CONFLICT (device_id) DO UPDATE SET group_id=EXCLUDED.group_id`,
+		`INSERT INTO marco_group_members (group_id, device_id) VALUES ($1,$2) ON CONFLICT (group_id, device_id) DO NOTHING`,
 		groupID, deviceID)
 	return err
 }

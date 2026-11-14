@@ -56,6 +56,8 @@ type MarcoSyncService struct {
 	// resolver turns blocked websites into addresses; live tells where each device is now.
 	resolver *SiteResolver
 	live     liveIPSource
+	// metaCaches finds Meta's caches inside the internet providers.
+	metaCaches *metaCacheFinder
 
 	sitesMu   sync.Mutex
 	lastSites map[uuid.UUID]map[string]ResolvedSite
@@ -74,6 +76,7 @@ func NewMarcoSyncService(marcoRepo *repository.MarcoRepository, deviceRepo *repo
 		marcoRepo: marcoRepo, deviceRepo: deviceRepo, internetRepo: internetRepo,
 		cfg: cfg, hub: hub, telegramSvc: telegramSvc,
 		resolver: NewSiteResolver(), lastSites: map[uuid.UUID]map[string]ResolvedSite{},
+		metaCaches: newMetaCacheFinder(),
 	}
 	s.dialRouter = dialRouterConnection
 	s.wait = time.Sleep
@@ -110,7 +113,11 @@ type marcoDesiredState struct {
 	addrLists map[string]desiredRouterEntry
 	layer7    map[string]desiredRouterEntry
 	raw       map[string]desiredRouterEntry
-	warnings  []string
+	mangle    map[string]desiredRouterEntry
+	trees     map[string]desiredRouterEntry
+	// queueTypes are the PCQ types the trees use, by name, with their rate in bps.
+	queueTypes map[string]string
+	warnings   []string
 }
 
 // marcoOverrideTarget is a block or speed limit on one device, with the address
@@ -134,6 +141,8 @@ type marcoBuildOptions struct {
 	// replaces the built-in IP ranges (ROUTER_PLATFORM_DST_LISTS).
 	platformLists map[string]string
 	protected     []*net.IPNet
+	// metaCaches are the networks of Meta's caches at the internet providers.
+	metaCaches []string
 }
 
 type marcoSyncResult struct {
@@ -195,7 +204,7 @@ func (s *MarcoSyncService) SyncWith(ctx context.Context, orgID uuid.UUID, confir
 	if err := validateFirewallScope(desired.raw); err != nil {
 		return nil, err
 	}
-	if err := validateEntryCount(s.cfg, len(desired.firewall), len(desired.queues), len(desired.addrLists), len(desired.layer7), len(desired.raw)); err != nil {
+	if err := validateEntryCount(s.cfg, len(desired.firewall), len(desired.queues), len(desired.addrLists), len(desired.layer7), len(desired.raw), len(desired.mangle), len(desired.trees)); err != nil {
 		return nil, err
 	}
 
@@ -204,6 +213,13 @@ func (s *MarcoSyncService) SyncWith(ctx context.Context, orgID uuid.UUID, confir
 		return nil, fmt.Errorf("connect MikroTik: %w", err)
 	}
 	defer sess.Close()
+	if len(desired.trees) > 0 {
+		iface, err := lanInterface(sess, s.cfg.RouterLANInterface)
+		if err != nil {
+			return nil, err
+		}
+		desired.setLANParent(iface)
+	}
 
 	maxPrune := s.cfg.RouterMaxPrune
 	if confirmRemovals {
@@ -313,6 +329,7 @@ func buildMarcoDesiredState(groups []models.MarcoGroup, membersByGroup map[uuid.
 	blockedPlatforms := make(map[string]bool)
 	usesAllow := false
 	usesEncryptedDNSList := false
+	usesMetaList := false
 
 	allowSet := map[string]bool{}
 	for _, ip := range opts.allowIPs {
@@ -320,6 +337,8 @@ func buildMarcoDesiredState(groups []models.MarcoGroup, membersByGroup map[uuid.
 	}
 	// Devices with a limit of their own do not get their group's queue as well.
 	hasOwnLimit := map[string]bool{}
+	// A device in several groups with a speed limit gets the slowest one.
+	queueRate := map[string]int64{}
 	for _, o := range opts.overrides {
 		if !o.Blocked && (o.DownMbps != nil || o.UpMbps != nil) {
 			hasOwnLimit[strings.ToUpper(o.MAC)] = true
@@ -368,13 +387,17 @@ func buildMarcoDesiredState(groups []models.MarcoGroup, membersByGroup map[uuid.
 			unlimited = *g.Policy.UnlimitedSpeed
 		}
 		hasSchedule := g.Policy.ScheduleStartTime != nil && g.Policy.ScheduleEndTime != nil && *g.Policy.ScheduleStartTime != "" && *g.Policy.ScheduleEndTime != ""
-		siteDomains, siteLiterals, packPlatforms := groupBlockTargets(g.Policy.BlockedPacks, g.Policy.BlockedDomains)
+		siteDomains, siteLiterals, packPlatforms, siteWords := groupBlockTargets(g.Policy.BlockedPacks, g.Policy.BlockedDomains)
 		platforms := normalizedPlatforms(append(append([]string(nil), g.Policy.BlockedWebsites...), packPlatforms...))
 		siteAddrs := groupSiteAddresses(g.Name, siteDomains, siteLiterals, opts, allowSet, &d)
 
 		// A source rule is only created when the group has at least one usable
 		// member, so every drop rule references a non-empty address list.
-		needsSrcList := (!internetEnabled || hasSchedule || len(platforms) > 0 || len(siteAddrs) > 0) && len(members) > 0
+		metaKbps := 0
+		if g.Policy.MetaSpeedKbps != nil && *g.Policy.MetaSpeedKbps > 0 {
+			metaKbps = *g.Policy.MetaSpeedKbps
+		}
+		needsSrcList := (!internetEnabled || hasSchedule || len(platforms) > 0 || len(siteAddrs) > 0 || len(siteWords) > 0 || metaKbps > 0) && len(members) > 0
 		if needsSrcList {
 			// An old device row can still hold the address another device now uses. The
 			// router refuses a second entry for one address, which would fail the whole
@@ -423,7 +446,9 @@ func buildMarcoDesiredState(groups []models.MarcoGroup, membersByGroup map[uuid.
 							"protocol": "udp", "dst-port": "53", "content": word,
 						})
 					}
-					continue
+					if !platformBlockedByAddress(key, opts) {
+						continue
+					}
 				}
 				if list := opts.platformLists[key]; list != "" {
 					// The hospital already maintains an address-list of this service's real
@@ -458,6 +483,13 @@ func buildMarcoDesiredState(groups []models.MarcoGroup, membersByGroup map[uuid.
 					d.warnings = append(d.warnings, fmt.Sprintf("%s: %q cannot be enforced (no IP ranges and layer7 matching is disabled)", g.Name, def.Label))
 				}
 			}
+			for _, word := range siteWords {
+				blocksInDNS = true
+				d.addRaw(fmt.Sprintf("%s%s-dns-%s", marcoManagedPrefix, g8, word), map[string]string{
+					"chain": "prerouting", "action": "drop", "src-address-list": srcList,
+					"protocol": "udp", "dst-port": "53", "content": word,
+				})
+			}
 			if blocksInDNS {
 				usesEncryptedDNSList = true
 				d.addRaw(fmt.Sprintf("%s%s-dns-tls", marcoManagedPrefix, g8), map[string]string{
@@ -470,6 +502,11 @@ func buildMarcoDesiredState(groups []models.MarcoGroup, membersByGroup map[uuid.
 					})
 				}
 			}
+		}
+
+		if needsSrcList && metaKbps > 0 && internetEnabled {
+			usesMetaList = true
+			d.addMetaLimit(g8, srcList, metaKbps)
 		}
 
 		if needsSrcList && len(siteAddrs) > 0 {
@@ -532,6 +569,14 @@ func buildMarcoDesiredState(groups []models.MarcoGroup, membersByGroup map[uuid.
 					if g.Policy.QosPriority != nil && *g.Policy.QosPriority >= 1 && *g.Policy.QosPriority <= 8 {
 						attrs["priority"] = fmt.Sprintf("%d", *g.Policy.QosPriority)
 					}
+					rate := dl
+					if !hasDL {
+						rate = ul
+					}
+					if prev, ok := queueRate[name]; ok && prev <= rate {
+						continue
+					}
+					queueRate[name] = rate
 					d.queues[name] = desiredRouterEntry{path: "/queue/simple", attrs: attrs}
 				}
 			}
@@ -546,6 +591,11 @@ func buildMarcoDesiredState(groups []models.MarcoGroup, membersByGroup map[uuid.
 		}
 		for _, ip := range allow {
 			d.addAddress(marcoAllowPrefix+strings.ReplaceAll(ip, ".", "_"), marcoAllowList, ip)
+		}
+	}
+	if usesMetaList {
+		for _, cidr := range append(append([]string(nil), metaIPRanges...), opts.metaCaches...) {
+			d.addAddress(marcoMetaList+"-"+strings.NewReplacer("/", "-", ".", "_").Replace(cidr), marcoMetaList, cidr)
 		}
 	}
 	if usesEncryptedDNSList {
@@ -587,7 +637,7 @@ func isZeroPolicy(p models.MarcoGroupPolicy) bool {
 		p.BurstTimeSeconds == nil && p.QosPriority == nil &&
 		p.DailyQuotaGb == nil && p.MonthlyQuotaGb == nil &&
 		p.ScheduleStartTime == nil && p.ScheduleEndTime == nil &&
-		len(p.ScheduleDays) == 0 && len(p.BlockedWebsites) == 0 &&
+		len(p.ScheduleDays) == 0 && len(p.BlockedWebsites) == 0 && p.MetaSpeedKbps == nil &&
 		len(p.BlockedPacks) == 0 && len(p.BlockedDomains) == 0
 }
 
@@ -667,14 +717,16 @@ func marcoTables(d marcoDesiredState) map[string]marcoTable {
 		"/queue/simple":                {path: "/queue/simple", desired: d.queues},
 		"/ip/firewall/address-list":    {path: "/ip/firewall/address-list", desired: d.addrLists},
 		"/ip/firewall/layer7-protocol": {path: "/ip/firewall/layer7-protocol", desired: d.layer7},
+		"/ip/firewall/mangle":          {path: "/ip/firewall/mangle", desired: d.mangle},
+		"/queue/tree":                  {path: "/queue/tree", desired: d.trees},
 	}
 }
 
 // Stale entries are removed users-first (rules before the lists/protocols they
 // reference); new entries are added dependencies-first.
 var (
-	marcoRemoveOrder = []string{"/ip/firewall/raw", "/ip/firewall/filter", "/queue/simple", "/ip/firewall/address-list", "/ip/firewall/layer7-protocol"}
-	marcoApplyOrder  = []string{"/ip/firewall/layer7-protocol", "/ip/firewall/address-list", "/ip/firewall/raw", "/ip/firewall/filter", "/queue/simple"}
+	marcoRemoveOrder = []string{"/ip/firewall/raw", "/ip/firewall/filter", "/ip/firewall/mangle", "/queue/tree", "/queue/simple", "/ip/firewall/address-list", "/ip/firewall/layer7-protocol"}
+	marcoApplyOrder  = []string{"/ip/firewall/layer7-protocol", "/ip/firewall/address-list", "/ip/firewall/raw", "/ip/firewall/filter", "/ip/firewall/mangle", "/queue/tree", "/queue/simple"}
 )
 
 func sortedKeys(m map[string]desiredRouterEntry) []string {
@@ -689,8 +741,13 @@ func sortedKeys(m map[string]desiredRouterEntry) []string {
 // applyMarcoDesiredState applies the plan and refuses it when it would remove more
 // than maxPrune entries.
 func applyMarcoDesiredState(conn routerCommander, d marcoDesiredState, journal *changeJournal, prune bool, maxPrune int) error {
-	_, err := applyMarcoCore(conn, d, journal, prune, maxPrune, false)
-	return err
+	if _, err := applyMarcoCore(conn, d, journal, prune, maxPrune, false); err != nil {
+		return err
+	}
+	if prune {
+		return removeUnusedQueueTypes(conn, d.queueTypes)
+	}
+	return nil
 }
 
 // applyMarcoCore is applyMarcoDesiredState. With soft set, a plan that would remove
@@ -753,11 +810,47 @@ func applyMarcoCore(conn routerCommander, d marcoDesiredState, journal *changeJo
 		}
 	}
 
+	// An address can be in a list only once. When two devices swap addresses, or a new
+	// entry takes the address of one still waiting to be removed, the entry holding it
+	// is removed first; if it is still wanted it is added again with its own address.
+	const addrPath = "/ip/firewall/address-list"
+	listKey := func(e map[string]string) string { return e["list"] + "|" + trimHostMask(e["address"]) }
+	holder := map[string]string{}
+	for comment, e := range existing[addrPath] {
+		holder[listKey(e)] = comment
+	}
+	freeAddress := func(comment string, want map[string]string) error {
+		h, ok := holder[listKey(want)]
+		if !ok || h == comment {
+			return nil
+		}
+		e := existing[addrPath][h]
+		if _, err := conn.Command(addrPath+"/remove", "=.id="+e[".id"]); err != nil {
+			return fmt.Errorf("free %s for %q: %w", want["address"], comment, err)
+		}
+		journal.removed = append(journal.removed, journalRemoved{path: addrPath, attrs: whitelistAttrs(addrPath, e)})
+		delete(existing[addrPath], h)
+		delete(holder, listKey(want))
+		return nil
+	}
+
+	if err := syncQueueTypes(conn, d.queueTypes, journal); err != nil {
+		return 0, err
+	}
 	for _, path := range marcoApplyOrder {
 		t := tables[path]
 		for _, comment := range sortedKeys(t.desired) {
 			want := t.desired[comment]
 			current, ok := existing[path][comment]
+			if path == addrPath && !(ok && entryMatches(current, want.attrs)) {
+				if err := freeAddress(comment, want.attrs); err != nil {
+					return 0, err
+				}
+				if ok {
+					delete(holder, listKey(current))
+				}
+				holder[listKey(want.attrs)] = comment
+			}
 			if !ok {
 				if err := addRouterEntry(conn, path, want.attrs, want.top); err != nil {
 					return 0, fmt.Errorf("add %s %q: %w", path, comment, err)
@@ -892,6 +985,8 @@ var (
 	managedQueueAttrs    = []string{"name", "target", "max-limit", "burst-limit", "burst-threshold", "burst-time", "priority", "comment", "disabled"}
 	managedAddrListAttrs = []string{"list", "address", "comment"}
 	managedLayer7Attrs   = []string{"name", "regexp", "comment"}
+	managedMangleAttrs   = []string{"chain", "action", "new-packet-mark", "passthrough", "src-address-list", "dst-address-list", "comment", "disabled"}
+	managedTreeAttrs     = []string{"name", "parent", "packet-mark", "queue", "comment", "disabled"}
 )
 
 func whitelistAttrs(path string, e map[string]string) map[string]string {
@@ -905,6 +1000,10 @@ func whitelistAttrs(path string, e map[string]string) map[string]string {
 		allowed = managedAddrListAttrs
 	case "/ip/firewall/layer7-protocol":
 		allowed = managedLayer7Attrs
+	case "/ip/firewall/mangle":
+		allowed = managedMangleAttrs
+	case "/queue/tree":
+		allowed = managedTreeAttrs
 	}
 	out := make(map[string]string)
 	for _, key := range allowed {
@@ -923,6 +1022,12 @@ func (s *MarcoSyncService) buildOptions(ctx context.Context, orgID uuid.UUID, ve
 		layer7:        s.cfg.RouterEnableLayer7,
 		protected:     protectedNetworks(vendor, s.cfg),
 		platformLists: s.cfg.RouterPlatformDstLists,
+	}
+	for _, g := range groups {
+		if g.Policy.MetaSpeedKbps != nil && s.metaCaches != nil {
+			opts.metaCaches = s.metaCaches.networks(time.Now())
+			break
+		}
 	}
 	var live map[string]string
 	if s.live != nil {
@@ -961,7 +1066,7 @@ func (s *MarcoSyncService) buildOptions(ctx context.Context, orgID uuid.UUID, ve
 		if len(membersByGroup[g.ID]) == 0 {
 			continue
 		}
-		domains, _, _ := groupBlockTargets(g.Policy.BlockedPacks, g.Policy.BlockedDomains)
+		domains, _, _, _ := groupBlockTargets(g.Policy.BlockedPacks, g.Policy.BlockedDomains)
 		for _, d := range domains {
 			targets[d] = true
 		}

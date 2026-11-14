@@ -32,6 +32,10 @@ type MarcoGroupPolicy struct {
 	// BlockedDomains are sites typed in by hand.
 	BlockedPacks   []string `json:"blocked_packs,omitempty"`
 	BlockedDomains []string `json:"blocked_domains,omitempty"`
+	// MetaSpeedKbps caps each device's download from Meta's servers (Facebook,
+	// Instagram, WhatsApp media). WhatsApp messages and calls fit in a small speed;
+	// video does not.
+	MetaSpeedKbps *int `json:"meta_speed_kbps,omitempty"`
 }
 
 type MarcoGroup struct {

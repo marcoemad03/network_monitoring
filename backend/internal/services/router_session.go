@@ -241,7 +241,7 @@ func attrMatches(key, got, want string) bool {
 		return normalizeTimeRange(got) == normalizeTimeRange(want)
 	case "days":
 		return normalizeDaysList(got) == normalizeDaysList(want)
-	case "disabled":
+	case "disabled", "passthrough":
 		return normalizeBool(got) == normalizeBool(want)
 	case "max-limit", "burst-limit", "burst-threshold":
 		return normalizeRatePair(got) == normalizeRatePair(want)
@@ -373,11 +373,8 @@ func (j *changeJournal) rollback(conn routerCommander) error {
 			first = err
 		}
 	}
-	for i := len(j.modified) - 1; i >= 0; i-- {
-		m := j.modified[i]
-		_, err := conn.Command(m.path+"/set", append([]string{"=.id=" + m.id}, attributeWords(m.old)...)...)
-		keep(err)
-	}
+	// Added entries go first, so the addresses they took are free again when the
+	// modified and removed entries are put back.
 	for i := len(j.added) - 1; i >= 0; i-- {
 		a := j.added[i]
 		entries, err := conn.Command(a.path + "/print")
@@ -386,11 +383,20 @@ func (j *changeJournal) rollback(conn routerCommander) error {
 			continue
 		}
 		for _, e := range entries {
-			if e["comment"] == a.comment {
+			key := e["comment"]
+			if a.path == "/queue/type" {
+				key = e["name"] // queue types have no comment
+			}
+			if key == a.comment {
 				_, err := conn.Command(a.path+"/remove", "=.id="+e[".id"])
 				keep(err)
 			}
 		}
+	}
+	for i := len(j.modified) - 1; i >= 0; i-- {
+		m := j.modified[i]
+		_, err := conn.Command(m.path+"/set", append([]string{"=.id=" + m.id}, attributeWords(m.old)...)...)
+		keep(err)
 	}
 	for i := len(j.removed) - 1; i >= 0; i-- {
 		r := j.removed[i]

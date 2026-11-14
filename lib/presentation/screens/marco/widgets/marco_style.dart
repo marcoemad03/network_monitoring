@@ -149,6 +149,7 @@ List<({IconData icon, String label})> policyBadges(Map<String, dynamic> p) {
     out.add((icon: Icons.schedule, label: 'Off ${p['schedule_start_time']}–${p['schedule_end_time']}'));
   }
   if (p['daily_quota_gb'] != null || p['monthly_quota_gb'] != null) out.add((icon: Icons.data_usage, label: 'Data limit'));
+  if (p['meta_speed_kbps'] != null) out.add((icon: Icons.slow_motion_video, label: 'Meta ${p['meta_speed_kbps']} kbps'));
   final sites = ((p['blocked_websites'] as List?)?.length ?? 0) + ((p['blocked_packs'] as List?)?.length ?? 0) + ((p['blocked_domains'] as List?)?.length ?? 0);
   if (sites > 0) out.add((icon: Icons.block, label: '$sites blocked'));
   return out;

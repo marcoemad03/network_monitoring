@@ -40,7 +40,7 @@ class _AddDevicesDialogState extends ConsumerState<AddDevicesDialog> {
     super.dispose();
   }
 
-  bool _matches(MapDevice d, Map<String, MarcoGroup> groups) {
+  bool _matches(MapDevice d, Map<String, List<MarcoGroup>> groups) {
     if (!d.editable || d.source == 'router') return false;
     if (_onlineOnly && !d.online) return false;
     if (_kinds.isNotEmpty && !_kinds.contains(d.kind)) return false;
@@ -69,10 +69,10 @@ class _AddDevicesDialogState extends ConsumerState<AddDevicesDialog> {
     final theme = Theme.of(context);
     final map = ref.watch(networkMapProvider);
     final data = map.data;
-    final groups = ref.watch(marcoGroupByMacMapProvider);
+    final groups = ref.watch(marcoGroupsByMacProvider);
     final visible = data == null ? <MapDevice>[] : data.devices.where((d) => _matches(d, groups)).toList();
     final here = {for (final m in widget.group.members) (m.macAddress ?? '').toUpperCase()};
-    final moving = _selected.where((m) => groups[m] != null && groups[m]!.id != widget.group.id).length;
+    final elsewhere = _selected.where((m) => groups[m]?.any((g) => g.id != widget.group.id) ?? false).length;
     final kindsPresent = data == null ? <String>[] : [for (final k in mapKindOrder) if ((data.summary.byKind[k] ?? 0) > 0) k];
     final size = MediaQuery.sizeOf(context);
 
@@ -158,14 +158,14 @@ class _AddDevicesDialogState extends ConsumerState<AddDevicesDialog> {
                 ),
               ],
             ),
-            if (moving > 0)
+            if (elsewhere > 0)
               Padding(
                 padding: const EdgeInsets.only(top: 4),
                 child: Row(
                   children: [
-                    Icon(Icons.swap_horiz, size: 16, color: theme.colorScheme.tertiary),
+                    Icon(Icons.layers_outlined, size: 16, color: theme.colorScheme.tertiary),
                     const SizedBox(width: 6),
-                    Expanded(child: Text('$moving device${moving == 1 ? '' : 's'} will leave ${moving == 1 ? 'its' : 'their'} current group. A device can be in one group.', style: theme.textTheme.bodySmall)),
+                    Expanded(child: Text('$elsewhere device${elsewhere == 1 ? ' is' : 's are'} in another group too and will stay there. The blocks of every group apply.', style: theme.textTheme.bodySmall)),
                   ],
                 ),
               ),
@@ -183,7 +183,7 @@ class _AddDevicesDialogState extends ConsumerState<AddDevicesDialog> {
     );
   }
 
-  Widget _body(ThemeData theme, NetworkMapState map, NetworkMapData? data, List<MapDevice> visible, Map<String, MarcoGroup> groups, Set<String> here) {
+  Widget _body(ThemeData theme, NetworkMapState map, NetworkMapData? data, List<MapDevice> visible, Map<String, List<MarcoGroup>> groups, Set<String> here) {
     if (data == null) {
       if (map.loading) return const Center(child: CircularProgressIndicator());
       return Center(
@@ -208,7 +208,7 @@ class _AddDevicesDialogState extends ConsumerState<AddDevicesDialog> {
         final d = visible[i];
         final mac = d.mac.toUpperCase();
         final style = kindStyle(d.kind);
-        final current = groups[mac];
+        final others = (groups[mac] ?? const <MarcoGroup>[]).where((g) => g.id != widget.group.id).toList();
         final already = here.contains(mac);
         final checked = already || _selected.contains(mac);
         return InkWell(
@@ -250,11 +250,14 @@ class _AddDevicesDialogState extends ConsumerState<AddDevicesDialog> {
                 const SizedBox(width: 8),
                 if (already)
                   Text('In this group', style: theme.textTheme.labelMedium)
-                else if (current != null)
-                  Chip(
-                    visualDensity: VisualDensity.compact,
-                    avatar: CircleAvatar(radius: 5, backgroundColor: marcoColor(current.color)),
-                    label: Text(current.name, overflow: TextOverflow.ellipsis),
+                else if (others.isNotEmpty)
+                  Tooltip(
+                    message: 'Also in: ${others.map((g) => g.name).join(', ')}',
+                    child: Chip(
+                      visualDensity: VisualDensity.compact,
+                      avatar: CircleAvatar(radius: 5, backgroundColor: marcoColor(others.first.color)),
+                      label: Text(others.length == 1 ? others.first.name : '${others.first.name} +${others.length - 1}', overflow: TextOverflow.ellipsis),
+                    ),
                   )
                 else
                   Text('No group', style: theme.textTheme.labelMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)),

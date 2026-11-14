@@ -169,8 +169,8 @@ func (s *MarcoGroupService) DeleteGroup(ctx context.Context, orgID, id uuid.UUID
 }
 
 // AddMembers resolves MAC addresses to devices (creating placeholder device
-// records for unknown MACs), moves each device out of its previous Marco group
-// and applies the group policy immediately.
+// records for unknown MACs) and applies the group policy immediately. A device
+// can be in several groups; it keeps the others.
 func (s *MarcoGroupService) AddMembers(ctx context.Context, orgID, groupID uuid.UUID, macs []string) ([]models.MarcoGroupMember, error) {
 	g, err := s.marcoRepo.GetGroupByID(ctx, orgID, groupID)
 	if err != nil {
@@ -193,10 +193,6 @@ func (s *MarcoGroupService) AddMembers(ctx context.Context, orgID, groupID uuid.
 		device, err := s.resolveDeviceByMAC(ctx, orgID, mac, known[mac])
 		if err != nil {
 			return added, fmt.Errorf("resolve MAC %s: %w", mac, err)
-		}
-		// A device can only belong to one Marco group: leave the previous one.
-		if err := s.marcoRepo.RemoveDeviceFromAllGroups(ctx, orgID, device.ID); err != nil {
-			return added, err
 		}
 		if err := s.marcoRepo.AddMember(ctx, groupID, device.ID); err != nil {
 			return added, err
@@ -548,6 +544,9 @@ func NormalizeMarcoPolicy(p models.MarcoGroupPolicy) models.MarcoGroupPolicy {
 	p.BlockedWebsites = sortedPlatformKeys(p.BlockedWebsites)
 	p.BlockedPacks = normalizedPacks(p.BlockedPacks)
 	p.BlockedDomains = normalizeSites(p.BlockedDomains)
+	if p.MetaSpeedKbps != nil && (*p.MetaSpeedKbps < 16 || *p.MetaSpeedKbps > 100000) {
+		p.MetaSpeedKbps = nil
+	}
 	return p
 }
 
