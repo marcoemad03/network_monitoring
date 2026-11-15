@@ -46,7 +46,11 @@ func (s *MarcoGroupService) Catalog(ctx context.Context, orgID uuid.UUID) (SiteC
 
 // CheckSite says what blocking a typed site would do, before it is added.
 func (s *MarcoGroupService) CheckSite(ctx context.Context, input string) ResolvedSite {
-	return s.sync.resolver.Resolve(ctx, input)
+	res := s.sync.resolver.Resolve(ctx, input)
+	if res.Kind == SiteDomain {
+		res.Word = siteWord(res.Target)
+	}
+	return res
 }
 
 // SiteStatus returns what each blocked site pointed to at the last sync.
@@ -379,7 +383,9 @@ func (s *MarcoGroupService) siteLines(orgID uuid.UUID, p models.MarcoGroupPolicy
 	}
 	for _, d := range normalizeSites(p.BlockedDomains) {
 		line := SiteLine{Target: d, Kind: "domain", Label: d, Status: "pending", Detail: "Will be looked up at the next sync."}
-		if _, kind, err := NormalizeSite(d); err == nil && kind != SiteDomain {
+		if w := siteWord(d); w != "" {
+			line.Status, line.Detail = "blocked", fmt.Sprintf("Blocked by name: every site whose name has %q, in the app and the website.", w)
+		} else if _, kind, err := NormalizeSite(d); err == nil && kind != SiteDomain {
 			line.Kind, line.Status, line.Detail, line.Address = string(kind), "blocked", "", 1
 		} else if r, ok := res[d]; ok {
 			line.Address = len(r.IPs)

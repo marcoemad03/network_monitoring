@@ -125,6 +125,7 @@ class DnsSource {
   String get title => switch (name) {
     'syslog' => 'Query log sent to the NMS server (syslog)',
     'pihole' => 'Pi-hole',
+    'sniffer' => 'Router packet sniffer (DNS questions)',
     _ => name,
   };
 

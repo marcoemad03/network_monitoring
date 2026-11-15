@@ -26,6 +26,9 @@ type ResolvedSite struct {
 	Many           bool      `json:"many_addresses,omitempty"`
 	Error          string    `json:"error,omitempty"`
 	ResolvedAt     time.Time `json:"resolved_at"`
+	// Word is what the site is blocked by in DNS when it has one; it is blocked
+	// that way whatever its addresses are.
+	Word string `json:"word,omitempty"`
 }
 
 // Blockable is true when at least one address can be blocked safely.

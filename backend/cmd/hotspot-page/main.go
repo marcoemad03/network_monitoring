@@ -15,6 +15,7 @@
 //	hotspot-page pilot <IP>        tries blocking the apps by address on one device, for an hour
 //	hotspot-page pilotstatus       shows the trial's rules and their counters
 //	hotspot-page unpilot           ends the trial now
+//	hotspot-page sniffer on|off    copies devices' DNS questions to the NMS, or stops
 //
 // A phone is moved by renaming its hotspot user to p-<MAC>: login by MAC no longer
 // finds it, so the page shows, and the page's button logs in with that name. Other
@@ -52,6 +53,10 @@ const (
 	pilotPrefix = "nms-pilot-"
 	pilotJob    = "nms-pilot-end"
 	pilotScript = `/ip firewall filter remove [find where comment~"^nms-pilot-"]; /ip firewall raw remove [find where comment~"^nms-pilot-"]; /system scheduler remove [find where name="nms-pilot-end"]`
+
+	// The LAN interface and the NMS server that receives the DNS questions.
+	snifferLAN    = "ether5"
+	snifferServer = "172.16.0.50"
 
 	batchSize       = 10
 	batchPause      = 2 * time.Minute
@@ -455,6 +460,38 @@ func (r *router) unpilot() error {
 	return err
 }
 
+// sniffer streams a copy of the DNS questions devices send on the LAN to the NMS
+// (DNS_SNIFFER_LISTEN), or stops it. Nothing else of the traffic is copied.
+func (r *router) sniffer(on bool, server string) error {
+	if !on {
+		if _, err := r.conn.Command("/tool/sniffer/stop"); err != nil {
+			return err
+		}
+		_, err := r.conn.Command("/tool/sniffer/set", "=streaming-enabled=no")
+		return err
+	}
+	if _, err := r.conn.Command("/tool/sniffer/set", "=filter-interface="+snifferLAN, "=filter-port=53", "=filter-ip-protocol=udp",
+		"=filter-direction=rx", "=filter-stream=yes", "=streaming-enabled=yes", "=streaming-server="+server); err != nil {
+		return err
+	}
+	_, err := r.conn.Command("/tool/sniffer/start")
+	return err
+}
+
+func (r *router) snifferStatus() error {
+	rows, err := r.conn.Command("/tool/sniffer/print")
+	if err != nil || len(rows) == 0 {
+		return err
+	}
+	s := rows[0]
+	fmt.Println("running:", s["running"], " streaming:", s["streaming-enabled"], "to", s["streaming-server"], " interface:", s["filter-interface"], " port:", s["filter-port"], s["filter-ip-protocol"], s["filter-direction"])
+	res, err := r.conn.Command("/system/resource/print")
+	if err == nil && len(res) > 0 {
+		fmt.Println("cpu:", res[0]["cpu-load"])
+	}
+	return nil
+}
+
 func main() {
 	if len(os.Args) < 2 {
 		fmt.Println("usage: hotspot-page status|check|enable|disable|phone <MAC>|unphone <MAC>|daily|undaily")
@@ -501,6 +538,19 @@ func main() {
 			err = r.pilotStatus()
 		case "unpilot":
 			err = r.unpilot()
+		case "sniffer":
+			switch mac {
+			case "ON":
+				if err = r.sniffer(true, snifferServer); err == nil {
+					err = r.snifferStatus()
+				}
+			case "OFF":
+				if err = r.sniffer(false, ""); err == nil {
+					err = r.snifferStatus()
+				}
+			default:
+				err = r.snifferStatus()
+			}
 		case "unphone":
 			err = r.renameUser("p-"+mac, mac, mac)
 		default:

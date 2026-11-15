@@ -121,7 +121,10 @@ type Config struct {
 	// sources, either or both: a UDP syslog listener (the resolver or router forwards
 	// its query log here) and a Pi-hole whose query log is read over its API.
 	// Nothing is listened on or polled unless it is configured.
-	DNSSyslogListen    string // for example ":5514"; empty = off
+	DNSSyslogListen string // for example ":5514"; empty = off
+	// DNSSnifferListen receives the router's packet sniffer stream (TZSP, port
+	// 37008); empty = off.
+	DNSSnifferListen   string
 	DNSSyslogAllow     []string
 	PiholeURL          string
 	PiholePassword     string // Pi-hole v6
@@ -280,6 +283,7 @@ func Load(cliPort int) (*Config, error) {
 	cfg.SecurityRetentionDays = getEnvInt("SECURITY_RETENTION_DAYS", 30)
 	cfg.RouterScanPlatformLists = parseKeyValueList(getEnv("ROUTER_SCAN_PLATFORM_LISTS", ""))
 	cfg.DNSSyslogListen = getEnv("DNS_SYSLOG_LISTEN", "")
+	cfg.DNSSnifferListen = getEnv("DNS_SNIFFER_LISTEN", "")
 	cfg.DNSSyslogAllow = splitCSV(getEnv("DNS_SYSLOG_ALLOW", ""))
 	cfg.PiholeURL = strings.TrimRight(getEnv("PIHOLE_URL", ""), "/")
 	cfg.PiholePassword = getEnv("PIHOLE_PASSWORD", "")

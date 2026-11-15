@@ -61,9 +61,12 @@ class MarcoSiteCheck {
   final bool many;
   final String error;
 
-  const MarcoSiteCheck({required this.target, this.kind = '', this.ips = const [], this.shared = const [], this.sharedProvider = '', this.many = false, this.error = ''});
+  /// The word the site is blocked by in DNS, whatever its addresses are.
+  final String word;
 
-  bool get blockable => ips.isNotEmpty;
+  const MarcoSiteCheck({required this.target, this.kind = '', this.ips = const [], this.shared = const [], this.sharedProvider = '', this.many = false, this.error = '', this.word = ''});
+
+  bool get blockable => ips.isNotEmpty || word.isNotEmpty;
 
   factory MarcoSiteCheck.fromJson(Map<String, dynamic> j) => MarcoSiteCheck(
     target: _s(j['target']),
@@ -73,6 +76,7 @@ class MarcoSiteCheck {
     sharedProvider: _s(j['shared_provider']),
     many: j['many_addresses'] as bool? ?? false,
     error: _s(j['error']),
+    word: _s(j['word']),
   );
 }
 

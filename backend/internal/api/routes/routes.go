@@ -87,6 +87,12 @@ func RegisterRoutes(router *gin.Engine, db *database.DB, hub *websocket.Hub, cfg
 	dnsCollector.Start(context.Background(), wanRepo.OrgsWithRouter)
 	dnsCollector.RegisterSource(services.SourceSyslog, cfg.DNSSyslogListen != "")
 	dnsCollector.RegisterSource(services.SourcePihole, cfg.PiholeURL != "")
+	dnsCollector.RegisterSource(services.SourceSniffer, cfg.DNSSnifferListen != "")
+	if cfg.DNSSnifferListen != "" {
+		if err := dnsCollector.StartSniffer(context.Background(), cfg.DNSSnifferListen, cfg.DNSSyslogAllow); err != nil {
+			logger.Warn("DNS sniffer listener not started", "error", err)
+		}
+	}
 	if cfg.DNSSyslogListen != "" {
 		if err := dnsCollector.StartSyslog(context.Background(), cfg.DNSSyslogListen, cfg.DNSSyslogAllow); err != nil {
 			logger.Warn("DNS syslog listener not started", "error", err)

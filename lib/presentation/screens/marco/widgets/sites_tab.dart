@@ -14,6 +14,8 @@ IconData packIcon(String name) => switch (name) {
   'smart_toy' => Icons.smart_toy,
   'cloud_download' => Icons.cloud_download,
   'vpn_lock' => Icons.vpn_lock,
+  'movie' => Icons.movie_outlined,
+  'sports_soccer' => Icons.sports_soccer,
   _ => Icons.public,
 };
 
@@ -374,12 +376,15 @@ class _CheckResult extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final partial = check.blockable && check.shared.isNotEmpty;
-    final tone = !check.blockable ? StatusTone.error : (partial || check.many ? StatusTone.warning : StatusTone.ok);
+    final byName = check.word.isNotEmpty;
+    final partial = !byName && check.blockable && check.shared.isNotEmpty;
+    final tone = !check.blockable ? StatusTone.error : (partial || (!byName && check.many) ? StatusTone.warning : StatusTone.ok);
     final style = toneStyle(context, tone);
     final literal = check.kind == 'ip' || check.kind == 'cidr';
     final text = !check.blockable
         ? '${check.target}: ${check.error.isEmpty ? 'cannot be blocked' : check.error}.'
+        : byName
+        ? '${check.target} will be blocked by name: every site whose name has "${check.word}", in the app and the website, wherever it is hosted.'
         : literal
         ? '${check.target} can be blocked.'
         : partial

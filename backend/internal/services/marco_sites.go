@@ -54,6 +54,16 @@ var MarcoSitePacks = []SitePack{
 		},
 	},
 	{
+		Key: "movies", Label: "Movie and series sites", Icon: "movie",
+		Description: "Free movie and series sites, Arabic and foreign (MyCima, EgyBest, Akwam, Arabseed, FaselHD and similar). They change their addresses often; each is blocked by its name, so new addresses with the same name are blocked too.",
+		Domains:     []string{"mycima.tv", "my-cima.net", "wecima.show", "egybest.org", "akwam.to", "cimaclub.com", "shahid4u.com", "arabseed.ink", "faselhd.center", "fasel-hd.cam", "cima4u.ws", "tuktukcinema.net", "egydead.space", "topcinemaa.one", "cimanow.cc", "movizland.online", "aflam4you.net", "lodynet.link", "larozza.com", "witanime.com", "fmovies.to", "123movies.net", "soap2day.to", "putlocker.vip", "yesmovies.ag", "gomovies.sx", "solarmovie.pe", "lookmovie.foundation", "myflixer.to", "hdtoday.tv", "flixtor.to"},
+	},
+	{
+		Key: "sports", Label: "Live match sites", Icon: "sports_soccer",
+		Description: "Sites that stream football and other matches (Yalla Shoot, Kooora Live, Siiir, Yacine TV and similar). Blocked by name, like the movie sites.",
+		Domains:     []string{"yalla-shoot.com", "yallashoot.today", "yalla-live.net", "yallalive.com", "kooralive.com", "koora-live.tv", "livekoora.online", "siiir.tv", "yacinetv.com", "beinmatch.com", "hesgoal.com", "totalsportek.com", "streameast.app", "crackstreams.biz", "sportsurge.net", "buffstreams.app", "methstreams.com"},
+	},
+	{
 		Key: "music", Label: "Music", Icon: "music_note",
 		Description: "Music streaming services.",
 		Domains:     []string{"spotify.com", "scdn.co", "anghami.com", "soundcloud.com", "deezer.com", "tidal.com"},
@@ -259,11 +269,43 @@ var siteDNSWords = map[string]string{
 	"privateinternetaccess.com": "privateinternetaccess", "cyberghostvpn.com": "cyberghostvpn", "ipvanish.com": "ipvanish",
 	"psiphon.ca": "psiphon", "torproject.org": "torproject", "browsec.com": "browsec", "urban-vpn.com": "urban-vpn",
 	"betternet.co": "betternet",
+	"mycima.tv":    "mycima", "my-cima.net": "my-cima", "wecima.show": "wecima", "egybest.org": "egybest", "akwam.to": "akwam", "cimaclub.com": "cimaclub", "shahid4u.com": "shahid4u", "arabseed.ink": "arabseed", "faselhd.center": "faselhd", "fasel-hd.cam": "fasel-hd", "cima4u.ws": "cima4u", "tuktukcinema.net": "tuktukcinema", "egydead.space": "egydead", "topcinemaa.one": "topcinema", "cimanow.cc": "cimanow", "movizland.online": "movizland", "aflam4you.net": "aflam4you", "lodynet.link": "lodynet", "larozza.com": "larozza", "witanime.com": "witanime", "fmovies.to": "fmovies", "123movies.net": "123movies", "soap2day.to": "soap2day", "putlocker.vip": "putlocker", "yesmovies.ag": "yesmovies", "gomovies.sx": "gomovies", "solarmovie.pe": "solarmovie", "lookmovie.foundation": "lookmovie", "myflixer.to": "myflixer", "hdtoday.tv": "hdtoday", "flixtor.to": "flixtor",
+	"yalla-shoot.com": "yalla-shoot", "yallashoot.today": "yallashoot", "yalla-live.net": "yalla-live", "yallalive.com": "yallalive", "kooralive.com": "kooralive", "koora-live.tv": "koora-live", "livekoora.online": "livekoora", "siiir.tv": "siiir", "yacinetv.com": "yacinetv", "beinmatch.com": "beinmatch", "hesgoal.com": "hesgoal", "totalsportek.com": "totalsportek", "streameast.app": "streameast", "crackstreams.biz": "crackstreams", "sportsurge.net": "sportsurge", "buffstreams.app": "buffstreams", "methstreams.com": "methstreams",
 }
 
-// groupBlockTargets lists everything a group's policy blocks: the domains of its
-// packs and the sites typed by hand by address, and the packs' sites that have a
-// word by name. Platforms are handled on their own.
+// siteWord is the word a typed site is blocked by in DNS: the name it is registered
+// under (my-cima for cima.my-cima.net), so its other subdomains go too and the
+// address does not matter. Names too short to search for safely, and names of
+// services that must keep working, have none and are blocked by address.
+func siteWord(domain string) string {
+	if w := siteDNSWords[domain]; w != "" {
+		return w
+	}
+	reg, err := publicsuffix.EffectiveTLDPlusOne(domain)
+	if err != nil {
+		return ""
+	}
+	suffix, _ := publicsuffix.PublicSuffix(reg)
+	w := strings.TrimSuffix(reg, "."+suffix)
+	if len(w) < 5 || strings.Contains(w, ".") || protectedWords[w] {
+		return ""
+	}
+	return w
+}
+
+// protectedWords are names whose DNS questions must never be dropped, because the
+// hospital's mail, phones and computers need them.
+var protectedWords = func() map[string]bool {
+	m := map[string]bool{}
+	for _, w := range []string{"google", "googleapis", "gstatic", "gmail", "youtube", "microsoft", "microsoftonline", "office", "office365", "outlook", "windows", "windowsupdate", "msftconnecttest", "apple", "icloud", "whatsapp", "android", "amazon", "amazonaws", "cloudflare", "akamai", "firebaseio", "facebook"} {
+		m[w] = true
+	}
+	return m
+}()
+
+// groupBlockTargets lists everything a group's policy blocks: the sites with a word
+// by name, the rest of the packs' and typed sites by address. Platforms are handled
+// on their own.
 func groupBlockTargets(blockedPacks, blockedDomains []string) (domains, ips []string, platforms []string, words []string) {
 	seen := map[string]bool{}
 	add := func(v string) {
@@ -298,6 +340,13 @@ func groupBlockTargets(blockedPacks, blockedDomains []string) (domains, ips []st
 		}
 	}
 	for _, d := range normalizedSites(blockedDomains) {
+		if w := siteWord(d); w != "" {
+			if !seen["word:"+w] {
+				seen["word:"+w] = true
+				words = append(words, w)
+			}
+			continue
+		}
 		add(d)
 	}
 	sort.Strings(domains)

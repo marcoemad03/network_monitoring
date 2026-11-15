@@ -41,24 +41,24 @@ func TestNormalizeSite(t *testing.T) {
 }
 
 func TestGroupBlockTargetsExpandsPacks(t *testing.T) {
-	domains, ips, platforms, words := groupBlockTargets([]string{"games", "nope", "GAMES"}, []string{"Roblox.com", "https://my-site.example/x", "203.0.113.9", "bad site"})
+	domains, ips, platforms, words := groupBlockTargets([]string{"games", "nope", "GAMES"}, []string{"Roblox.com", "https://ab.example/x", "203.0.113.9", "bad site"})
 	if !contains(platforms, "steam") || !contains(platforms, "epicgames") {
 		t.Errorf("platforms = %v", platforms)
 	}
-	if !contains(domains, "roblox.com") || !contains(domains, "my-site.example") || !contains(domains, "battle.net") || contains(domains, "garena.com") {
+	if contains(domains, "roblox.com") || !contains(domains, "ab.example") || !contains(domains, "battle.net") || contains(domains, "garena.com") {
 		t.Errorf("domains = %v (pack sites with a word are blocked by name, typed ones by address)", domains)
 	}
 	if !contains(words, "roblox") || !contains(words, "garena") || contains(words, "ea") {
 		t.Errorf("words = %v", words)
 	}
 	count := 0
-	for _, d := range domains {
-		if d == "roblox.com" {
+	for _, w := range words {
+		if w == "roblox" {
 			count++
 		}
 	}
 	if count != 1 {
-		t.Errorf("roblox.com listed %d times", count)
+		t.Errorf("roblox listed %d times (typed and in a pack)", count)
 	}
 	if len(ips) != 1 || ips[0] != "203.0.113.9" {
 		t.Errorf("ips = %v", ips)
@@ -226,12 +226,12 @@ func membersOf(ms ...models.MarcoGroupMember) map[uuid.UUID][]models.MarcoGroupM
 }
 
 func TestSiteBlockingBuildsListRuleAndAllowRule(t *testing.T) {
-	groups := groupWith(models.MarcoGroupPolicy{BlockedDomains: []string{"games.example", "cf.example", "nowhere.example"}})
+	groups := groupWith(models.MarcoGroupPolicy{BlockedDomains: []string{"gm.example", "cf.example", "nw.example"}})
 	opts := marcoBuildOptions{
 		siteIPs: map[string]ResolvedSite{
-			"games.example":   {Target: "games.example", IPs: []string{"203.0.113.10", "172.217.112.4"}},
-			"cf.example":      {Target: "cf.example", Error: describeShared("Cloudflare"), SharedProvider: "Cloudflare"},
-			"nowhere.example": {Target: "nowhere.example", Error: "the name does not exist"},
+			"gm.example": {Target: "gm.example", IPs: []string{"203.0.113.10", "172.217.112.4"}},
+			"cf.example": {Target: "cf.example", Error: describeShared("Cloudflare"), SharedProvider: "Cloudflare"},
+			"nw.example": {Target: "nw.example", Error: "the name does not exist"},
 		},
 		allowIPs: []string{"172.217.112.4"},
 	}
@@ -265,7 +265,7 @@ func TestSiteBlockingBuildsListRuleAndAllowRule(t *testing.T) {
 		t.Error("the always-allowed address is not in the allow list")
 	}
 	warn := strings.Join(d.warnings, "\n")
-	if !strings.Contains(warn, "cf.example cannot be blocked: hosted on Cloudflare") || !strings.Contains(warn, "nowhere.example cannot be blocked: the name does not exist") {
+	if !strings.Contains(warn, "cf.example cannot be blocked: hosted on Cloudflare") || !strings.Contains(warn, "nw.example cannot be blocked: the name does not exist") {
 		t.Errorf("warnings = %v", d.warnings)
 	}
 	if err := validateFirewallScope(d.firewall); err != nil {
@@ -562,5 +562,20 @@ func TestPacksBlockTheirSitesByName(t *testing.T) {
 	}
 	if _, ok := d.raw["nms-marco-aaaaaaaa-dns-tls"]; !ok {
 		t.Error("blocking by name needs the encrypted DNS ports closed")
+	}
+}
+
+func TestTypedSitesAreBlockedByTheirName(t *testing.T) {
+	for domain, want := range map[string]string{
+		"cima.my-cima.net": "my-cima", "my-cima.net": "my-cima", "www.example.co.uk": "example",
+		"mail.google.com": "", "ea.com": "", "web.whatsapp.com": "",
+	} {
+		if got := siteWord(domain); got != want {
+			t.Errorf("siteWord(%q) = %q, want %q", domain, got, want)
+		}
+	}
+	domains, _, _, words := groupBlockTargets(nil, []string{"https://cima.my-cima.net/all-series-mycimaa.php?&page=3", "mail.google.com"})
+	if !contains(words, "my-cima") || contains(domains, "cima.my-cima.net") || !contains(domains, "mail.google.com") {
+		t.Errorf("words %v domains %v", words, domains)
 	}
 }
