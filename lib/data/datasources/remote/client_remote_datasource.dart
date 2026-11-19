@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import '../../../core/constants/api_constants.dart';
 import '../../../core/network/dio_client.dart';
 import '../../models/client_inventory_models.dart';
+import '../../models/network_problem_models.dart';
 
 /// Carries the backend's own message so the UI can show why a save failed.
 class ClientApiException implements Exception {
@@ -54,5 +55,15 @@ class ClientRemoteDataSource {
     return ((body['data'] as List?) ?? const [])
         .map((e) => ClientDay.fromJson(Map<String, dynamic>.from(e as Map)))
         .toList();
+  }
+
+  /// Reads the router and lists devices with no internet and shared addresses.
+  Future<NetworkProblems> problems() async {
+    final response = await _client.get(
+      '${ApiConstants.basePath}/monitoring/clients/problems',
+      options: Options(receiveTimeout: const Duration(seconds: 45)),
+    );
+    final body = Map<String, dynamic>.from(response.data as Map);
+    return NetworkProblems.fromJson(Map<String, dynamic>.from(body['data'] as Map));
   }
 }

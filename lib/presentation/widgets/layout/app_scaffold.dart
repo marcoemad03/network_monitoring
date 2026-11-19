@@ -103,6 +103,7 @@ class AppScaffold extends StatelessWidget {
     if (location.startsWith(RouteNames.deviceInfrastructure)) return 2;
     if (location.startsWith('/devices')) return 1;
     if (location.startsWith('/alerts')) return 3;
+    if (location.startsWith(RouteNames.networkProblems)) return 12;
     if (location.startsWith('/network')) return 4;
     if (location.startsWith('/reporting')) return 5;
     if (location.startsWith('/internet')) return 6;
@@ -140,6 +141,8 @@ class AppScaffold extends StatelessWidget {
         context.go(RouteNames.auditLog);
       case 11:
         context.go(RouteNames.security);
+      case 12:
+        context.go(RouteNames.networkProblems);
     }
   }
 }
@@ -157,6 +160,7 @@ const _navItems = <_NavItem>[
   _NavItem(Icons.inventory_2_outlined, Icons.inventory_2, 'Assets'),
   _NavItem(Icons.history_outlined, Icons.history, 'Audit'),
   _NavItem(Icons.shield_outlined, Icons.shield, 'Security'),
+  _NavItem(Icons.report_problem_outlined, Icons.report_problem, 'Problems'),
 ];
 
 class _NavItem {

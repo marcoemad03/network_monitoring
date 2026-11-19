@@ -264,6 +264,7 @@ func RegisterRoutes(router *gin.Engine, db *database.DB, hub *websocket.Hub, cfg
 			monitoring.GET("/wan", wanHandler.Get)
 			monitoring.GET("/equipment", monitoringHandler.GetEquipment)
 			monitoring.GET("/clients/inventory", clientHandler.List)
+			monitoring.GET("/clients/problems", clientHandler.Problems)
 			monitoring.PUT("/clients/inventory/:mac", clientHandler.UpdateNote)
 			monitoring.GET("/clients/inventory/:mac/usage", clientHandler.Usage)
 			monitoring.GET("/clients", monitoringHandler.GetAllClients)

@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	followEvery   = 2 * time.Minute
+	followEvery   = time.Minute
 	followRefresh = 30 * time.Minute // sites change address now and then
 )
 
@@ -66,6 +66,7 @@ func (s *MarcoGroupService) StartFollower(ctx context.Context, orgs func(context
 // followState summarises where the devices the rules point at are right now.
 func (s *MarcoGroupService) followState(ctx context.Context, orgID uuid.UUID) (string, bool, error) {
 	live := s.inventory.LiveIPs(orgID)
+	holders := s.inventory.AddressHolders(orgID)
 	if len(live) == 0 {
 		return "", false, context.Canceled // the router has not been read yet
 	}
@@ -94,9 +95,14 @@ func (s *MarcoGroupService) followState(ctx context.Context, orgID uuid.UUID) (s
 	var parts []string
 	for _, m := range members {
 		if active[m.GroupID.String()] {
+			// The same rule the sync uses, so a device leaving, coming back or losing
+			// its last address to another device moves its block.
 			mac := strings.ToUpper(orEmpty(m.MACAddress))
-			if ip := live[mac]; ip != "" {
-				parts = append(parts, mac+"="+ip)
+			if mac == "" {
+				continue
+			}
+			if ip := memberAddress(mac, m.IPAddress, live, holders); ip != nil {
+				parts = append(parts, mac+"="+ip.String())
 			}
 		}
 	}

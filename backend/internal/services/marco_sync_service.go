@@ -69,6 +69,31 @@ type MarcoSyncService struct {
 // liveIPSource knows the address each device has right now (by MAC address).
 type liveIPSource interface {
 	LiveIPs(orgID uuid.UUID) map[string]string
+	AddressHolders(orgID uuid.UUID) map[string][]string
+}
+
+// memberAddress is the address a device in a group is blocked on, found by its MAC:
+// the address the router sees it on now; when it is away, its last address, but only
+// while no other device is listed on it (a bound or reserved lease, the hotspot or
+// ARP), so a device that got that address from DHCP is never blocked in its place.
+// live == nil means the router's device list is not known, and the saved address
+// is used as it is.
+func memberAddress(mac string, saved net.IP, live map[string]string, holders map[string][]string) net.IP {
+	if live == nil {
+		return saved
+	}
+	if ip := net.ParseIP(live[mac]); ip != nil {
+		return ip
+	}
+	if saved == nil || saved.IsUnspecified() {
+		return nil
+	}
+	for _, other := range holders[saved.String()] {
+		if other != mac {
+			return nil
+		}
+	}
+	return saved
 }
 
 func NewMarcoSyncService(marcoRepo *repository.MarcoRepository, deviceRepo *repository.DeviceRepository, internetRepo *repository.InternetRepository, cfg *config.Config, hub *websocket.Hub, telegramSvc *TelegramService) *MarcoSyncService {
@@ -143,6 +168,9 @@ type marcoBuildOptions struct {
 	protected     []*net.IPNet
 	// metaCaches are the networks of Meta's caches at the internet providers.
 	metaCaches []string
+	// liveKnown is true when the router's device list was read recently, so a member
+	// missing from it is not connected.
+	liveKnown bool
 }
 
 type marcoSyncResult struct {
@@ -354,6 +382,10 @@ func buildMarcoDesiredState(groups []models.MarcoGroup, membersByGroup map[uuid.
 				label = orEmpty(m.MACAddress)
 			}
 			if m.IPAddress == nil || m.IPAddress.IsUnspecified() {
+				if opts.liveKnown && m.MACAddress != nil && *m.MACAddress != "" {
+					d.warnings = append(d.warnings, fmt.Sprintf("%s (%s): away, and its last address is now used by another device; its block starts again when it connects", label, g.Name))
+					continue
+				}
 				d.warnings = append(d.warnings, fmt.Sprintf("%s (%s): no IP address yet, policy not enforced until the device is discovered", label, g.Name))
 				continue
 			}
@@ -1030,15 +1062,26 @@ func (s *MarcoSyncService) buildOptions(ctx context.Context, orgID uuid.UUID, ve
 		}
 	}
 	var live map[string]string
+	var holders map[string][]string
 	if s.live != nil {
 		live = s.live.LiveIPs(orgID)
+		holders = s.live.AddressHolders(orgID)
 	}
-	// A device added to a group by MAC has no address of its own; the router knows it.
+	opts.liveKnown = live != nil
+	// A device is blocked by its MAC address: its rules follow the address the router
+	// sees it on (memberAddress). A device that is away keeps its last address only
+	// while no other device holds it, so DHCP giving that address to someone else
+	// never blocks them instead.
 	for gid, list := range membersByGroup {
 		for i := range list {
 			mac := strings.ToUpper(orEmpty(list[i].MACAddress))
-			ip := net.ParseIP(live[mac])
-			if mac == "" || ip == nil {
+			if mac == "" {
+				continue
+			}
+			ip := memberAddress(mac, list[i].IPAddress, live, holders)
+			if ip == nil {
+				list[i].IPAddress = nil
+				list[i].IsOnline = false
 				continue
 			}
 			if !ip.Equal(list[i].IPAddress) {

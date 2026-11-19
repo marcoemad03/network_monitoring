@@ -1,9 +1,11 @@
 package handlers
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/hospital/nms-backend/internal/services"
@@ -89,4 +91,22 @@ func (h *ClientHandler) Usage(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": rows, "message": "Usage retrieved"})
+}
+
+// Problems lists devices that are connected but have no internet, and addresses
+// two devices use at once. It reads the router on each call.
+func (h *ClientHandler) Problems(c *gin.Context) {
+	orgID, err := parseUUID(c.GetString("org_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid organization", "error_code": "VALIDATION_ERROR"})
+		return
+	}
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 40*time.Second)
+	defer cancel()
+	res, err := h.service.Problems(ctx, orgID)
+	if err != nil {
+		h.fail(c, err, "Failed to check the network")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": res, "message": "Network checked"})
 }

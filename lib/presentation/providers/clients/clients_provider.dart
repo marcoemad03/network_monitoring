@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/di/injection_container.dart';
 import '../../../data/datasources/remote/client_remote_datasource.dart';
 import '../../../data/models/client_inventory_models.dart';
+import '../../../data/models/network_problem_models.dart';
 
 final clientRemoteProvider = Provider<ClientRemoteDataSource>(
   (ref) => ClientRemoteDataSource(ref.watch(dioProvider)),
@@ -46,3 +47,8 @@ String _describe(Object e) {
   if (text.contains('timeout')) return 'The NMS server took too long to answer.';
   return 'Could not load the devices.';
 }
+
+/// The router check behind the Network problems page; refreshed by invalidating it.
+final networkProblemsProvider = FutureProvider.autoDispose<NetworkProblems>(
+  (ref) => ref.watch(clientRemoteProvider).problems(),
+);

@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"net"
 	"regexp"
 	"sort"
 	"strings"
@@ -48,6 +49,9 @@ type LiveClient struct {
 	// ArpInterface is the router interface the ARP entry was learned on.
 	ArpInterface string
 	DownBps, UpBps     int64
+	// Addresses are all the addresses the router's tables show for this MAC: the
+	// hotspot, the DHCP lease and ARP can disagree.
+	Addresses []string
 }
 
 // ClientInventoryService keeps a picture of the devices on the network: who is
@@ -312,6 +316,7 @@ func mergeClientTables(hosts, leases, arps []map[string]string) []LiveClient {
 		e.hasHost = true
 		e.HasCounters = true
 		e.IP = pickText(e.IP, r["address"])
+		e.Addresses = addAddress(e.Addresses, r["address"])
 		e.Network = pickText(e.Network, r["server"])
 		e.BytesUp = parseCounter(r["bytes-in"])
 		e.BytesDown = parseCounter(r["bytes-out"])
@@ -327,6 +332,7 @@ func mergeClientTables(hosts, leases, arps []map[string]string) []LiveClient {
 		}
 		e := get(mac)
 		e.IP = pickText(e.IP, r["address"])
+		e.Addresses = addAddress(e.Addresses, r["address"])
 		e.Network = pickText(e.Network, r["server"])
 		if host := cleanHostname(decodeRouterText(r["host-name"])); host != "" {
 			e.Hostname = host
@@ -347,6 +353,7 @@ func mergeClientTables(hosts, leases, arps []map[string]string) []LiveClient {
 		e.arpPresent = true
 		e.ArpInterface = pickText(e.ArpInterface, r["interface"])
 		e.IP = pickText(e.IP, r["address"])
+		e.Addresses = addAddress(e.Addresses, r["address"])
 		e.Network = pickText(e.Network, r["interface"])
 	}
 
@@ -643,16 +650,70 @@ func (s *ClientInventoryService) Usage(ctx context.Context, orgID uuid.UUID, mac
 	return s.repo.Daily(ctx, orgID, mac, since)
 }
 
+// liveFreshFor is how old the last good router read may be before the devices'
+// addresses are no longer trusted for blocks.
+const liveFreshFor = 5 * time.Minute
+
 // LiveIPs returns the address of every device the router sees online now, by MAC.
+// It returns nil (not an empty map) while the router has not been read yet or the
+// last good read is older than liveFreshFor, so callers can tell "nobody is online"
+// from "not known".
 func (s *ClientInventoryService) LiveIPs(orgID uuid.UUID) map[string]string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	st := s.states[orgID]
+	if st == nil || !st.ready || time.Since(st.updatedAt) > liveFreshFor {
+		return nil
+	}
 	out := map[string]string{}
-	if st := s.states[orgID]; st != nil {
-		for _, c := range st.live {
-			if c.Online && c.IP != "" {
-				out[c.MAC] = c.IP
-			}
+	for _, c := range st.live {
+		if c.Online && c.IP != "" {
+			out[c.MAC] = c.IP
+		}
+	}
+	return out
+}
+
+// Snapshot returns a copy of the devices from the last router read and when it was
+// read; ok is false before the first good read.
+func (s *ClientInventoryService) Snapshot(orgID uuid.UUID) (clients []LiveClient, at time.Time, ok bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	st := s.states[orgID]
+	if st == nil || !st.ready {
+		return nil, time.Time{}, false
+	}
+	return append([]LiveClient(nil), st.live...), st.updatedAt, true
+}
+
+// addAddress adds an IPv4 address to the list once.
+func addAddress(list []string, v string) []string {
+	v = strings.TrimSpace(v)
+	if net.ParseIP(v) == nil {
+		return list
+	}
+	for _, x := range list {
+		if x == v {
+			return list
+		}
+	}
+	return append(list, v)
+}
+
+// AddressHolders returns, for each address in the router's hotspot, DHCP and ARP
+// tables, the devices (by MAC) it is listed for, online or not. A reserved or still
+// bound lease counts. It returns nil when the router's device list is not known.
+func (s *ClientInventoryService) AddressHolders(orgID uuid.UUID) map[string][]string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	st := s.states[orgID]
+	if st == nil || !st.ready || time.Since(st.updatedAt) > liveFreshFor {
+		return nil
+	}
+	out := map[string][]string{}
+	for _, c := range st.live {
+		for _, a := range c.Addresses {
+			out[a] = append(out[a], c.MAC)
 		}
 	}
 	return out

@@ -14,6 +14,7 @@ class RouteNames {
   static const String alertDetail = '/alerts/:id';
   static const String networkMap = '/network/map';
   static const String networkScan = '/network/scan';
+  static const String networkProblems = '/network/problems';
   static const String networkScanResults = '/network/scan/:id';
   static const String settings = '/settings';
   static const String userManagement = '/settings/users';

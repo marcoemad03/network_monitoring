@@ -19,6 +19,7 @@ import '../screens/devices/active_connections_screen.dart';
 import '../screens/alerts/alert_list_screen.dart';
 import '../screens/alerts/alert_detail_screen.dart';
 import '../screens/network/network_map_screen.dart';
+import '../screens/network/network_problems_screen.dart';
 import '../screens/network/scan_screen.dart';
 import '../screens/settings/settings_screen.dart';
 import '../screens/settings/user_management_screen.dart';
@@ -153,6 +154,10 @@ class AppRouter {
               GoRoute(
                 path: RouteNames.networkMap,
                 builder: (context, state) => const NetworkMapScreen(),
+              ),
+              GoRoute(
+                path: RouteNames.networkProblems,
+                builder: (context, state) => const NetworkProblemsScreen(),
               ),
               GoRoute(
                 path: RouteNames.networkScan,
