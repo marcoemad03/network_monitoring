@@ -15,6 +15,7 @@
 //	hotspot-page pilot <IP>        tries blocking the apps by address on one device, for an hour
 //	hotspot-page pilotstatus       shows the trial's rules and their counters
 //	hotspot-page unpilot           ends the trial now
+//	hotspot-page reserve <MAC> <IP> gives the device that address in DHCP for good
 //	hotspot-page sniffer on|off    copies devices' DNS questions to the NMS, or stops
 //
 // A phone is moved by renaming its hotspot user to p-<MAC>: login by MAC no longer
@@ -492,6 +493,68 @@ func (r *router) snifferStatus() error {
 	return nil
 }
 
+// reserve gives a device a fixed address in DHCP, so the router never hands that
+// address to another device. A device already on it is moved off: its lease and
+// hotspot session go, and it gets another address when it asks again.
+func (r *router) reserve(mac, ip string) error {
+	leases, err := r.conn.Command("/ip/dhcp-server/lease/print")
+	if err != nil {
+		return err
+	}
+	server := ""
+	for _, l := range leases {
+		if strings.EqualFold(l["mac-address"], mac) && l["dynamic"] != "true" {
+			return fmt.Errorf("%s already has a reserved address (%s)", mac, l["address"])
+		}
+		if l["address"] == ip || l["active-address"] == ip {
+			if l["dynamic"] != "true" {
+				return fmt.Errorf("%s is already reserved for %s", ip, l["mac-address"])
+			}
+			server = l["server"]
+			other := strings.ToUpper(l["mac-address"])
+			if !strings.EqualFold(other, mac) {
+				if _, err := r.conn.Command("/ip/dhcp-server/lease/remove", "=.id="+l[".id"]); err != nil {
+					return err
+				}
+				if err := r.endSession(other); err != nil {
+					return err
+				}
+				fmt.Println("moved off", ip+":", other)
+			}
+		}
+	}
+	if server == "" {
+		servers, err := r.conn.Command("/ip/dhcp-server/print")
+		if err != nil || len(servers) == 0 {
+			return fmt.Errorf("no DHCP server found")
+		}
+		server = servers[0]["name"]
+	}
+	if _, err := r.conn.Command("/ip/dhcp-server/lease/add", "=mac-address="+mac, "=address="+ip, "=server="+server, "=comment=reserved by NMS"); err != nil {
+		return err
+	}
+	fmt.Println("reserved", ip, "for", mac, "on", server)
+	return nil
+}
+
+// profile prints what the router's CPU is spent on, read over a few seconds.
+func (r *router) profile() error {
+	rows, err := r.conn.Command("/tool/profile", "=duration=5s")
+	if err != nil {
+		return err
+	}
+	last := map[string]string{}
+	for _, row := range rows {
+		if row["name"] != "" {
+			last[row["name"]] = row["usage"]
+		}
+	}
+	for name, usage := range last {
+		fmt.Printf("%s=%s\n", name, usage)
+	}
+	return nil
+}
+
 func main() {
 	if len(os.Args) < 2 {
 		fmt.Println("usage: hotspot-page status|check|enable|disable|phone <MAC>|unphone <MAC>|daily|undaily")
@@ -530,6 +593,14 @@ func main() {
 			err = r.undaily()
 		case "list":
 			err = r.list()
+		case "profile":
+			err = r.profile()
+		case "reserve":
+			if len(os.Args) < 4 {
+				err = fmt.Errorf("usage: hotspot-page reserve <MAC> <IP>")
+			} else {
+				err = r.reserve(mac, os.Args[3])
+			}
 		case "phones":
 			err = r.phones(os.Args[2])
 		case "pilot":

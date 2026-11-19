@@ -5,6 +5,7 @@ import '../../../core/utils/data_format.dart';
 import '../../../data/models/sites_models.dart';
 import '../../providers/sites/sites_provider.dart';
 import '../dashboard/widgets/dash_card.dart';
+import 'widgets/device_search.dart';
 import 'widgets/device_sites.dart';
 import 'widgets/site_dialogs.dart';
 import 'widgets/site_widgets.dart';
@@ -142,6 +143,8 @@ class _SitesScreenState extends ConsumerState<SitesScreen> {
     }
 
     children.add(_Summary(overview: overview, hours: state.hours));
+    children.add(const SizedBox(height: 14));
+    children.add(const DeviceSearchCard());
     children.add(const SizedBox(height: 14));
     children.add(
       _Filters(
